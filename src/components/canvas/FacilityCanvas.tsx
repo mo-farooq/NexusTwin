@@ -9,13 +9,13 @@
 
 import React, { useMemo, useRef, useEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, ContactShadows, Line, Html } from "@react-three/drei";
+import { OrbitControls, ContactShadows } from "@react-three/drei";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import { useTwinStore, type BotUnit, type ChargingDock } from "../../store/useTwinStore";
-import { cellToWorld } from "../../engine/pathfinder";
+import { useTwinStore, type ChargingDock } from "../../store/useTwinStore";
 import { RackSystem } from "./RackSystem";
 import { StationNodes } from "./StationNodes";
+import { BotFleet } from "./BotFleet";
 
 // ─────────────────────────────────────────────────────────────
 // Color Palette & Architectural Constants
@@ -336,224 +336,7 @@ function ChargingPadsCollection() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 5. Individual BotUnit Mesh with Smooth 60fps Interpolation
-// ─────────────────────────────────────────────────────────────
-
-interface BotUnitMeshProps {
-  bot: BotUnit;
-  isSelected: boolean;
-  onSelect: () => void;
-}
-
-function BotUnitMesh({ bot, isSelected, onSelect }: BotUnitMeshProps) {
-  const groupRef = useRef<THREE.Group>(null!);
-  const wheelsRef = useRef<THREE.Group>(null!);
-
-  const initialRender = useRef(true);
-  const currentPos = useRef(new THREE.Vector3(...bot.position));
-  const currentHeading = useRef(bot.headingRad);
-
-  useFrame((_, dt) => {
-    const grp = groupRef.current;
-    if (!grp) return;
-
-    if (initialRender.current) {
-      grp.position.set(bot.position[0], 0.2, bot.position[2]);
-      grp.rotation.y = bot.headingRad;
-      initialRender.current = false;
-      return;
-    }
-
-    // Smooth exponential lerping between discrete 100ms simulation ticks
-    const k = 1.0 - Math.pow(0.0005, dt);
-    grp.position.x += (bot.position[0] - grp.position.x) * k;
-    grp.position.z += (bot.position[2] - grp.position.z) * k;
-    grp.position.y = 0.2; // Stable floor clearance
-
-    let dHeading = bot.headingRad - grp.rotation.y;
-    while (dHeading > Math.PI) dHeading -= Math.PI * 2;
-    while (dHeading < -Math.PI) dHeading += Math.PI * 2;
-    grp.rotation.y += dHeading * k;
-
-    // Roll wheels during movement
-    if (wheelsRef.current && bot.velocity > 0.05) {
-      wheelsRef.current.rotation.x -= (bot.velocity / 0.1) * dt;
-    }
-  });
-
-  // Dynamic status color indicator
-  const statusColor = useMemo(() => {
-    switch (bot.status) {
-      case "ACTIVE":
-        return "#10B981"; // Emerald green
-      case "CHARGING":
-        return "#3B82F6"; // Blue
-      case "IDLE":
-        return "#64748B"; // Slate
-      case "WARNING":
-        return "#F59E0B"; // Amber
-      case "ERROR":
-      case "OFFLINE":
-        return "#EF4444"; // Red
-      default:
-        return "#64748B";
-    }
-  }, [bot.status]);
-
-  // Convert A* grid path into continuous 3D world line
-  const pathPoints = useMemo(() => {
-    if (!bot.path || bot.path.length === 0) return null;
-    return bot.path.map((cell) => {
-      const [wx, wz] = cellToWorld(cell[0], cell[1]);
-      return [wx, 0.05, wz] as [number, number, number];
-    });
-  }, [bot.path]);
-
-  return (
-    <>
-      {/* Planned Trajectory Line (Visible when selected or active) */}
-      {pathPoints && (isSelected || bot.status === "ACTIVE") && (
-        <Line
-          points={pathPoints}
-          color={isSelected ? "#F59E0B" : "#38BDF8"}
-          lineWidth={isSelected ? 3.0 : 1.5}
-          dashed={!isSelected}
-          dashSize={0.5}
-          gapSize={0.25}
-        />
-      )}
-
-      <group
-        ref={groupRef}
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect();
-        }}
-        onPointerOver={() => (document.body.style.cursor = "pointer")}
-        onPointerOut={() => (document.body.style.cursor = "default")}
-      >
-        {/* Main Sleek Chassis */}
-        <mesh position={[0, 0.14, 0]} castShadow>
-          <boxGeometry args={[0.96, 0.28, 0.72]} />
-          <meshStandardMaterial
-            color={COLORS.BOT_CHASSIS}
-            roughness={0.25}
-            metalness={0.2}
-          />
-        </mesh>
-
-        {/* Contrast Dark Top Lid */}
-        <mesh position={[0, 0.3, 0]}>
-          <boxGeometry args={[0.82, 0.06, 0.6]} />
-          <meshStandardMaterial
-            color={COLORS.BOT_TOP_PANEL}
-            roughness={0.5}
-            metalness={0.5}
-          />
-        </mesh>
-
-        {/* Front Cyan LED Light Strip */}
-        <mesh position={[0.49, 0.16, 0]}>
-          <boxGeometry args={[0.02, 0.06, 0.52]} />
-          <meshBasicMaterial color={COLORS.BOT_ACCENT} />
-        </mesh>
-
-        {/* Status Beacon LED */}
-        <mesh position={[-0.32, 0.36, 0]}>
-          <cylinderGeometry args={[0.06, 0.06, 0.08, 16]} />
-          <meshBasicMaterial color={statusColor} />
-        </mesh>
-
-        {/* 4 Wheels */}
-        <group ref={wheelsRef}>
-          {[
-            [-0.32, -0.34],
-            [0.32, -0.34],
-            [-0.32, 0.34],
-            [0.32, 0.34],
-          ].map(([wx, wz], idx) => (
-            <mesh
-              key={idx}
-              position={[wx, 0.08, wz]}
-              rotation-z={Math.PI / 2}
-            >
-              <cylinderGeometry args={[0.08, 0.08, 0.06, 12]} />
-              <meshStandardMaterial color="#1E293B" roughness={0.9} />
-            </mesh>
-          ))}
-        </group>
-
-        {/* Carried Payload Crate (When Loaded) */}
-        {bot.currentPayloadKg > 0 && (
-          <mesh position={[0, 0.62, 0]} castShadow>
-            <boxGeometry args={[0.7, 0.5, 0.55]} />
-            <meshStandardMaterial
-              color="#F59E0B"
-              roughness={0.7}
-              metalness={0.1}
-            />
-          </mesh>
-        )}
-
-        {/* Selected Highlight Ring */}
-        {isSelected && (
-          <mesh rotation-x={-Math.PI / 2} position={[0, -0.15, 0]}>
-            <ringGeometry args={[0.7, 0.85, 32]} />
-            <meshBasicMaterial color="#F59E0B" transparent opacity={0.8} />
-          </mesh>
-        )}
-
-        {/* Floating ID & Battery Label */}
-        {isSelected && (
-          <Html position={[0, 1.2, 0]} center distanceFactor={18}>
-            <div
-              style={{
-                background: "rgba(15, 23, 42, 0.92)",
-                color: "#FFFFFF",
-                padding: "3px 8px",
-                borderRadius: "4px",
-                fontSize: "11px",
-                fontWeight: 600,
-                whiteSpace: "nowrap",
-                border: "1px solid #38BDF8",
-                boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-                pointerEvents: "none",
-              }}
-            >
-              {bot.id} · {Math.round(bot.batteryPct)}%
-            </div>
-          </Html>
-        )}
-      </group>
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// 8. Fleet Collection
-// ─────────────────────────────────────────────────────────────
-
-function BotUnitFleetCollection() {
-  const botUnits = useTwinStore((s) => s.botUnits);
-  const selectedBotId = useTwinStore((s) => s.selectedBotId);
-  const selectBot = useTwinStore((s) => s.selectBot);
-
-  return (
-    <group>
-      {Object.values(botUnits).map((bot) => (
-        <BotUnitMesh
-          key={bot.id}
-          bot={bot}
-          isSelected={selectedBotId === bot.id}
-          onSelect={() => selectBot(bot.id)}
-        />
-      ))}
-    </group>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// 9. Main Scene Composite
+// 5. Main Scene Composite
 // ─────────────────────────────────────────────────────────────
 
 function FacilityScene({ controlsRef }: { controlsRef: React.RefObject<OrbitControlsImpl> }) {
@@ -573,7 +356,7 @@ function FacilityScene({ controlsRef }: { controlsRef: React.RefObject<OrbitCont
         <ChargingPadsCollection />
         <StationNodes />
         <RackSystem />
-        <BotUnitFleetCollection />
+        <BotFleet />
 
         {/* Soft Grounding Contact Shadows */}
         <ContactShadows
