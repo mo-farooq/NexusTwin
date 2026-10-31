@@ -182,6 +182,17 @@ export interface ChargingDock {
   powerKw: number;
 }
 
+export interface ElevatorNode {
+  id: string;
+  name: string;
+  coords: [x: number, z: number];
+  currentFloor: number;
+  targetFloor: number | null;
+  status: "IDLE" | "MOVING_UP" | "MOVING_DOWN" | "BOARDING" | "MAINTENANCE";
+  queueLength: number;
+  doorState: "OPEN" | "CLOSED";
+}
+
 // ─────────────────────────────────────────────────────────────
 // 3. Automation Decision & Financial ROI Model (Indian Context)
 // ─────────────────────────────────────────────────────────────
@@ -256,6 +267,7 @@ function createDefaultLayout(dimensions: GridDimensions): {
   zones: Record<string, WarehouseZone>;
   locations: Record<string, WarehouseLocation>;
   chargingDocks: Record<string, ChargingDock>;
+  elevators: Record<string, ElevatorNode>;
   initialBotUnits: Record<string, BotUnit>;
 } {
   const { cols, rows, cellSize } = dimensions;
@@ -390,6 +402,32 @@ function createDefaultLayout(dimensions: GridDimensions): {
     };
   }
 
+  // Freight Elevators connecting Ground & Mezzanine Levels
+  const elevators: Record<string, ElevatorNode> = {
+    "LIFT-01": {
+      id: "LIFT-01",
+      name: "Freight Lift 01 (North Mezzanine)",
+      coords: [30.0, 14.0],
+      currentFloor: 1,
+      targetFloor: null,
+      status: "IDLE",
+      queueLength: 0,
+      doorState: "CLOSED",
+    },
+    "LIFT-02": {
+      id: "LIFT-02",
+      name: "Freight Lift 02 (South Mezzanine)",
+      coords: [30.0, 26.0],
+      currentFloor: 1,
+      targetFloor: null,
+      status: "IDLE",
+      queueLength: 0,
+      doorState: "CLOSED",
+    },
+  };
+  setGridRect(navGrid, 29, 13, 31, 15, 1); // Lift 1 footprint
+  setGridRect(navGrid, 29, 25, 31, 27, 1); // Lift 2 footprint
+
   // Initialize fleet of 12 BotUnits
   const initialBotUnits: Record<string, BotUnit> = {};
   for (let i = 1; i <= 12; i++) {
@@ -423,7 +461,7 @@ function createDefaultLayout(dimensions: GridDimensions): {
     };
   }
 
-  return { navGrid, zones, locations, chargingDocks, initialBotUnits };
+  return { navGrid, zones, locations, chargingDocks, elevators, initialBotUnits };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -437,12 +475,18 @@ export interface NexusTwinState {
   zones: Record<string, WarehouseZone>;
   locations: Record<string, WarehouseLocation>;
   chargingDocks: Record<string, ChargingDock>;
+  elevators: Record<string, ElevatorNode>;
+
+  // Selection & Heatmap Overlays
+  selectedBotId: string | null;
+  selectedElevatorId: string | null;
+  selectedStationId: string | null;
+  heatmapMode: boolean;
 
   // Fleet & Profiles
   botProfiles: Record<string, BotProfile>;
   selectedFleetProfileId: string;
   botUnits: Record<string, BotUnit>;
-  selectedBotId: string | null;
 
   // Task Engine
   tasks: Record<string, Task>;
@@ -470,6 +514,10 @@ export interface NexusTwinState {
   resetSimulation: (newSeed?: number) => void;
   setSimulationSpeed: (speed: 1 | 2 | 5 | 10) => void;
   selectBot: (botId: string | null) => void;
+  selectElevator: (id: string | null) => void;
+  selectStation: (id: string | null) => void;
+  toggleHeatmapMode: () => void;
+  setHeatmapMode: (active: boolean) => void;
   setFleetProfile: (profileId: string) => void;
   setBotUnitProfile: (botId: string, profileId: string) => void;
   updateFinancialParams: (params: Partial<FinancialParameters>) => void;
@@ -573,11 +621,16 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     zones: initialLayout.zones,
     locations: initialLayout.locations,
     chargingDocks: initialLayout.chargingDocks,
+    elevators: initialLayout.elevators,
+
+    selectedBotId: null,
+    selectedElevatorId: null,
+    selectedStationId: null,
+    heatmapMode: false,
 
     botProfiles: BOT_PROFILES,
     selectedFleetProfileId: "LIGHT_PICKER",
     botUnits: initialLayout.initialBotUnits,
-    selectedBotId: null,
 
     tasks: {},
     taskSequence: 1000,
@@ -597,7 +650,11 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     startSimulation: () => set({ isRunning: true }),
     pauseSimulation: () => set({ isRunning: false }),
     setSimulationSpeed: (speed) => set({ simulationSpeed: speed }),
-    selectBot: (botId) => set({ selectedBotId: botId }),
+    selectBot: (botId) => set({ selectedBotId: botId, selectedElevatorId: null, selectedStationId: null }),
+    selectElevator: (id) => set({ selectedElevatorId: id, selectedBotId: null, selectedStationId: null }),
+    selectStation: (id) => set({ selectedStationId: id, selectedBotId: null, selectedElevatorId: null }),
+    toggleHeatmapMode: () => set((s) => ({ heatmapMode: !s.heatmapMode })),
+    setHeatmapMode: (active) => set({ heatmapMode: active }),
 
     setFleetProfile: (profileId) => {
       const { botUnits } = get();
@@ -713,7 +770,11 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         zones: layout.zones,
         locations: layout.locations,
         chargingDocks: layout.chargingDocks,
+        elevators: layout.elevators,
         botUnits: layout.initialBotUnits,
+        selectedBotId: null,
+        selectedElevatorId: null,
+        selectedStationId: null,
         tasks: {},
         taskSequence: 1000,
         trafficDensityMap: new Float32Array(totalGridCells),

@@ -14,6 +14,8 @@ import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { useTwinStore, type BotUnit, type ChargingDock } from "../../store/useTwinStore";
 import { cellToWorld } from "../../engine/pathfinder";
+import { RackSystem } from "./RackSystem";
+import { StationNodes } from "./StationNodes";
 
 // ─────────────────────────────────────────────────────────────
 // Color Palette & Architectural Constants
@@ -334,206 +336,7 @@ function ChargingPadsCollection() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 5. Workstations & Inbound / Packing Lines
-// ─────────────────────────────────────────────────────────────
-
-function WorkstationsCollection() {
-  const locations = useTwinStore((s) => s.locations);
-
-  const packStations = Object.values(locations).filter((l) => l.type === "PACK_STATION");
-  const inboundDocks = Object.values(locations).filter((l) => l.type === "INBOUND_DOCK");
-
-  return (
-    <group>
-      {/* Packing & Dispatch Lines */}
-      {packStations.map((station) => (
-        <group key={station.id} position={[station.coords[0], 0, station.coords[1]]}>
-          {/* Packing Table */}
-          <mesh position={[0, 0.45, 0]} castShadow receiveShadow>
-            <boxGeometry args={[2.6, 0.9, 1.6]} />
-            <meshStandardMaterial color="#475569" roughness={0.4} metalness={0.4} />
-          </mesh>
-          {/* Overhead Canopy Frame */}
-          <mesh position={[0, 1.8, 0]}>
-            <boxGeometry args={[2.7, 0.08, 1.7]} />
-            <meshStandardMaterial color="#1E293B" roughness={0.6} />
-          </mesh>
-          {/* Task Monitor */}
-          <mesh position={[0, 1.25, 0.75]}>
-            <boxGeometry args={[0.7, 0.4, 0.05]} />
-            <meshBasicMaterial color="#38BDF8" />
-          </mesh>
-        </group>
-      ))}
-
-      {/* Inbound Unloading Bays */}
-      {inboundDocks.map((dock) => (
-        <group key={dock.id} position={[dock.coords[0], 0, dock.coords[1]]}>
-          <mesh position={[0, 0.1, 0]}>
-            <boxGeometry args={[3.2, 0.2, 2.4]} />
-            <meshStandardMaterial color="#0284C7" roughness={0.5} />
-          </mesh>
-          {/* Roller Conveyor Section */}
-          <mesh position={[0, 0.4, 0]}>
-            <boxGeometry args={[2.8, 0.4, 1.8]} />
-            <meshStandardMaterial color="#94A3B8" roughness={0.2} metalness={0.8} />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// 6. Instanced Storage Racks & Inventory Packaging
-// ─────────────────────────────────────────────────────────────
-
-function InstancedStorageRacks() {
-  const locations = useTwinStore((s) => s.locations);
-  const shelfLocations = useMemo(
-    () => Object.values(locations).filter((l) => l.type === "SHELF"),
-    [locations]
-  );
-
-  const uprightsRef = useRef<THREE.InstancedMesh>(null!);
-  const beamsRef = useRef<THREE.InstancedMesh>(null!);
-  const boxesRef = useRef<THREE.InstancedMesh>(null!);
-
-  const dummy = useMemo(() => new THREE.Object3D(), []);
-  const colorHelper = useMemo(() => new THREE.Color(), []);
-
-  const rackData = useMemo(() => {
-    const uprightMatrices: THREE.Matrix4[] = [];
-    const beamMatrices: THREE.Matrix4[] = [];
-    const boxEntries: { matrix: THREE.Matrix4; color: string }[] = [];
-
-    const rackW = 2.4;
-    const rackH = 4.2;
-    const rackD = 1.0;
-    const levels = 3;
-    const levelHeight = rackH / levels;
-
-    shelfLocations.forEach((shelf, idx) => {
-      const [x, z] = shelf.coords;
-
-      // 4 Corner Steel Uprights
-      const corners = [
-        [-rackW / 2, -rackD / 2],
-        [rackW / 2, -rackD / 2],
-        [-rackW / 2, rackD / 2],
-        [rackW / 2, rackD / 2],
-      ];
-
-      corners.forEach(([cx, cz]) => {
-        dummy.position.set(x + cx, rackH / 2, z + cz);
-        dummy.scale.set(0.08, rackH, 0.08);
-        dummy.rotation.set(0, 0, 0);
-        dummy.updateMatrix();
-        uprightMatrices.push(dummy.matrix.clone());
-      });
-
-      // Horizontal Shelf Decks & Beams
-      for (let l = 1; l <= levels; l++) {
-        const y = l * levelHeight;
-
-        // Front & Back Safety Orange Beams
-        dummy.position.set(x, y, z - rackD / 2);
-        dummy.scale.set(rackW, 0.08, 0.06);
-        dummy.updateMatrix();
-        beamMatrices.push(dummy.matrix.clone());
-
-        dummy.position.set(x, y, z + rackD / 2);
-        dummy.scale.set(rackW, 0.08, 0.06);
-        dummy.updateMatrix();
-        beamMatrices.push(dummy.matrix.clone());
-
-        // Shelf Deck
-        dummy.position.set(x, y - 0.02, z);
-        dummy.scale.set(rackW - 0.1, 0.03, rackD);
-        dummy.updateMatrix();
-        beamMatrices.push(dummy.matrix.clone());
-
-        // Inventory Storage Boxes (2 boxes per level with pseudo-random colors)
-        for (let b = 0; b < 2; b++) {
-          const bx = x - rackW / 4 + b * (rackW / 2);
-          const boxH = 0.55;
-          const boxW = 0.75;
-          const boxD = 0.65;
-
-          dummy.position.set(bx, y + boxH / 2 + 0.02, z);
-          dummy.scale.set(boxW, boxH, boxD);
-          dummy.rotation.set(0, (idx % 3 === 0 ? 0.05 : -0.05), 0);
-          dummy.updateMatrix();
-
-          const colorIdx = (idx * 3 + l + b) % COLORS.BOX_PALETTE.length;
-          boxEntries.push({
-            matrix: dummy.matrix.clone(),
-            color: COLORS.BOX_PALETTE[colorIdx],
-          });
-        }
-      }
-    });
-
-    return { uprightMatrices, beamMatrices, boxEntries };
-  }, [shelfLocations, dummy]);
-
-  useEffect(() => {
-    if (!uprightsRef.current || !beamsRef.current || !boxesRef.current) return;
-
-    rackData.uprightMatrices.forEach((mat, i) => uprightsRef.current.setMatrixAt(i, mat));
-    rackData.beamMatrices.forEach((mat, i) => beamsRef.current.setMatrixAt(i, mat));
-
-    rackData.boxEntries.forEach((box, i) => {
-      boxesRef.current.setMatrixAt(i, box.matrix);
-      colorHelper.set(box.color);
-      boxesRef.current.setColorAt(i, colorHelper);
-    });
-
-    uprightsRef.current.instanceMatrix.needsUpdate = true;
-    beamsRef.current.instanceMatrix.needsUpdate = true;
-    boxesRef.current.instanceMatrix.needsUpdate = true;
-    if (boxesRef.current.instanceColor) boxesRef.current.instanceColor.needsUpdate = true;
-  }, [rackData, colorHelper]);
-
-  return (
-    <group>
-      {/* Structural Uprights */}
-      <instancedMesh
-        ref={uprightsRef}
-        args={[undefined, undefined, rackData.uprightMatrices.length]}
-        castShadow
-        receiveShadow
-      >
-        <boxGeometry />
-        <meshStandardMaterial color={COLORS.RACK_POST} roughness={0.4} metalness={0.7} />
-      </instancedMesh>
-
-      {/* Safety Orange Beams */}
-      <instancedMesh
-        ref={beamsRef}
-        args={[undefined, undefined, rackData.beamMatrices.length]}
-        castShadow
-      >
-        <boxGeometry />
-        <meshStandardMaterial color={COLORS.RACK_BEAM} roughness={0.5} metalness={0.4} />
-      </instancedMesh>
-
-      {/* Stocked Inventory Boxes */}
-      <instancedMesh
-        ref={boxesRef}
-        args={[undefined, undefined, rackData.boxEntries.length]}
-        castShadow
-        receiveShadow
-      >
-        <boxGeometry />
-        <meshStandardMaterial roughness={0.8} metalness={0.1} />
-      </instancedMesh>
-    </group>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// 7. Individual BotUnit Mesh with Smooth 60fps Interpolation
+// 5. Individual BotUnit Mesh with Smooth 60fps Interpolation
 // ─────────────────────────────────────────────────────────────
 
 interface BotUnitMeshProps {
@@ -768,8 +571,8 @@ function FacilityScene({ controlsRef }: { controlsRef: React.RefObject<OrbitCont
       <group onPointerMissed={() => selectBot(null)}>
         <FloorAndTransitLanes widthM={widthM} depthM={depthM} />
         <ChargingPadsCollection />
-        <WorkstationsCollection />
-        <InstancedStorageRacks />
+        <StationNodes />
+        <RackSystem />
         <BotUnitFleetCollection />
 
         {/* Soft Grounding Contact Shadows */}
