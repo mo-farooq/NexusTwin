@@ -229,6 +229,7 @@ export interface SimulationKpi {
   fleetHealthAvgPct: number;
   activeCongestionIndex: number;
   totalEnergyKwh: number;
+  slaCompliancePct: number;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -481,7 +482,10 @@ export interface NexusTwinState {
   selectedBotId: string | null;
   selectedElevatorId: string | null;
   selectedStationId: string | null;
+  selectedRackId: string | null;
+  focusTarget: [number, number, number] | null;
   heatmapMode: boolean;
+  layoutPreset: "DARK_STORE" | "REGIONAL_HUB" | "MSME_CENTER";
 
   // Fleet & Profiles
   botProfiles: Record<string, BotProfile>;
@@ -516,6 +520,9 @@ export interface NexusTwinState {
   selectBot: (botId: string | null) => void;
   selectElevator: (id: string | null) => void;
   selectStation: (id: string | null) => void;
+  selectRack: (id: string | null) => void;
+  setFocusTarget: (target: [number, number, number] | null) => void;
+  setLayoutPreset: (preset: "DARK_STORE" | "REGIONAL_HUB" | "MSME_CENTER") => void;
   toggleHeatmapMode: () => void;
   setHeatmapMode: (active: boolean) => void;
   setFleetProfile: (profileId: string) => void;
@@ -606,6 +613,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     fleetHealthAvgPct: 98,
     activeCongestionIndex: 0,
     totalEnergyKwh: 0,
+    slaCompliancePct: 99.2,
   };
 
   const initialDecisionMetrics = computeFinancials(
@@ -626,7 +634,10 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     selectedBotId: null,
     selectedElevatorId: null,
     selectedStationId: null,
+    selectedRackId: null,
+    focusTarget: null,
     heatmapMode: false,
+    layoutPreset: "DARK_STORE",
 
     botProfiles: BOT_PROFILES,
     selectedFleetProfileId: "LIGHT_PICKER",
@@ -650,9 +661,22 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     startSimulation: () => set({ isRunning: true }),
     pauseSimulation: () => set({ isRunning: false }),
     setSimulationSpeed: (speed) => set({ simulationSpeed: speed }),
-    selectBot: (botId) => set({ selectedBotId: botId, selectedElevatorId: null, selectedStationId: null }),
-    selectElevator: (id) => set({ selectedElevatorId: id, selectedBotId: null, selectedStationId: null }),
-    selectStation: (id) => set({ selectedStationId: id, selectedBotId: null, selectedElevatorId: null }),
+    selectBot: (botId) => set({ selectedBotId: botId, selectedElevatorId: null, selectedStationId: null, selectedRackId: null }),
+    selectElevator: (id) => set({ selectedElevatorId: id, selectedBotId: null, selectedStationId: null, selectedRackId: null }),
+    selectStation: (id) => set({ selectedStationId: id, selectedBotId: null, selectedElevatorId: null, selectedRackId: null }),
+    selectRack: (id) => set({ selectedRackId: id, selectedBotId: null, selectedElevatorId: null, selectedStationId: null }),
+    setFocusTarget: (target) => set({ focusTarget: target }),
+    setLayoutPreset: (preset) => {
+      // Adjust fleet sizing based on preset
+      const currentBots = get().botUnits;
+      const profile = preset === "DARK_STORE" ? "LIGHT_PICKER" : preset === "REGIONAL_HUB" ? "MEDIUM_HAULER" : "HEAVY_PALLET";
+      const updated = { ...currentBots };
+      Object.keys(updated).forEach((id) => {
+        updated[id] = { ...updated[id], profileId: profile };
+      });
+      const decisionMetrics = computeFinancials(updated, BOT_PROFILES, get().kpi, get().financialParams);
+      set({ layoutPreset: preset, selectedFleetProfileId: profile, botUnits: updated, decisionMetrics });
+    },
     toggleHeatmapMode: () => set((s) => ({ heatmapMode: !s.heatmapMode })),
     setHeatmapMode: (active) => set({ heatmapMode: active }),
 
@@ -1184,6 +1208,16 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             100
         ),
         totalEnergyKwh: Math.round(totalKwh * 100) / 100,
+        slaCompliancePct: Math.max(
+          85.0,
+          Math.round(
+            (99.4 -
+              (Object.values(nextZones).reduce((s, z) => s + z.congestionScore, 0) /
+                Object.keys(nextZones).length) *
+                14.0) *
+              10
+          ) / 10
+        ),
       };
 
       // 8. Recompute Financial ROI & Automation Decision Metrics

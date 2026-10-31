@@ -51,6 +51,7 @@ interface CameraRigProps {
 function CameraRig({ controlsRef, widthM, depthM }: CameraRigProps) {
   const selectedBotId = useTwinStore((s) => s.selectedBotId);
   const botUnits = useTwinStore((s) => s.botUnits);
+  const focusTarget = useTwinStore((s) => s.focusTarget);
 
   const defaultCenter = useMemo(
     () => new THREE.Vector3(widthM / 2, 0.5, depthM / 2),
@@ -60,16 +61,18 @@ function CameraRig({ controlsRef, widthM, depthM }: CameraRigProps) {
   const targetLerpGoal = useRef<THREE.Vector3>(defaultCenter.clone());
   const cameraPositionGoal = useRef<THREE.Vector3 | null>(null);
 
-  // Update target when selected bot changes
+  // Update target when selected bot or focus target changes
   useEffect(() => {
     if (selectedBotId && botUnits[selectedBotId]) {
       const bot = botUnits[selectedBotId];
       targetLerpGoal.current.set(bot.position[0], 0.6, bot.position[2]);
+    } else if (focusTarget) {
+      targetLerpGoal.current.set(focusTarget[0], focusTarget[1], focusTarget[2]);
     } else {
       targetLerpGoal.current.copy(defaultCenter);
       cameraPositionGoal.current = null;
     }
-  }, [selectedBotId, botUnits, defaultCenter]);
+  }, [selectedBotId, botUnits, focusTarget, defaultCenter]);
 
   useFrame(({ camera }, dt) => {
     const controls = controlsRef.current;
