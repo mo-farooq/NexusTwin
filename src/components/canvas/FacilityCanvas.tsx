@@ -1,0 +1,849 @@
+/**
+ * NexusTwin Facility 3D Canvas
+ *
+ * High-performance React Three Fiber canvas rendering a bright architectural isometric
+ * digital twin with light concrete flooring, dashed Blinkit-yellow transit corridors,
+ * dedicated charging pads, instanced inventory racks, autonomous BotUnit fleets,
+ * and smooth OrbitControls camera tracking.
+ */
+
+import React, { useMemo, useRef, useEffect } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { OrbitControls, ContactShadows, Line, Html } from "@react-three/drei";
+import * as THREE from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
+import { useTwinStore, type BotUnit, type ChargingDock } from "../../store/useTwinStore";
+import { cellToWorld } from "../../engine/pathfinder";
+
+// ─────────────────────────────────────────────────────────────
+// Color Palette & Architectural Constants
+// ─────────────────────────────────────────────────────────────
+
+const COLORS = {
+  BACKGROUND: "#F1F5F9",        // Clean architectural slate-100
+  CONCRETE_FLOOR: "#E2E8F0",    // Light architectural concrete slate-200
+  GRID_LINES: "#CBD5E1",        // Subtle layout grid line
+  TRANSIT_LANE: "#F8CB46",      // High-visibility Blinkit Yellow
+  CHARGING_PAD: "#0C831F",      // Indian quick-commerce Green
+  CHARGING_BORDER: "#15803D",
+  PLINTH_BORDER: "#94A3B8",     // Outer architectural foundation
+  RACK_POST: "#334155",         // Anthracite structural steel
+  RACK_BEAM: "#F97316",         // Safety orange rack beams
+  RACK_SHELF: "#64748B",        // Steel deck plates
+  BOT_CHASSIS: "#FFFFFF",       // Pristine white composite chassis
+  BOT_TOP_PANEL: "#0F172A",     // Contrast slate top lid
+  BOT_ACCENT: "#38BDF8",        // Nexus cyan LED strip
+  BOX_PALETTE: ["#D97706", "#B45309", "#92400E", "#F59E0B", "#E2E8F0"],
+};
+
+// ─────────────────────────────────────────────────────────────
+// 1. Camera Rig with Target Lerping on Entity Selection
+// ─────────────────────────────────────────────────────────────
+
+interface CameraRigProps {
+  controlsRef: React.RefObject<OrbitControlsImpl>;
+  widthM: number;
+  depthM: number;
+}
+
+function CameraRig({ controlsRef, widthM, depthM }: CameraRigProps) {
+  const selectedBotId = useTwinStore((s) => s.selectedBotId);
+  const botUnits = useTwinStore((s) => s.botUnits);
+
+  const defaultCenter = useMemo(
+    () => new THREE.Vector3(widthM / 2, 0.5, depthM / 2),
+    [widthM, depthM]
+  );
+
+  const targetLerpGoal = useRef<THREE.Vector3>(defaultCenter.clone());
+  const cameraPositionGoal = useRef<THREE.Vector3 | null>(null);
+
+  // Update target when selected bot changes
+  useEffect(() => {
+    if (selectedBotId && botUnits[selectedBotId]) {
+      const bot = botUnits[selectedBotId];
+      targetLerpGoal.current.set(bot.position[0], 0.6, bot.position[2]);
+    } else {
+      targetLerpGoal.current.copy(defaultCenter);
+      cameraPositionGoal.current = null;
+    }
+  }, [selectedBotId, botUnits, defaultCenter]);
+
+  useFrame(({ camera }, dt) => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+
+    // Follow moving bot if still selected
+    if (selectedBotId && botUnits[selectedBotId]) {
+      const bot = botUnits[selectedBotId];
+      targetLerpGoal.current.set(bot.position[0], 0.6, bot.position[2]);
+    }
+
+    // Exponential smoothing for fluid 60fps tracking
+    const lerpFactor = 1.0 - Math.pow(0.002, dt);
+    controls.target.lerp(targetLerpGoal.current, lerpFactor);
+
+    if (cameraPositionGoal.current) {
+      camera.position.lerp(cameraPositionGoal.current, lerpFactor);
+    }
+
+    controls.update();
+  });
+
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 2. Warm Architectural Lighting & Atmosphere
+// ─────────────────────────────────────────────────────────────
+
+function ArchitecturalLighting({ widthM, depthM }: { widthM: number; depthM: number }) {
+  const { scene } = useThree();
+
+  useEffect(() => {
+    scene.background = new THREE.Color(COLORS.BACKGROUND);
+    scene.fog = new THREE.Fog(COLORS.BACKGROUND, 90, 220);
+  }, [scene]);
+
+  return (
+    <>
+      {/* Soft Daylight Ambient */}
+      <ambientLight intensity={0.7} color="#FFFFFF" />
+
+      {/* Sky-to-Ground Hemisphere Light */}
+      <hemisphereLight args={["#E0F2FE", "#F1F5F9", 0.45]} />
+
+      {/* Primary Warm Sun Light (Isometric Cast) */}
+      <directionalLight
+        position={[widthM * 0.45, 50, depthM * 0.25]}
+        intensity={1.35}
+        color="#FFFBEB"
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-bias={-0.0003}
+        shadow-camera-left={-widthM * 0.8}
+        shadow-camera-right={widthM * 0.8}
+        shadow-camera-top={depthM * 0.8}
+        shadow-camera-bottom={-depthM * 0.8}
+        shadow-camera-near={10}
+        shadow-camera-far={140}
+      />
+
+      {/* Subtle Cool Fill Light */}
+      <directionalLight
+        position={[-widthM * 0.3, 30, -depthM * 0.3]}
+        intensity={0.3}
+        color="#BAE6FD"
+      />
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 3. Concrete Floor Slab & Dashed Blinkit Yellow Transit Lanes
+// ─────────────────────────────────────────────────────────────
+
+function FloorAndTransitLanes({ widthM, depthM }: { widthM: number; depthM: number }) {
+  // Generate high-resolution procedural light concrete texture with subtle architectural grid
+  const floorTexture = useMemo(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1024;
+    canvas.height = 1024;
+    const ctx = canvas.getContext("2d")!;
+
+    // Concrete base tone
+    ctx.fillStyle = COLORS.CONCRETE_FLOOR;
+    ctx.fillRect(0, 0, 1024, 1024);
+
+    // Subtle micro-stipple texture
+    for (let i = 0; i < 15000; i++) {
+      ctx.fillStyle = `rgba(148, 163, 184, ${Math.random() * 0.06})`;
+      ctx.fillRect(Math.random() * 1024, Math.random() * 1024, 2, 2);
+    }
+
+    // 1m grid subdivisions (mapped to 16 divisions per texture tile)
+    ctx.strokeStyle = "rgba(203, 213, 225, 0.55)";
+    ctx.lineWidth = 1.0;
+    const step = 1024 / 16;
+    for (let i = 0; i <= 16; i++) {
+      const p = i * step;
+      ctx.beginPath();
+      ctx.moveTo(p, 0);
+      ctx.lineTo(p, 1024);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(0, p);
+      ctx.lineTo(1024, p);
+      ctx.stroke();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(widthM / 16, depthM / 16);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }, [widthM, depthM]);
+
+  // Procedural dashed texture for high-visibility transit markings
+  const dashedLaneTexture = useMemo(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 128;
+    canvas.height = 32;
+    const ctx = canvas.getContext("2d")!;
+
+    ctx.clearRect(0, 0, 128, 32);
+    // Yellow stripe (50% solid, 50% gap)
+    ctx.fillStyle = COLORS.TRANSIT_LANE;
+    ctx.fillRect(0, 4, 64, 24);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }, []);
+
+  // Main transit corridors across picking aisles and packing arteries
+  const transitCorridors = useMemo(() => {
+    return [
+      // Main central north-south thoroughfare
+      { start: [30.0, 6.0], end: [30.0, 36.0], width: 1.2 },
+      // Top cross-dock artery
+      { start: [4.0, 6.5], end: [56.0, 6.5], width: 1.0 },
+      // Packing feeder artery
+      { start: [4.0, 26.5], end: [56.0, 26.5], width: 1.0 },
+      // West boundary express lane
+      { start: [4.0, 6.5], end: [4.0, 36.0], width: 0.8 },
+      // East boundary dispatch lane
+      { start: [56.0, 6.5], end: [56.0, 36.0], width: 0.8 },
+    ];
+  }, []);
+
+  return (
+    <group>
+      {/* Elevated Foundation Plinth / Perimeter Trim */}
+      <mesh position={[widthM / 2, -0.16, depthM / 2]}>
+        <boxGeometry args={[widthM + 1.2, 0.3, depthM + 1.2]} />
+        <meshStandardMaterial color={COLORS.PLINTH_BORDER} roughness={0.9} />
+      </mesh>
+
+      {/* Main Concrete Floor */}
+      <mesh
+        rotation-x={-Math.PI / 2}
+        position={[widthM / 2, 0.0, depthM / 2]}
+        receiveShadow
+      >
+        <planeGeometry args={[widthM, depthM]} />
+        <meshStandardMaterial
+          map={floorTexture}
+          roughness={0.82}
+          metalness={0.08}
+        />
+      </mesh>
+
+      {/* Dashed Blinkit Yellow Transit Lanes */}
+      {transitCorridors.map((lane, idx) => {
+        const dx = lane.end[0] - lane.start[0];
+        const dz = lane.end[1] - lane.start[1];
+        const length = Math.hypot(dx, dz);
+        const angle = Math.atan2(dz, dx);
+        const midX = (lane.start[0] + lane.end[0]) / 2;
+        const midZ = (lane.start[1] + lane.end[1]) / 2;
+
+        const clonedTex = dashedLaneTexture.clone();
+        clonedTex.repeat.set(length / 2.0, 1);
+        clonedTex.needsUpdate = true;
+
+        return (
+          <mesh
+            key={idx}
+            position={[midX, 0.015, midZ]}
+            rotation={[-Math.PI / 2, 0, -angle]}
+          >
+            <planeGeometry args={[length, lane.width]} />
+            <meshBasicMaterial
+              map={clonedTex}
+              transparent
+              opacity={0.88}
+              polygonOffset
+              polygonOffsetFactor={-1}
+            />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4. Charging Pads (#0C831F Green) with Dedicated Docks
+// ─────────────────────────────────────────────────────────────
+
+function ChargingPadsCollection() {
+  const chargingDocks = useTwinStore((s) => s.chargingDocks);
+
+  return (
+    <group>
+      {Object.values(chargingDocks).map((dock) => (
+        <group key={dock.id} position={[dock.coords[0], 0, dock.coords[1]]}>
+          {/* Green Charging Pad Mat */}
+          <mesh rotation-x={-Math.PI / 2} position={[0, 0.018, 0]}>
+            <planeGeometry args={[2.0, 2.0]} />
+            <meshStandardMaterial
+              color={COLORS.CHARGING_PAD}
+              roughness={0.4}
+              metalness={0.1}
+            />
+          </mesh>
+
+          {/* High-visibility white parking border line */}
+          <mesh rotation-x={-Math.PI / 2} position={[0, 0.02, 0]}>
+            <ringGeometry args={[0.9, 0.98, 4]} />
+            <meshBasicMaterial color="#FFFFFF" />
+          </mesh>
+
+          {/* Charger Base Hardware Unit */}
+          <mesh position={[0, 0.75, 0.7]} castShadow>
+            <boxGeometry args={[0.7, 1.5, 0.4]} />
+            <meshStandardMaterial
+              color="#0F172A"
+              roughness={0.3}
+              metalness={0.7}
+            />
+          </mesh>
+
+          {/* Charger Status Screen / LED Beacon */}
+          <mesh position={[0, 1.1, 0.49]}>
+            <boxGeometry args={[0.4, 0.25, 0.04]} />
+            <meshBasicMaterial
+              color={dock.isOccupied ? "#F59E0B" : "#22C55E"}
+            />
+          </mesh>
+
+          {/* Floor Fast-Charging Symbol / Chevron */}
+          <mesh rotation-x={-Math.PI / 2} position={[0, 0.022, -0.1]}>
+            <planeGeometry args={[0.5, 0.5]} />
+            <meshBasicMaterial color="#FACC15" />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 5. Workstations & Inbound / Packing Lines
+// ─────────────────────────────────────────────────────────────
+
+function WorkstationsCollection() {
+  const locations = useTwinStore((s) => s.locations);
+
+  const packStations = Object.values(locations).filter((l) => l.type === "PACK_STATION");
+  const inboundDocks = Object.values(locations).filter((l) => l.type === "INBOUND_DOCK");
+
+  return (
+    <group>
+      {/* Packing & Dispatch Lines */}
+      {packStations.map((station) => (
+        <group key={station.id} position={[station.coords[0], 0, station.coords[1]]}>
+          {/* Packing Table */}
+          <mesh position={[0, 0.45, 0]} castShadow receiveShadow>
+            <boxGeometry args={[2.6, 0.9, 1.6]} />
+            <meshStandardMaterial color="#475569" roughness={0.4} metalness={0.4} />
+          </mesh>
+          {/* Overhead Canopy Frame */}
+          <mesh position={[0, 1.8, 0]}>
+            <boxGeometry args={[2.7, 0.08, 1.7]} />
+            <meshStandardMaterial color="#1E293B" roughness={0.6} />
+          </mesh>
+          {/* Task Monitor */}
+          <mesh position={[0, 1.25, 0.75]}>
+            <boxGeometry args={[0.7, 0.4, 0.05]} />
+            <meshBasicMaterial color="#38BDF8" />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Inbound Unloading Bays */}
+      {inboundDocks.map((dock) => (
+        <group key={dock.id} position={[dock.coords[0], 0, dock.coords[1]]}>
+          <mesh position={[0, 0.1, 0]}>
+            <boxGeometry args={[3.2, 0.2, 2.4]} />
+            <meshStandardMaterial color="#0284C7" roughness={0.5} />
+          </mesh>
+          {/* Roller Conveyor Section */}
+          <mesh position={[0, 0.4, 0]}>
+            <boxGeometry args={[2.8, 0.4, 1.8]} />
+            <meshStandardMaterial color="#94A3B8" roughness={0.2} metalness={0.8} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 6. Instanced Storage Racks & Inventory Packaging
+// ─────────────────────────────────────────────────────────────
+
+function InstancedStorageRacks() {
+  const locations = useTwinStore((s) => s.locations);
+  const shelfLocations = useMemo(
+    () => Object.values(locations).filter((l) => l.type === "SHELF"),
+    [locations]
+  );
+
+  const uprightsRef = useRef<THREE.InstancedMesh>(null!);
+  const beamsRef = useRef<THREE.InstancedMesh>(null!);
+  const boxesRef = useRef<THREE.InstancedMesh>(null!);
+
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+  const colorHelper = useMemo(() => new THREE.Color(), []);
+
+  const rackData = useMemo(() => {
+    const uprightMatrices: THREE.Matrix4[] = [];
+    const beamMatrices: THREE.Matrix4[] = [];
+    const boxEntries: { matrix: THREE.Matrix4; color: string }[] = [];
+
+    const rackW = 2.4;
+    const rackH = 4.2;
+    const rackD = 1.0;
+    const levels = 3;
+    const levelHeight = rackH / levels;
+
+    shelfLocations.forEach((shelf, idx) => {
+      const [x, z] = shelf.coords;
+
+      // 4 Corner Steel Uprights
+      const corners = [
+        [-rackW / 2, -rackD / 2],
+        [rackW / 2, -rackD / 2],
+        [-rackW / 2, rackD / 2],
+        [rackW / 2, rackD / 2],
+      ];
+
+      corners.forEach(([cx, cz]) => {
+        dummy.position.set(x + cx, rackH / 2, z + cz);
+        dummy.scale.set(0.08, rackH, 0.08);
+        dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        uprightMatrices.push(dummy.matrix.clone());
+      });
+
+      // Horizontal Shelf Decks & Beams
+      for (let l = 1; l <= levels; l++) {
+        const y = l * levelHeight;
+
+        // Front & Back Safety Orange Beams
+        dummy.position.set(x, y, z - rackD / 2);
+        dummy.scale.set(rackW, 0.08, 0.06);
+        dummy.updateMatrix();
+        beamMatrices.push(dummy.matrix.clone());
+
+        dummy.position.set(x, y, z + rackD / 2);
+        dummy.scale.set(rackW, 0.08, 0.06);
+        dummy.updateMatrix();
+        beamMatrices.push(dummy.matrix.clone());
+
+        // Shelf Deck
+        dummy.position.set(x, y - 0.02, z);
+        dummy.scale.set(rackW - 0.1, 0.03, rackD);
+        dummy.updateMatrix();
+        beamMatrices.push(dummy.matrix.clone());
+
+        // Inventory Storage Boxes (2 boxes per level with pseudo-random colors)
+        for (let b = 0; b < 2; b++) {
+          const bx = x - rackW / 4 + b * (rackW / 2);
+          const boxH = 0.55;
+          const boxW = 0.75;
+          const boxD = 0.65;
+
+          dummy.position.set(bx, y + boxH / 2 + 0.02, z);
+          dummy.scale.set(boxW, boxH, boxD);
+          dummy.rotation.set(0, (idx % 3 === 0 ? 0.05 : -0.05), 0);
+          dummy.updateMatrix();
+
+          const colorIdx = (idx * 3 + l + b) % COLORS.BOX_PALETTE.length;
+          boxEntries.push({
+            matrix: dummy.matrix.clone(),
+            color: COLORS.BOX_PALETTE[colorIdx],
+          });
+        }
+      }
+    });
+
+    return { uprightMatrices, beamMatrices, boxEntries };
+  }, [shelfLocations, dummy]);
+
+  useEffect(() => {
+    if (!uprightsRef.current || !beamsRef.current || !boxesRef.current) return;
+
+    rackData.uprightMatrices.forEach((mat, i) => uprightsRef.current.setMatrixAt(i, mat));
+    rackData.beamMatrices.forEach((mat, i) => beamsRef.current.setMatrixAt(i, mat));
+
+    rackData.boxEntries.forEach((box, i) => {
+      boxesRef.current.setMatrixAt(i, box.matrix);
+      colorHelper.set(box.color);
+      boxesRef.current.setColorAt(i, colorHelper);
+    });
+
+    uprightsRef.current.instanceMatrix.needsUpdate = true;
+    beamsRef.current.instanceMatrix.needsUpdate = true;
+    boxesRef.current.instanceMatrix.needsUpdate = true;
+    if (boxesRef.current.instanceColor) boxesRef.current.instanceColor.needsUpdate = true;
+  }, [rackData, colorHelper]);
+
+  return (
+    <group>
+      {/* Structural Uprights */}
+      <instancedMesh
+        ref={uprightsRef}
+        args={[undefined, undefined, rackData.uprightMatrices.length]}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry />
+        <meshStandardMaterial color={COLORS.RACK_POST} roughness={0.4} metalness={0.7} />
+      </instancedMesh>
+
+      {/* Safety Orange Beams */}
+      <instancedMesh
+        ref={beamsRef}
+        args={[undefined, undefined, rackData.beamMatrices.length]}
+        castShadow
+      >
+        <boxGeometry />
+        <meshStandardMaterial color={COLORS.RACK_BEAM} roughness={0.5} metalness={0.4} />
+      </instancedMesh>
+
+      {/* Stocked Inventory Boxes */}
+      <instancedMesh
+        ref={boxesRef}
+        args={[undefined, undefined, rackData.boxEntries.length]}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry />
+        <meshStandardMaterial roughness={0.8} metalness={0.1} />
+      </instancedMesh>
+    </group>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 7. Individual BotUnit Mesh with Smooth 60fps Interpolation
+// ─────────────────────────────────────────────────────────────
+
+interface BotUnitMeshProps {
+  bot: BotUnit;
+  isSelected: boolean;
+  onSelect: () => void;
+}
+
+function BotUnitMesh({ bot, isSelected, onSelect }: BotUnitMeshProps) {
+  const groupRef = useRef<THREE.Group>(null!);
+  const wheelsRef = useRef<THREE.Group>(null!);
+
+  const initialRender = useRef(true);
+  const currentPos = useRef(new THREE.Vector3(...bot.position));
+  const currentHeading = useRef(bot.headingRad);
+
+  useFrame((_, dt) => {
+    const grp = groupRef.current;
+    if (!grp) return;
+
+    if (initialRender.current) {
+      grp.position.set(bot.position[0], 0.2, bot.position[2]);
+      grp.rotation.y = bot.headingRad;
+      initialRender.current = false;
+      return;
+    }
+
+    // Smooth exponential lerping between discrete 100ms simulation ticks
+    const k = 1.0 - Math.pow(0.0005, dt);
+    grp.position.x += (bot.position[0] - grp.position.x) * k;
+    grp.position.z += (bot.position[2] - grp.position.z) * k;
+    grp.position.y = 0.2; // Stable floor clearance
+
+    let dHeading = bot.headingRad - grp.rotation.y;
+    while (dHeading > Math.PI) dHeading -= Math.PI * 2;
+    while (dHeading < -Math.PI) dHeading += Math.PI * 2;
+    grp.rotation.y += dHeading * k;
+
+    // Roll wheels during movement
+    if (wheelsRef.current && bot.velocity > 0.05) {
+      wheelsRef.current.rotation.x -= (bot.velocity / 0.1) * dt;
+    }
+  });
+
+  // Dynamic status color indicator
+  const statusColor = useMemo(() => {
+    switch (bot.status) {
+      case "ACTIVE":
+        return "#10B981"; // Emerald green
+      case "CHARGING":
+        return "#3B82F6"; // Blue
+      case "IDLE":
+        return "#64748B"; // Slate
+      case "WARNING":
+        return "#F59E0B"; // Amber
+      case "ERROR":
+      case "OFFLINE":
+        return "#EF4444"; // Red
+      default:
+        return "#64748B";
+    }
+  }, [bot.status]);
+
+  // Convert A* grid path into continuous 3D world line
+  const pathPoints = useMemo(() => {
+    if (!bot.path || bot.path.length === 0) return null;
+    return bot.path.map((cell) => {
+      const [wx, wz] = cellToWorld(cell[0], cell[1]);
+      return [wx, 0.05, wz] as [number, number, number];
+    });
+  }, [bot.path]);
+
+  return (
+    <>
+      {/* Planned Trajectory Line (Visible when selected or active) */}
+      {pathPoints && (isSelected || bot.status === "ACTIVE") && (
+        <Line
+          points={pathPoints}
+          color={isSelected ? "#F59E0B" : "#38BDF8"}
+          lineWidth={isSelected ? 3.0 : 1.5}
+          dashed={!isSelected}
+          dashSize={0.5}
+          gapSize={0.25}
+        />
+      )}
+
+      <group
+        ref={groupRef}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+        onPointerOver={() => (document.body.style.cursor = "pointer")}
+        onPointerOut={() => (document.body.style.cursor = "default")}
+      >
+        {/* Main Sleek Chassis */}
+        <mesh position={[0, 0.14, 0]} castShadow>
+          <boxGeometry args={[0.96, 0.28, 0.72]} />
+          <meshStandardMaterial
+            color={COLORS.BOT_CHASSIS}
+            roughness={0.25}
+            metalness={0.2}
+          />
+        </mesh>
+
+        {/* Contrast Dark Top Lid */}
+        <mesh position={[0, 0.3, 0]}>
+          <boxGeometry args={[0.82, 0.06, 0.6]} />
+          <meshStandardMaterial
+            color={COLORS.BOT_TOP_PANEL}
+            roughness={0.5}
+            metalness={0.5}
+          />
+        </mesh>
+
+        {/* Front Cyan LED Light Strip */}
+        <mesh position={[0.49, 0.16, 0]}>
+          <boxGeometry args={[0.02, 0.06, 0.52]} />
+          <meshBasicMaterial color={COLORS.BOT_ACCENT} />
+        </mesh>
+
+        {/* Status Beacon LED */}
+        <mesh position={[-0.32, 0.36, 0]}>
+          <cylinderGeometry args={[0.06, 0.06, 0.08, 16]} />
+          <meshBasicMaterial color={statusColor} />
+        </mesh>
+
+        {/* 4 Wheels */}
+        <group ref={wheelsRef}>
+          {[
+            [-0.32, -0.34],
+            [0.32, -0.34],
+            [-0.32, 0.34],
+            [0.32, 0.34],
+          ].map(([wx, wz], idx) => (
+            <mesh
+              key={idx}
+              position={[wx, 0.08, wz]}
+              rotation-z={Math.PI / 2}
+            >
+              <cylinderGeometry args={[0.08, 0.08, 0.06, 12]} />
+              <meshStandardMaterial color="#1E293B" roughness={0.9} />
+            </mesh>
+          ))}
+        </group>
+
+        {/* Carried Payload Crate (When Loaded) */}
+        {bot.currentPayloadKg > 0 && (
+          <mesh position={[0, 0.62, 0]} castShadow>
+            <boxGeometry args={[0.7, 0.5, 0.55]} />
+            <meshStandardMaterial
+              color="#F59E0B"
+              roughness={0.7}
+              metalness={0.1}
+            />
+          </mesh>
+        )}
+
+        {/* Selected Highlight Ring */}
+        {isSelected && (
+          <mesh rotation-x={-Math.PI / 2} position={[0, -0.15, 0]}>
+            <ringGeometry args={[0.7, 0.85, 32]} />
+            <meshBasicMaterial color="#F59E0B" transparent opacity={0.8} />
+          </mesh>
+        )}
+
+        {/* Floating ID & Battery Label */}
+        {isSelected && (
+          <Html position={[0, 1.2, 0]} center distanceFactor={18}>
+            <div
+              style={{
+                background: "rgba(15, 23, 42, 0.92)",
+                color: "#FFFFFF",
+                padding: "3px 8px",
+                borderRadius: "4px",
+                fontSize: "11px",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                border: "1px solid #38BDF8",
+                boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+                pointerEvents: "none",
+              }}
+            >
+              {bot.id} · {Math.round(bot.batteryPct)}%
+            </div>
+          </Html>
+        )}
+      </group>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 8. Fleet Collection
+// ─────────────────────────────────────────────────────────────
+
+function BotUnitFleetCollection() {
+  const botUnits = useTwinStore((s) => s.botUnits);
+  const selectedBotId = useTwinStore((s) => s.selectedBotId);
+  const selectBot = useTwinStore((s) => s.selectBot);
+
+  return (
+    <group>
+      {Object.values(botUnits).map((bot) => (
+        <BotUnitMesh
+          key={bot.id}
+          bot={bot}
+          isSelected={selectedBotId === bot.id}
+          onSelect={() => selectBot(bot.id)}
+        />
+      ))}
+    </group>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 9. Main Scene Composite
+// ─────────────────────────────────────────────────────────────
+
+function FacilityScene({ controlsRef }: { controlsRef: React.RefObject<OrbitControlsImpl> }) {
+  const gridDimensions = useTwinStore((s) => s.gridDimensions);
+  const selectBot = useTwinStore((s) => s.selectBot);
+
+  const { widthM, depthM } = gridDimensions;
+
+  return (
+    <>
+      <CameraRig controlsRef={controlsRef} widthM={widthM} depthM={depthM} />
+      <ArchitecturalLighting widthM={widthM} depthM={depthM} />
+
+      {/* Ground Click Deselects Active Bot */}
+      <group onPointerMissed={() => selectBot(null)}>
+        <FloorAndTransitLanes widthM={widthM} depthM={depthM} />
+        <ChargingPadsCollection />
+        <WorkstationsCollection />
+        <InstancedStorageRacks />
+        <BotUnitFleetCollection />
+
+        {/* Soft Grounding Contact Shadows */}
+        <ContactShadows
+          position={[widthM / 2, 0.005, depthM / 2]}
+          opacity={0.45}
+          scale={Math.max(widthM, depthM) * 1.15}
+          blur={2.2}
+          far={10}
+          color="#334155"
+        />
+      </group>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 10. Public FacilityCanvas Component
+// ─────────────────────────────────────────────────────────────
+
+export interface FacilityCanvasProps {
+  className?: string;
+  style?: React.CSSProperties;
+}
+
+export function FacilityCanvas({ className, style }: FacilityCanvasProps) {
+  const controlsRef = useRef<OrbitControlsImpl>(null!);
+  const gridDimensions = useTwinStore((s) => s.gridDimensions);
+
+  // Initial Isometric Camera Position
+  const cameraPosition: [number, number, number] = useMemo(
+    () => [gridDimensions.widthM * 0.95, 38, gridDimensions.depthM * 1.3],
+    [gridDimensions]
+  );
+
+  return (
+    <div
+      className={className}
+      style={{
+        width: "100%",
+        height: "100%",
+        position: "relative",
+        background: COLORS.BACKGROUND,
+        overflow: "hidden",
+        ...style,
+      }}
+    >
+      <Canvas
+        shadows
+        camera={{
+          position: cameraPosition,
+          fov: 38,
+          near: 0.5,
+          far: 300,
+        }}
+        gl={{
+          antialias: true,
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.05,
+        }}
+      >
+        <OrbitControls
+          ref={controlsRef}
+          makeDefault
+          enableDamping
+          dampingFactor={0.08}
+          maxPolarAngle={Math.PI / 2.05} // Prevent camera going below floor
+          minDistance={10}
+          maxDistance={120}
+        />
+        <FacilityScene controlsRef={controlsRef} />
+      </Canvas>
+    </div>
+  );
+}
+
+export default FacilityCanvas;
