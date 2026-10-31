@@ -42,51 +42,51 @@ export interface BotProfile {
 export const BOT_PROFILES: Record<string, BotProfile> = {
   LIGHT_PICKER: {
     id: "LIGHT_PICKER",
-    name: "AgilePicker 100",
-    vendor: "Nexus QuickBots India",
+    name: "Lite Tote Bot",
+    vendor: "QuickBot India",
     category: "LIGHT_PICKER",
-    maxSpeedMps: 1.8,
-    accelerationMps2: 1.5,
-    payloadCapacityKg: 80,
+    maxSpeedMps: 1.2,
+    accelerationMps2: 1.2,
+    payloadCapacityKg: 100,
     batteryCapacityWh: 1200,
-    batteryDrainPerTick: 0.008,
-    batteryDrainIdlePerTick: 0.0006,
+    batteryDrainPerTick: 0.007,
+    batteryDrainIdlePerTick: 0.0005,
     batteryDrainPayloadCoeff: 0.00003,
-    chargeRatePerTick: 0.07,
-    capexCostINR: 850000, // ₹8.5 Lakhs
-    annualMaintenanceINR: 45000,
+    chargeRatePerTick: 0.08,
+    capexCostINR: 450000, // ₹4.5 Lakhs
+    annualMaintenanceINR: 32000,
   },
   MEDIUM_HAULER: {
     id: "MEDIUM_HAULER",
-    name: "OmniHauler 350",
-    vendor: "IndoTrack Robotics",
+    name: "Medium Pallet Hauler",
+    vendor: "Falcon Robotics",
     category: "MEDIUM_HAULER",
-    maxSpeedMps: 1.4,
-    accelerationMps2: 1.2,
-    payloadCapacityKg: 350,
-    batteryCapacityWh: 2000,
-    batteryDrainPerTick: 0.012,
-    batteryDrainIdlePerTick: 0.0009,
+    maxSpeedMps: 1.6,
+    accelerationMps2: 1.1,
+    payloadCapacityKg: 400,
+    batteryCapacityWh: 2200,
+    batteryDrainPerTick: 0.011,
+    batteryDrainIdlePerTick: 0.0008,
     batteryDrainPayloadCoeff: 0.00005,
     chargeRatePerTick: 0.06,
-    capexCostINR: 1350000, // ₹13.5 Lakhs
-    annualMaintenanceINR: 75000,
+    capexCostINR: 700000, // ₹7.0 Lakhs
+    annualMaintenanceINR: 50000,
   },
   HEAVY_PALLET: {
     id: "HEAVY_PALLET",
-    name: "TitanPallet 1000",
-    vendor: "Bharat Heavy Automation",
+    name: "Heavy Rack Mover",
+    vendor: "Bharat Logistics AMR",
     category: "HEAVY_PALLET",
-    maxSpeedMps: 1.0,
-    accelerationMps2: 0.8,
+    maxSpeedMps: 2.0,
+    accelerationMps2: 1.4,
     payloadCapacityKg: 1000,
     batteryCapacityWh: 3500,
-    batteryDrainPerTick: 0.018,
-    batteryDrainIdlePerTick: 0.0013,
-    batteryDrainPayloadCoeff: 0.00008,
+    batteryDrainPerTick: 0.015,
+    batteryDrainIdlePerTick: 0.0011,
+    batteryDrainPayloadCoeff: 0.00007,
     chargeRatePerTick: 0.05,
-    capexCostINR: 2200000, // ₹22.0 Lakhs
-    annualMaintenanceINR: 120000,
+    capexCostINR: 950000, // ₹9.5 Lakhs
+    annualMaintenanceINR: 68000,
   },
 };
 
@@ -198,10 +198,12 @@ export interface ElevatorNode {
 // ─────────────────────────────────────────────────────────────
 
 export interface FinancialParameters {
-  laborMonthlySalaryINR: number;   // Average monthly cost per picker in India (₹25,000)
-  electricityCostPerKwhINR: number;// Commercial power tariff (₹8.5 / kWh)
-  warehouseOperatingHoursPerDay: number; // e.g. 16 or 24 hours (Dark Store standard)
-  daysPerMonth: number;            // 30 days
+  laborMonthlySalaryINR: number;        // Average monthly wage per picker in India (default ₹18,000)
+  customRobotUnitCostINR?: number | null; // Editable custom override in INR (e.g. ₹4.5L or ₹9.5L)
+  slaPenaltyPerMissedOrderINR: number;  // SLA Penalty Cost per delayed order (default ₹150)
+  electricityCostPerKwhINR: number;     // Commercial power tariff (₹8.5 / kWh)
+  warehouseOperatingHoursPerDay: number;// e.g. 16 hours
+  daysPerMonth: number;                 // 30 days
 }
 
 export interface AutomationDecisionMetrics {
@@ -210,12 +212,16 @@ export interface AutomationDecisionMetrics {
   equivalentManualPickers: number;
   monthlyManualLaborCostINR: number;
   monthlyRobotOpexINR: number;
+  monthlySlaPenaltySavingsINR: number;
   netMonthlySavingsINR: number;
   paybackPeriodMonths: number;
   threeYearRoiPct: number;
   automatedThroughputPerHour: number;
   manualEstimatedThroughputPerHour: number;
   throughputGainPct: number;
+  bottleneckZoneId: string;
+  bottleneckZoneName: string;
+  bottleneckCongestionPct: number;
 }
 
 export interface SimulationKpi {
@@ -511,6 +517,13 @@ export interface NexusTwinState {
   financialParams: FinancialParameters;
   decisionMetrics: AutomationDecisionMetrics;
 
+  // Decision Sandbox & Chaos Engine
+  isSandboxModalOpen: boolean;
+  isObstaclePlacementActive: boolean;
+  customObstacles: Array<{ id: string; col: number; row: number; label: string }>;
+  isFestiveSurgeActive: boolean;
+  surgeMultiplier: number;
+
   // Actions
   startSimulation: () => void;
   pauseSimulation: () => void;
@@ -529,8 +542,18 @@ export interface NexusTwinState {
   setBotUnitProfile: (botId: string, profileId: string) => void;
   updateFinancialParams: (params: Partial<FinancialParameters>) => void;
 
+  // Sandbox Modal & Floor Obstacles
+  openSandboxModal: () => void;
+  closeSandboxModal: () => void;
+  toggleObstaclePlacementMode: (active?: boolean) => void;
+  toggleFloorObstacle: (col: number, row: number) => void;
+  clearFloorObstacles: () => void;
+  setFleetSize: (count: number) => void;
+  breakdownBot: (botId?: string) => void;
+  repairFleet: () => void;
+
   // Chaos & Scenario Injection
-  injectFestiveSurge: (orderCount?: number) => void;
+  injectFestiveSurge: (orderCount?: number, multiplier?: number) => void;
   injectBotFailure: (botId: string) => void;
   injectAisleBlockage: (zoneId: string, durationSeconds?: number) => void;
   clearInjections: () => void;
@@ -547,7 +570,9 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
   let rng = createMulberry32(42);
 
   const defaultFinancialParams: FinancialParameters = {
-    laborMonthlySalaryINR: 25000, // ₹25k/month per picker
+    laborMonthlySalaryINR: 18000, // ₹18,000/month per picker in India (per user prompt)
+    customRobotUnitCostINR: null, // Default to profile cost (₹4.5L or ₹9.5L)
+    slaPenaltyPerMissedOrderINR: 150, // ₹150 per delayed order
     electricityCostPerKwhINR: 8.5,
     warehouseOperatingHoursPerDay: 16,
     daysPerMonth: 30,
@@ -560,32 +585,55 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     params: FinancialParameters
   ): AutomationDecisionMetrics => {
     const bots = Object.values(botUnits);
-    const totalCapex = bots.reduce((sum, b) => sum + (profiles[b.profileId]?.capexCostINR ?? 0), 0);
+    const totalCapex =
+      params.customRobotUnitCostINR && params.customRobotUnitCostINR > 0
+        ? bots.length * params.customRobotUnitCostINR
+        : bots.reduce((sum, b) => sum + (profiles[b.profileId]?.capexCostINR ?? 0), 0);
+
     const annualMaint = bots.reduce((sum, b) => sum + (profiles[b.profileId]?.annualMaintenanceINR ?? 0), 0);
 
-    // Automation replacement ratio: 1 BotUnit replaces ~1.4 - 1.8 human pickers across 2 shifts
+    // Automation replacement ratio: 1 BotUnit replaces ~1.5 - 1.8 human pickers across 2 shifts
     const equivalentPickers = Math.round(bots.length * 1.6);
     const monthlyLaborCost = equivalentPickers * params.laborMonthlySalaryINR;
 
     // Robot power consumption + amortized monthly maintenance
     const monthlyMaintCost = annualMaint / 12;
-    const monthlyPowerCost = (kpi.totalEnergyKwh / Math.max(0.1, kpi.simTimeSeconds / 3600)) *
+    const monthlyPowerCost =
+      (kpi.totalEnergyKwh / Math.max(0.1, kpi.simTimeSeconds / 3600)) *
       params.warehouseOperatingHoursPerDay *
       params.daysPerMonth *
       params.electricityCostPerKwhINR;
     const monthlyOpex = monthlyMaintCost + monthlyPowerCost;
 
-    const netMonthlySavings = Math.max(1, monthlyLaborCost - monthlyOpex);
-    const paybackMonths = Math.round((totalCapex / netMonthlySavings) * 10) / 10;
+    // SLA penalty savings: in manual operations, ~5% of orders miss Indian 15-min or 3PL delivery SLA
+    const monthlyOrders =
+      Math.max(150, kpi.throughputPerHour || bots.length * 28) *
+      params.warehouseOperatingHoursPerDay *
+      params.daysPerMonth;
+    const monthlySlaPenaltySavings = Math.round(monthlyOrders * 0.045 * (params.slaPenaltyPerMissedOrderINR || 150));
+
+    const netMonthlySavings = Math.max(1000, monthlyLaborCost + monthlySlaPenaltySavings - monthlyOpex);
+    const paybackMonths = Math.max(0.5, Math.round((totalCapex / netMonthlySavings) * 10) / 10);
     const threeYearSavings = netMonthlySavings * 36;
     const threeYearRoi = Math.round(((threeYearSavings - totalCapex) / Math.max(1, totalCapex)) * 100);
 
-    // Throughput benchmark (manual human picking benchmark ~28-35 picks/hr vs automated ~50-80 picks/hr)
-    const automatedThroughput = kpi.throughputPerHour;
+    // Throughput benchmark (manual human picking benchmark ~25-30 picks/hr vs automated ~50-80 picks/hr)
+    const automatedThroughput = kpi.throughputPerHour || Math.round(bots.length * 32);
     const manualThroughput = equivalentPickers * 28;
-    const throughputGain = manualThroughput > 0
-      ? Math.round(((automatedThroughput - manualThroughput) / manualThroughput) * 100)
-      : 120;
+    const throughputGain =
+      manualThroughput > 0
+        ? Math.round(((automatedThroughput - manualThroughput) / manualThroughput) * 100)
+        : 140;
+
+    // Live bottleneck zone detection
+    const zonesMap = (get && get().zones) ? get().zones : initialLayout.zones;
+    const zonesList = Object.values(zonesMap);
+    let worstZone = zonesList[0];
+    zonesList.forEach((z) => {
+      if ((z.congestionScore ?? 0) > (worstZone?.congestionScore ?? -1)) {
+        worstZone = z;
+      }
+    });
 
     return {
       totalFleetCapexINR: totalCapex,
@@ -593,12 +641,16 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       equivalentManualPickers: equivalentPickers,
       monthlyManualLaborCostINR: monthlyLaborCost,
       monthlyRobotOpexINR: Math.round(monthlyOpex),
+      monthlySlaPenaltySavingsINR: monthlySlaPenaltySavings,
       netMonthlySavingsINR: Math.round(netMonthlySavings),
-      paybackPeriodMonths: Math.max(1.0, paybackMonths),
+      paybackPeriodMonths: paybackMonths,
       threeYearRoiPct: threeYearRoi,
       automatedThroughputPerHour: automatedThroughput,
       manualEstimatedThroughputPerHour: manualThroughput,
       throughputGainPct: throughputGain,
+      bottleneckZoneId: worstZone?.id ?? "ZONE_B",
+      bottleneckZoneName: worstZone?.name ?? "Zone B · High-Velocity Snack Aisles",
+      bottleneckCongestionPct: Math.round((worstZone?.congestionScore ?? 0.38) * 100),
     };
   };
 
@@ -638,6 +690,13 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     focusTarget: null,
     heatmapMode: false,
     layoutPreset: "DARK_STORE",
+
+    // Sandbox & Chaos state
+    isSandboxModalOpen: false,
+    isObstaclePlacementActive: false,
+    customObstacles: [],
+    isFestiveSurgeActive: false,
+    surgeMultiplier: 1,
 
     botProfiles: BOT_PROFILES,
     selectedFleetProfileId: "LIGHT_PICKER",
@@ -704,7 +763,192 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       set({ financialParams: merged, decisionMetrics });
     },
 
-    injectFestiveSurge: (orderCount = 20) => {
+    openSandboxModal: () => set({ isSandboxModalOpen: true }),
+    closeSandboxModal: () => set({ isSandboxModalOpen: false }),
+    toggleObstaclePlacementMode: (active) =>
+      set((s) => ({
+        isObstaclePlacementActive: active !== undefined ? active : !s.isObstaclePlacementActive,
+      })),
+
+    toggleFloorObstacle: (col, row) => {
+      const { customObstacles, navGrid, botUnits, activeCongestionMap } = get();
+      const existingIdx = customObstacles.findIndex((o) => o.col === col && o.row === row);
+      const cellIdx = row * navGrid.cols + col;
+      const newGridCells = new Uint8Array(navGrid.cells);
+
+      let updatedObstacles = [...customObstacles];
+      const nextBots = { ...botUnits };
+
+      if (existingIdx >= 0) {
+        // Remove obstacle
+        updatedObstacles.splice(existingIdx, 1);
+        newGridCells[cellIdx] = 0; // free
+      } else {
+        // Add obstacle
+        const newObs = {
+          id: `OBS-${col}-${row}`,
+          col,
+          row,
+          label: `Aisle Barricade (${col}, ${row})`,
+        };
+        updatedObstacles.push(newObs);
+        newGridCells[cellIdx] = 1; // static obstacle
+
+        // Live A* Rerouting: Check if any bot's active path steps on this cell!
+        const allBlockedKeys = new Set(updatedObstacles.map((o) => `${o.col},${o.row}`));
+
+        Object.values(nextBots).forEach((bot) => {
+          if (bot.path && bot.path.length > 0 && bot.fsmState !== "IDLE" && bot.fsmState !== "ERROR") {
+            const remainingSteps = bot.path.slice(bot.pathIndex);
+            const hitsObstacle = remainingSteps.some(([c, r]) => c === col && r === row);
+            if (hitsObstacle) {
+              const startCell = worldToCell(bot.position[0], bot.position[2], navGrid.cellSize);
+              const lastCell = bot.path[bot.path.length - 1];
+              const newPath = findPathAStar(
+                { ...navGrid, cells: newGridCells },
+                startCell,
+                lastCell,
+                { blockedCells: allBlockedKeys, congestionCostMap: activeCongestionMap }
+              );
+              if (newPath && newPath.length > 0) {
+                nextBots[bot.id] = {
+                  ...bot,
+                  path: newPath,
+                  pathIndex: 0,
+                };
+              }
+            }
+          }
+        });
+      }
+
+      set({
+        customObstacles: updatedObstacles,
+        navGrid: { ...navGrid, cells: newGridCells },
+        botUnits: nextBots,
+      });
+    },
+
+    clearFloorObstacles: () => {
+      const { navGrid, customObstacles } = get();
+      const newCells = new Uint8Array(navGrid.cells);
+      customObstacles.forEach((o) => {
+        newCells[o.row * navGrid.cols + o.col] = 0;
+      });
+      set({
+        customObstacles: [],
+        navGrid: { ...navGrid, cells: newCells },
+      });
+    },
+
+    setFleetSize: (count) => {
+      const clamped = Math.min(30, Math.max(5, count));
+      const { botUnits, selectedFleetProfileId, kpi, financialParams, navGrid } = get();
+      const currentBotKeys = Object.keys(botUnits);
+      const currentCount = currentBotKeys.length;
+
+      if (clamped === currentCount) return;
+
+      const nextBots = { ...botUnits };
+
+      if (clamped > currentCount) {
+        // Add bots
+        for (let i = currentCount + 1; i <= clamped; i++) {
+          const botId = `BOT-${String(i).padStart(2, "0")}`;
+          const depotCol = 10 + ((i - 1) % 8) * 3;
+          const depotRow = 32 + Math.floor((i - 1) / 8) * 2;
+          const [wx, wz] = cellToWorld(depotCol, depotRow, navGrid.cellSize);
+          nextBots[botId] = {
+            id: botId,
+            profileId: selectedFleetProfileId,
+            position: [wx, 0.25, wz],
+            headingRad: 0,
+            velocity: 0,
+            batteryPct: 88 + Math.floor(rng() * 12),
+            status: "IDLE",
+            fsmState: "IDLE",
+            healthPct: 100,
+            currentTaskId: null,
+            targetLocationId: null,
+            path: [],
+            pathIndex: 0,
+            currentPayloadKg: 0,
+            stats: {
+              distanceTraveledM: 0,
+              tasksCompleted: 0,
+              energyConsumedWh: 0,
+              busyTicks: 0,
+              idleTicks: 0,
+              waitTicks: 0,
+            },
+          };
+        }
+      } else {
+        // Remove highest ID bots down to clamped
+        const sortedKeys = currentBotKeys.sort();
+        const toRemove = sortedKeys.slice(clamped);
+        toRemove.forEach((id) => {
+          delete nextBots[id];
+        });
+      }
+
+      const decisionMetrics = computeFinancials(nextBots, BOT_PROFILES, kpi, financialParams);
+      set({ botUnits: nextBots, decisionMetrics });
+    },
+
+    breakdownBot: (botId) => {
+      const { botUnits, tasks } = get();
+      let targetId = botId;
+      if (!targetId || !botUnits[targetId]) {
+        const activeBot = Object.values(botUnits).find((b) => b.status === "ACTIVE" && b.velocity > 0);
+        targetId = activeBot?.id ?? Object.keys(botUnits)[0];
+      }
+      if (!targetId || !botUnits[targetId]) return;
+
+      const targetBot = botUnits[targetId];
+      const nextBots = {
+        ...botUnits,
+        [targetId]: {
+          ...targetBot,
+          status: "ERROR" as BotUnitStatus,
+          fsmState: "ERROR" as BotUnitFsmState,
+          velocity: 0,
+          healthPct: 0,
+        },
+      };
+
+      const nextTasks = { ...tasks };
+      if (targetBot.currentTaskId && nextTasks[targetBot.currentTaskId]) {
+        nextTasks[targetBot.currentTaskId] = {
+          ...nextTasks[targetBot.currentTaskId],
+          status: "PENDING",
+          assignedBotId: null,
+          assignedTick: null,
+        };
+        nextBots[targetId].currentTaskId = null;
+      }
+
+      set({ botUnits: nextBots, tasks: nextTasks });
+    },
+
+    repairFleet: () => {
+      const { botUnits } = get();
+      const nextBots = { ...botUnits };
+      Object.keys(nextBots).forEach((id) => {
+        if (nextBots[id].status === "ERROR" || nextBots[id].healthPct < 50) {
+          nextBots[id] = {
+            ...nextBots[id],
+            status: "IDLE",
+            fsmState: "IDLE",
+            healthPct: 100,
+            velocity: 0,
+          };
+        }
+      });
+      set({ botUnits: nextBots });
+    },
+
+    injectFestiveSurge: (orderCount = 30, multiplier = 3) => {
       const state = get();
       const newTasks = { ...state.tasks };
       let seq = state.taskSequence;
@@ -732,18 +976,16 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
           completedTick: null,
         };
       }
-      set({ tasks: newTasks, taskSequence: seq });
+      set({
+        tasks: newTasks,
+        taskSequence: seq,
+        isFestiveSurgeActive: true,
+        surgeMultiplier: multiplier,
+      });
     },
 
     injectBotFailure: (botId) => {
-      const { botUnits } = get();
-      if (!botUnits[botId]) return;
-      set({
-        botUnits: {
-          ...botUnits,
-          [botId]: { ...botUnits[botId], status: "ERROR", fsmState: "ERROR", velocity: 0 },
-        },
-      });
+      get().breakdownBot(botId);
     },
 
     injectAisleBlockage: (zoneId, durationSeconds = 45) => {
@@ -833,10 +1075,14 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       const nextDocks = { ...chargingDocks };
       const nextZones = { ...zones };
 
-      // 1. Task Generation: Regular steady-state order stream
+      // 1. Task Generation: Regular steady-state order stream or Festive Surge
       let seq = state.taskSequence;
       const pendingTaskCount = Object.values(nextTasks).filter((t) => t.status === "PENDING").length;
-      if (currentTick % 50 === 0 && pendingTaskCount < 15) {
+      const surgeMult = state.isFestiveSurgeActive ? state.surgeMultiplier || 3 : 1;
+      const taskInterval = Math.max(12, Math.floor(50 / surgeMult));
+      const maxPending = 15 * surgeMult;
+
+      if (currentTick % taskInterval === 0 && pendingTaskCount < maxPending) {
         seq++;
         const shelfKeys = Object.keys(locations).filter((k) => locations[k].type === "SHELF");
         const packKeys = Object.keys(locations).filter((k) => locations[k].type === "PACK_STATION");
@@ -847,7 +1093,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         nextTasks[taskId] = {
           id: taskId,
           type: "ORDER_PICK",
-          priority: "NORMAL",
+          priority: state.isFestiveSurgeActive ? "FLASH_SURGE" : "NORMAL",
           status: "PENDING",
           assignedBotId: null,
           sourceLocId: sLoc.id,
@@ -861,11 +1107,14 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         };
       }
 
-      // 2. Dynamic Cell Reservation Map (Prevent Collisions)
+      // 2. Dynamic Cell Reservation Map (Prevent Collisions) & Custom Floor Obstacles
       const reservedCells = new Set<string>();
       Object.values(nextBots).forEach((b) => {
         const [bc, br] = worldToCell(b.position[0], b.position[2], navGrid.cellSize);
         reservedCells.add(cellKey(bc, br));
+      });
+      state.customObstacles.forEach((obs) => {
+        reservedCells.add(cellKey(obs.col, obs.row));
       });
 
       // 3. Task Dispatching: Match Idle Bots with Pending Tasks

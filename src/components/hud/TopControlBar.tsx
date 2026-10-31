@@ -25,6 +25,14 @@ export function TopControlBar() {
   const toggleHeatmapMode = useTwinStore((s) => s.toggleHeatmapMode);
   const injectFestiveSurge = useTwinStore((s) => s.injectFestiveSurge);
 
+  // Decision Sandbox & Chaos Triggers
+  const isObstaclePlacementActive = useTwinStore((s) => s.isObstaclePlacementActive);
+  const toggleObstaclePlacementMode = useTwinStore((s) => s.toggleObstaclePlacementMode);
+  const customObstacles = useTwinStore((s) => s.customObstacles);
+  const isFestiveSurgeActive = useTwinStore((s) => s.isFestiveSurgeActive);
+  const breakdownBot = useTwinStore((s) => s.breakdownBot);
+  const openSandboxModal = useTwinStore((s) => s.openSandboxModal);
+
   const botUnits = useTwinStore((s) => s.botUnits);
   const locations = useTwinStore((s) => s.locations);
   const selectBot = useTwinStore((s) => s.selectBot);
@@ -276,27 +284,112 @@ export function TopControlBar() {
           ))}
         </div>
 
-        {/* Festive Surge Action */}
+        <div style={{ width: "1px", height: "18px", background: "#E2E8F0" }} />
+
+        {/* Quick Trigger 1: Festive Surge (3x Load) */}
         <button
-          onClick={() => injectFestiveSurge(20)}
-          title="Simulate Indian peak festive spike (+20 flash orders)"
+          onClick={() => injectFestiveSurge(30, 3)}
+          title="Inject festive peak demand (+30 flash orders, 3x arrival rate)"
           style={{
-            padding: "5px 12px",
+            padding: "5px 11px",
             borderRadius: "8px",
-            border: "1px solid #EAB308",
-            background: "#FEF08A",
-            color: "#854D0E",
+            border: isFestiveSurgeActive ? "1px solid #DC2626" : "1px solid #FCD34D",
+            background: isFestiveSurgeActive ? "#FEE2E2" : "#FEF3C7",
+            color: isFestiveSurgeActive ? "#B91C1C" : "#92400E",
             fontWeight: 800,
             fontSize: "11px",
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
-            gap: "4px",
-            boxShadow: "0 2px 8px rgba(234, 179, 8, 0.2)",
+            gap: "5px",
+            boxShadow: isFestiveSurgeActive
+              ? "0 0 10px rgba(239, 68, 68, 0.4)"
+              : "0 2px 6px rgba(245, 158, 11, 0.15)",
+            transition: "all 0.18s ease",
           }}
         >
-          <span>⚡</span>
-          <span>Festive Surge</span>
+          <span>🔥</span>
+          <span>{isFestiveSurgeActive ? "Surge (3x Active)" : "Festive Surge"}</span>
+        </button>
+
+        {/* Quick Trigger 2: Block Aisle Path (Click Floor) */}
+        <button
+          onClick={() => toggleObstaclePlacementMode()}
+          title="Click floor tiles to drop 3D hazard barricades and force live A* rerouting"
+          style={{
+            padding: "5px 11px",
+            borderRadius: "8px",
+            border: isObstaclePlacementActive ? "1px solid #EA580C" : "1px solid #E2E8F0",
+            background: isObstaclePlacementActive ? "#FFEDD5" : "#FFFFFF",
+            color: isObstaclePlacementActive ? "#C2410C" : "#475569",
+            fontWeight: 800,
+            fontSize: "11px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "5px",
+            boxShadow: isObstaclePlacementActive
+              ? "0 0 10px rgba(234, 88, 12, 0.35)"
+              : "0 2px 5px rgba(0,0,0,0.03)",
+            transition: "all 0.18s ease",
+          }}
+        >
+          <span>🚧</span>
+          <span>
+            {isObstaclePlacementActive
+              ? "Click Floor to Drop"
+              : customObstacles.length > 0
+              ? `Block Path (${customObstacles.length})`
+              : "Block Path"}
+          </span>
+        </button>
+
+        {/* Quick Trigger 3: Force Bot Breakdown */}
+        <button
+          onClick={() => breakdownBot()}
+          title="Force an instant mechanical breakdown on an active bot"
+          style={{
+            padding: "5px 10px",
+            borderRadius: "8px",
+            border: "1px solid #FECACA",
+            background: "#FFF1F2",
+            color: "#BE123C",
+            fontWeight: 700,
+            fontSize: "11px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            transition: "all 0.18s ease",
+          }}
+        >
+          <span>🔋</span>
+          <span>Breakdown</span>
+        </button>
+
+        {/* Master Action: Decision Sandbox Modal */}
+        <button
+          onClick={() => openSandboxModal()}
+          title="Open NexusTwin Decision Sandbox: Vendor Comparison, Chaos Testing & Financial ROI"
+          style={{
+            padding: "6px 14px",
+            borderRadius: "9px",
+            border: "1px solid #CA8A04",
+            background: "linear-gradient(135deg, #FACC15 0%, #F8CB46 100%)",
+            color: "#0F172A",
+            fontWeight: 900,
+            fontSize: "12px",
+            letterSpacing: "-0.01em",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            boxShadow: "0 4px 14px rgba(234, 179, 8, 0.35)",
+            transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+          }}
+        >
+          <span style={{ fontSize: "13px" }}>⚡</span>
+          <span>Decision Sandbox</span>
         </button>
       </div>
     </header>

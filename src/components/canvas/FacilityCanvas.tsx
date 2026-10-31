@@ -7,9 +7,9 @@
  * and smooth OrbitControls camera tracking.
  */
 
-import React, { useMemo, useRef, useEffect } from "react";
+import React, { useMemo, useRef, useEffect, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, ContactShadows } from "@react-three/drei";
+import { OrbitControls, ContactShadows, RoundedBox, Html } from "@react-three/drei";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { useTwinStore, type ChargingDock } from "../../store/useTwinStore";
@@ -149,6 +149,11 @@ function ArchitecturalLighting({ widthM, depthM }: { widthM: number; depthM: num
 // ─────────────────────────────────────────────────────────────
 
 function FloorAndTransitLanes({ widthM, depthM }: { widthM: number; depthM: number }) {
+  const isObstaclePlacementActive = useTwinStore((s) => s.isObstaclePlacementActive);
+  const toggleFloorObstacle = useTwinStore((s) => s.toggleFloorObstacle);
+  const cellSize = useTwinStore((s) => s.navGrid.cellSize);
+  const [hoverTile, setHoverTile] = useState<[number, number] | null>(null);
+
   // Generate high-resolution procedural light concrete texture with subtle architectural grid
   const floorTexture = useMemo(() => {
     const canvas = document.createElement("canvas");
@@ -239,6 +244,25 @@ function FloorAndTransitLanes({ widthM, depthM }: { widthM: number; depthM: numb
         rotation-x={-Math.PI / 2}
         position={[widthM / 2, 0.0, depthM / 2]}
         receiveShadow
+        onPointerMove={(e) => {
+          if (!isObstaclePlacementActive) return;
+          e.stopPropagation();
+          const col = Math.floor(e.point.x / cellSize);
+          const row = Math.floor(e.point.z / cellSize);
+          if (col >= 0 && col < widthM && row >= 0 && row < depthM) {
+            setHoverTile([col, row]);
+          }
+        }}
+        onPointerOut={() => setHoverTile(null)}
+        onClick={(e) => {
+          if (!isObstaclePlacementActive) return;
+          e.stopPropagation();
+          const col = Math.floor(e.point.x / cellSize);
+          const row = Math.floor(e.point.z / cellSize);
+          if (col >= 0 && col < widthM && row >= 0 && row < depthM) {
+            toggleFloorObstacle(col, row);
+          }
+        }}
       >
         <planeGeometry args={[widthM, depthM]} />
         <meshStandardMaterial
@@ -247,6 +271,21 @@ function FloorAndTransitLanes({ widthM, depthM }: { widthM: number; depthM: numb
           metalness={0.08}
         />
       </mesh>
+
+      {/* Hover Tile Placement Indicator (Shows where obstacle drops) */}
+      {hoverTile && isObstaclePlacementActive && (
+        <mesh
+          position={[
+            hoverTile[0] * cellSize + cellSize / 2,
+            0.035,
+            hoverTile[1] * cellSize + cellSize / 2,
+          ]}
+          rotation-x={-Math.PI / 2}
+        >
+          <planeGeometry args={[cellSize * 0.95, cellSize * 0.95]} />
+          <meshBasicMaterial color="#F59E0B" transparent opacity={0.55} />
+        </mesh>
+      )}
 
       {/* Dashed Blinkit Yellow Transit Lanes */}
       {transitCorridors.map((lane, idx) => {
@@ -339,7 +378,101 @@ function ChargingPadsCollection() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 5. Main Scene Composite
+// 5. 3D Floor Obstacles & Aisle Barricades Collection
+// ─────────────────────────────────────────────────────────────
+
+function FloorObstaclesCollection() {
+  const customObstacles = useTwinStore((s) => s.customObstacles);
+  const toggleFloorObstacle = useTwinStore((s) => s.toggleFloorObstacle);
+  const cellSize = useTwinStore((s) => s.navGrid.cellSize);
+
+  return (
+    <group>
+      {customObstacles.map((obs) => {
+        const x = obs.col * cellSize + cellSize / 2;
+        const z = obs.row * cellSize + cellSize / 2;
+
+        return (
+          <group
+            key={obs.id}
+            position={[x, 0, z]}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleFloorObstacle(obs.col, obs.row);
+            }}
+          >
+            {/* Base warning mat */}
+            <mesh rotation-x={-Math.PI / 2} position={[0, 0.02, 0]}>
+              <planeGeometry args={[0.9, 0.9]} />
+              <meshBasicMaterial color="#DC2626" transparent opacity={0.4} />
+            </mesh>
+
+            {/* Heavy Barricade Stand / Legs */}
+            <mesh position={[-0.32, 0.25, 0]}>
+              <cylinderGeometry args={[0.03, 0.03, 0.5, 8]} />
+              <meshStandardMaterial color="#1E293B" metalness={0.8} roughness={0.3} />
+            </mesh>
+            <mesh position={[0.32, 0.25, 0]}>
+              <cylinderGeometry args={[0.03, 0.03, 0.5, 8]} />
+              <meshStandardMaterial color="#1E293B" metalness={0.8} roughness={0.3} />
+            </mesh>
+
+            {/* Yellow-Black Warning Board */}
+            <RoundedBox args={[0.75, 0.24, 0.06]} radius={0.02} smoothness={4} position={[0, 0.32, 0]}>
+              <meshStandardMaterial
+                color="#F59E0B"
+                roughness={0.4}
+                metalness={0.2}
+                emissive="#F59E0B"
+                emissiveIntensity={0.25}
+              />
+            </RoundedBox>
+
+            {/* Flashing Amber Warning Beacon */}
+            <mesh position={[0, 0.5, 0]}>
+              <sphereGeometry args={[0.06, 12, 12]} />
+              <meshStandardMaterial
+                color="#EF4444"
+                emissive="#EF4444"
+                emissiveIntensity={1.8}
+                roughness={0.1}
+              />
+            </mesh>
+            <pointLight position={[0, 0.6, 0]} color="#F59E0B" intensity={1.5} distance={3.5} />
+
+            {/* Click to remove Pill */}
+            <Html position={[0, 0.75, 0]} center distanceFactor={35}>
+              <div
+                style={{
+                  background: "rgba(15, 23, 42, 0.92)",
+                  color: "#F8CB46",
+                  padding: "3px 8px",
+                  borderRadius: "6px",
+                  fontSize: "10px",
+                  fontWeight: 800,
+                  whiteSpace: "nowrap",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  border: "1px solid rgba(248, 203, 70, 0.4)",
+                  fontFamily: "'Inter', sans-serif",
+                }}
+              >
+                <span>🚧 Blocked</span>
+                <span style={{ color: "#EF4444", marginLeft: "2px" }}>✕</span>
+              </div>
+            </Html>
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 6. Main Scene Composite
 // ─────────────────────────────────────────────────────────────
 
 function FacilityScene({ controlsRef }: { controlsRef: React.RefObject<OrbitControlsImpl> }) {
@@ -357,6 +490,7 @@ function FacilityScene({ controlsRef }: { controlsRef: React.RefObject<OrbitCont
       <group onPointerMissed={() => selectBot(null)}>
         <FloorAndTransitLanes widthM={widthM} depthM={depthM} />
         <ChargingPadsCollection />
+        <FloorObstaclesCollection />
         <StationNodes />
         <RackSystem />
         <BotFleet />

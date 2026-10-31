@@ -12,6 +12,7 @@ import { TopControlBar } from "./components/hud/TopControlBar";
 import { KpiOverlay } from "./components/hud/KpiOverlay";
 import { InspectorDrawer } from "./components/hud/InspectorDrawer";
 import { OperationsTable } from "./components/hud/OperationsTable";
+import { DecisionSandboxModal } from "./components/hud/DecisionSandboxModal";
 import { useTwinStore } from "./store/useTwinStore";
 
 export function App() {
@@ -50,6 +51,7 @@ export function App() {
       <KpiOverlay />
       <InspectorDrawer />
       <OperationsTable />
+      <DecisionSandboxModal />
     </div>
   );
 }
