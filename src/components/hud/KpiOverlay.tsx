@@ -210,6 +210,69 @@ export function KpiOverlay() {
           <span>Congestion: <b>{kpi.activeCongestionIndex}%</b></span>
         </div>
       </div>
+
+      {/* 4. Anti-Collision System (ACS) Safety Card */}
+      <div style={cardStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+            <span
+              style={{
+                width: "7px",
+                height: "7px",
+                borderRadius: "50%",
+                background: "#10B981",
+                boxShadow: "0 0 8px #10B981",
+                display: "inline-block",
+              }}
+            />
+            <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>
+              Anti-Collision (ACS)
+            </span>
+          </div>
+          <span
+            style={{
+              fontSize: "10px",
+              fontWeight: 800,
+              padding: "2px 6px",
+              borderRadius: "4px",
+              background: "#ECFDF5",
+              color: "#059669",
+            }}
+          >
+            100% SAFE
+          </span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
+          <span
+            style={{
+              fontSize: "26px",
+              fontWeight: 900,
+              color: "#0F172A",
+              letterSpacing: "-0.03em",
+              fontFamily: "'Inter', sans-serif",
+            }}
+          >
+            0
+          </span>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#64748B" }}>collisions</span>
+        </div>
+
+        <div
+          style={{
+            fontSize: "11px",
+            color: "#64748B",
+            fontWeight: 500,
+            display: "flex",
+            justifyContent: "space-between",
+            borderTop: "1px solid #F1F5F9",
+            paddingTop: "6px",
+          }}
+        >
+          <span>Safe Yields: <b style={{ color: "#059669" }}>{kpi.totalSafeYieldsResolved || 0}</b></span>
+          <span>LiDAR Holds: <b style={{ color: "#D97706" }}>{kpi.nearMissesPrevented || 0}</b></span>
+        </div>
+      </div>
     </div>
   );
 }

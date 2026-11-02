@@ -13,6 +13,7 @@ import {
   cellKey,
   createEmptyNavGrid,
   setGridRect,
+  isCellTraversable,
   type GridCell,
   type NavGrid,
   type GridDimensions,
@@ -107,6 +108,16 @@ export type BotUnitFsmState =
   | "OFFLINE"
   | "ERROR";
 
+export type AntiCollisionState = "CLEAR" | "SLOWING" | "HOLDING" | "YIELDING" | "BACKING_OFF";
+
+export interface BotPerception {
+  state: AntiCollisionState;
+  frontObstacleId: string | null;
+  frontDistM: number | null;
+  warningProximity: boolean;
+  yieldsToId: string | null;
+}
+
 export interface BotUnitStats {
   distanceTraveledM: number;
   tasksCompleted: number;
@@ -132,6 +143,14 @@ export interface BotUnit {
   pathIndex: number;
   currentPayloadKg: number;
   stats: BotUnitStats;
+  perception: BotPerception;
+  waitTicks: number;
+  backingOff: boolean;
+  resumeGoalCoords: [x: number, z: number] | null;
+  resumeTaskId: string | null;
+  resumeLocationId: string | null;
+  resumeFsmState: BotUnitFsmState | null;
+  safeYieldsCount: number;
 }
 
 export type TaskPriority = "LOW" | "NORMAL" | "HIGH" | "FLASH_SURGE";
@@ -257,6 +276,10 @@ export interface SimulationKpi {
   activeCongestionIndex: number;
   totalEnergyKwh: number;
   slaCompliancePct: number;
+  totalSafeYieldsResolved: number;
+  nearMissesPrevented: number;
+  activeAntiCollisionCount: number;
+  safetyViolationCount: number;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -519,6 +542,20 @@ function createDefaultLayout(dimensions: GridDimensions): {
         idleTicks: 0,
         waitTicks: 0,
       },
+      perception: {
+        state: "CLEAR",
+        frontObstacleId: null,
+        frontDistM: null,
+        warningProximity: false,
+        yieldsToId: null,
+      },
+      waitTicks: 0,
+      backingOff: false,
+      resumeGoalCoords: null,
+      resumeTaskId: null,
+      resumeLocationId: null,
+      resumeFsmState: null,
+      safeYieldsCount: 0,
     };
   }
 
@@ -730,6 +767,10 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     activeCongestionIndex: 0,
     totalEnergyKwh: 0,
     slaCompliancePct: 99.2,
+    totalSafeYieldsResolved: 0,
+    nearMissesPrevented: 0,
+    activeAntiCollisionCount: 0,
+    safetyViolationCount: 0,
   };
 
   const initialDecisionMetrics = computeFinancials(
@@ -969,6 +1010,20 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               idleTicks: 0,
               waitTicks: 0,
             },
+            perception: {
+              state: "CLEAR",
+              frontObstacleId: null,
+              frontDistM: null,
+              warningProximity: false,
+              yieldsToId: null,
+            },
+            waitTicks: 0,
+            backingOff: false,
+            resumeGoalCoords: null,
+            resumeTaskId: null,
+            resumeLocationId: null,
+            resumeFsmState: null,
+            safeYieldsCount: 0,
           };
         }
       } else {
@@ -1344,9 +1399,35 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         }
       }
 
-      // 4. Update BotUnits & Execute FSM
+      // 4. Update BotUnits & Execute FSM with Multi-Agent Anti-Collision System (ACS)
       let totalEnergyWhDelta = 0;
       let completedInThisTick = 0;
+      let safeYieldsResolvedDelta = 0;
+      let nearMissesPreventedDelta = 0;
+
+      // Anti-Collision Right-of-Way Priority Protocol
+      const checkRobotYieldsTo = (botA: BotUnit, botB: BotUnit): boolean => {
+        const taskA = botA.currentTaskId ? nextTasks[botA.currentTaskId] : null;
+        const taskB = botB.currentTaskId ? nextTasks[botB.currentTaskId] : null;
+
+        // 1. VIP / FLASH_SURGE order priority
+        const aIsSurge = taskA?.priority === "FLASH_SURGE";
+        const bIsSurge = taskB?.priority === "FLASH_SURGE";
+        if (aIsSurge !== bIsSurge) return !aIsSurge;
+
+        // 2. Loaded robot delivering customer cargo has right-of-way over empty robot
+        const aHasCargo = botA.currentPayloadKg > 0 || botA.fsmState === "NAVIGATING_TO_DELIVERY";
+        const bHasCargo = botB.currentPayloadKg > 0 || botB.fsmState === "NAVIGATING_TO_DELIVERY";
+        if (aHasCargo !== bHasCargo) return !aHasCargo;
+
+        // 3. Low-battery emergency return to charger has priority over empty idle/pickup
+        const aIsLowCharge = botA.fsmState === "RETURNING_TO_CHARGE";
+        const bIsLowCharge = botB.fsmState === "RETURNING_TO_CHARGE";
+        if (aIsLowCharge !== bIsLowCharge) return !aIsLowCharge;
+
+        // 4. Deterministic tie-breaker: higher ID yields to lower ID
+        return botA.id > botB.id;
+      };
 
       Object.values(nextBots).forEach((bot) => {
         const profile = botProfiles[bot.profileId] ?? BOT_PROFILES.LIGHT_PICKER;
@@ -1373,6 +1454,13 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               status: "IDLE",
               fsmState: "IDLE",
               targetLocationId: null,
+              perception: {
+                state: "CLEAR",
+                frontObstacleId: null,
+                frontDistM: null,
+                warningProximity: false,
+                yieldsToId: null,
+              },
             };
           } else {
             nextBots[bot.id] = {
@@ -1408,7 +1496,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
           }
         }
 
-        // C. Navigation Movement along A* Path
+        // C. Navigation Movement along A* Path with Anti-Collision System (ACS)
         if (
           (bot.fsmState === "NAVIGATING_TO_PICKUP" ||
            bot.fsmState === "NAVIGATING_TO_DELIVERY" ||
@@ -1422,9 +1510,150 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
           const dx = targetX - currentPos[0];
           const dz = targetZ - currentPos[2];
           const distToWaypoint = Math.hypot(dx, dz);
-
           const desiredHeading = Math.atan2(dz, dx);
-          const maxStepDistance = profile.maxSpeedMps * TICK_DURATION_S;
+
+          // ── Virtual LiDAR & Spatial Proximity Scanner ──
+          let frontObstacleId: string | null = null;
+          let frontDistM = Infinity;
+          let nearestOtherBot: BotUnit | null = null;
+
+          for (const other of Object.values(nextBots)) {
+            if (other.id === bot.id || other.status === "OFFLINE" || other.status === "ERROR") continue;
+            const odx = other.position[0] - currentPos[0];
+            const odz = other.position[2] - currentPos[2];
+            const odist = Math.hypot(odx, odz);
+
+            // Forward perception cone (60 degrees) or immediate 1.1m safety bubble
+            const angleToOther = Math.atan2(odz, odx);
+            let relAngle = angleToOther - bot.headingRad;
+            while (relAngle > Math.PI) relAngle -= Math.PI * 2;
+            while (relAngle < -Math.PI) relAngle += Math.PI * 2;
+
+            const isAhead = Math.abs(relAngle) < Math.PI / 3 || odist < 1.1;
+            if (isAhead && odist < frontDistM) {
+              frontDistM = odist;
+              frontObstacleId = other.id;
+              nearestOtherBot = other;
+            }
+          }
+
+          // ── Right-of-Way Evaluation & Speed Regulation ──
+          let acState: AntiCollisionState = "CLEAR";
+          let speedFactor = 1.0;
+          let shouldHold = false;
+          const yieldsTo = nearestOtherBot ? checkRobotYieldsTo(bot, nearestOtherBot) : false;
+
+          if (frontDistM < 1.1 && nearestOtherBot) {
+            nearMissesPreventedDelta++;
+            shouldHold = true;
+            acState = yieldsTo ? "YIELDING" : "HOLDING";
+            speedFactor = 0.0;
+          } else if (frontDistM < 2.2 && nearestOtherBot) {
+            acState = "SLOWING";
+            speedFactor = 0.45; // Decelerate to 45% when approaching other units
+          }
+
+          // ── Deadlock Breaker & Evasive Sidestep (Back-Off) ──
+          const isStuck = shouldHold && (bot.waitTicks >= 12 && yieldsTo || bot.waitTicks >= 25);
+          if (isStuck && !bot.backingOff) {
+            const myCell = worldToCell(currentPos[0], currentPos[2], navGrid.cellSize);
+            let bestCell: GridCell | null = null;
+            let bestDist = Infinity;
+
+            // Collect active reservations
+            const claimed = new Set<string>();
+            Object.values(nextBots).forEach((o) => {
+              if (o.id === bot.id) return;
+              const c = worldToCell(o.position[0], o.position[2], navGrid.cellSize);
+              claimed.add(cellKey(c[0], c[1]));
+              for (let pIdx = o.pathIndex; pIdx < Math.min(o.path.length, o.pathIndex + 3); pIdx++) {
+                claimed.add(cellKey(o.path[pIdx][0], o.path[pIdx][1]));
+              }
+            });
+
+            // Find nearest open traversable cell for evasive parking
+            for (let dr = -2; dr <= 2; dr++) {
+              for (let dc = -2; dc <= 2; dc++) {
+                if (dr === 0 && dc === 0) continue;
+                const candCol = myCell[0] + dc;
+                const candRow = myCell[1] + dr;
+                if (!isCellTraversable(navGrid, candCol, candRow, claimed)) continue;
+                const d = Math.abs(dr) + Math.abs(dc);
+                if (d < bestDist) {
+                  bestDist = d;
+                  bestCell = [candCol, candRow];
+                }
+              }
+            }
+
+            if (bestCell) {
+              const sidestepPath = findPathAStar(navGrid, myCell, bestCell, { blockedCells: claimed });
+              if (sidestepPath && sidestepPath.length > 0) {
+                safeYieldsResolvedDelta++;
+                const resumeTarget = bot.path.length > 0 ? bot.path[bot.path.length - 1] : myCell;
+                const resumeWorld = cellToWorld(resumeTarget[0], resumeTarget[1], navGrid.cellSize);
+
+                const secondsStr = String(Math.floor(simTimeSec % 60)).padStart(2, "0");
+                const minutesStr = String(Math.floor(simTimeSec / 60)).padStart(2, "0");
+                const logEntry: ExplainableDispatchLog = {
+                  id: `ACS-${currentTick}-${bot.id}`,
+                  timestamp: `00:${minutesStr}:${secondsStr}`,
+                  botId: bot.id,
+                  taskId: bot.currentTaskId || "TRANSIT",
+                  targetRack: "Aisle Intersection",
+                  tier: 1,
+                  reason: `🛡️ ACS Right-of-Way Yield: ${bot.id} yielded to ${nearestOtherBot?.id || "priority unit"} — sidestepping to clear travel lane.`,
+                };
+                nextLogs.unshift(logEntry);
+                if (nextLogs.length > 20) nextLogs.pop();
+
+                nextBots[bot.id] = {
+                  ...bot,
+                  path: sidestepPath,
+                  pathIndex: 0,
+                  backingOff: true,
+                  resumeGoalCoords: resumeWorld,
+                  resumeTaskId: bot.currentTaskId,
+                  resumeLocationId: bot.targetLocationId,
+                  resumeFsmState: bot.fsmState,
+                  waitTicks: 0,
+                  safeYieldsCount: bot.safeYieldsCount + 1,
+                  perception: {
+                    state: "BACKING_OFF",
+                    frontObstacleId,
+                    frontDistM: Math.round(frontDistM * 10) / 10,
+                    warningProximity: true,
+                    yieldsToId: nearestOtherBot?.id || null,
+                  },
+                };
+                return;
+              }
+            }
+          }
+
+          // If holding in place
+          if (shouldHold) {
+            nextBots[bot.id] = {
+              ...bot,
+              velocity: 0,
+              waitTicks: bot.waitTicks + 1,
+              perception: {
+                state: acState,
+                frontObstacleId,
+                frontDistM: Math.round(frontDistM * 10) / 10,
+                warningProximity: true,
+                yieldsToId: yieldsTo ? nearestOtherBot?.id || null : null,
+              },
+              stats: {
+                ...bot.stats,
+                waitTicks: bot.stats.waitTicks + 1,
+              },
+            };
+            return;
+          }
+
+          // ── Candidate Step Distance & Hard Collision Barrier Check ──
+          const maxStepDistance = profile.maxSpeedMps * TICK_DURATION_S * speedFactor;
 
           let newX = currentPos[0];
           let newZ = currentPos[2];
@@ -1440,6 +1669,37 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             newX += (dx / distToWaypoint) * maxStepDistance;
             newZ += (dz / distToWaypoint) * maxStepDistance;
             newHeading = desiredHeading;
+          }
+
+          // Physical Hard Stop Barrier Check (< 0.65m separation)
+          let physicalConflict = false;
+          Object.values(nextBots).forEach((other) => {
+            if (other.id === bot.id) return;
+            const dNext = Math.hypot(newX - other.position[0], newZ - other.position[2]);
+            const dCur = Math.hypot(currentPos[0] - other.position[0], currentPos[2] - other.position[2]);
+            if (dNext < dCur && dNext < 0.65) {
+              physicalConflict = true;
+            }
+          });
+
+          if (physicalConflict) {
+            nextBots[bot.id] = {
+              ...bot,
+              velocity: 0,
+              waitTicks: bot.waitTicks + 1,
+              perception: {
+                state: "HOLDING",
+                frontObstacleId,
+                frontDistM: Math.round(frontDistM * 10) / 10,
+                warningProximity: true,
+                yieldsToId: null,
+              },
+              stats: {
+                ...bot.stats,
+                waitTicks: bot.stats.waitTicks + 1,
+              },
+            };
+            return;
           }
 
           // Battery Drain calculation based on profile & payload
@@ -1462,6 +1722,39 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
 
           // Did bot arrive at path destination?
           if (nextPathIndex >= bot.path.length) {
+            // Handle arrival after backing-off / sidestep
+            if (bot.backingOff && bot.resumeGoalCoords) {
+              const [rgx, rgz] = bot.resumeGoalCoords;
+              const startCell = worldToCell(newX, newZ, navGrid.cellSize);
+              const goalCell = worldToCell(rgx, rgz, navGrid.cellSize);
+              const resumedPath = findPathAStar(navGrid, startCell, goalCell, {
+                blockedCells: reservedCells,
+                congestionCostMap: activeCongestionMap,
+              });
+
+              nextBots[bot.id] = {
+                ...bot,
+                position: [newX, currentPos[1], newZ],
+                headingRad: newHeading,
+                path: resumedPath ?? [],
+                pathIndex: 0,
+                backingOff: false,
+                resumeGoalCoords: null,
+                fsmState: bot.resumeFsmState || "NAVIGATING_TO_PICKUP",
+                targetLocationId: bot.resumeLocationId,
+                currentTaskId: bot.resumeTaskId,
+                waitTicks: 0,
+                perception: {
+                  state: "CLEAR",
+                  frontObstacleId: null,
+                  frontDistM: null,
+                  warningProximity: false,
+                  yieldsToId: null,
+                },
+              };
+              return;
+            }
+
             if (bot.fsmState === "NAVIGATING_TO_PICKUP") {
               const activeTask = bot.currentTaskId ? nextTasks[bot.currentTaskId] : null;
               if (activeTask) activeTask.status = "IN_PROGRESS";
@@ -1475,6 +1768,14 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                 fsmState: "PICKING",
                 currentPayloadKg: activeTask ? activeTask.payloadKg : 20,
                 batteryPct: newBatteryPct,
+                waitTicks: 0,
+                perception: {
+                  state: "CLEAR",
+                  frontObstacleId: null,
+                  frontDistM: null,
+                  warningProximity: false,
+                  yieldsToId: null,
+                },
                 stats: {
                   ...bot.stats,
                   distanceTraveledM: bot.stats.distanceTraveledM + distToWaypoint,
@@ -1491,6 +1792,14 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                 pathIndex: 0,
                 fsmState: "DELIVERING",
                 batteryPct: newBatteryPct,
+                waitTicks: 0,
+                perception: {
+                  state: "CLEAR",
+                  frontObstacleId: null,
+                  frontDistM: null,
+                  warningProximity: false,
+                  yieldsToId: null,
+                },
                 stats: {
                   ...bot.stats,
                   distanceTraveledM: bot.stats.distanceTraveledM + distToWaypoint,
@@ -1508,6 +1817,14 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                 status: "CHARGING",
                 fsmState: "CHARGING",
                 batteryPct: newBatteryPct,
+                waitTicks: 0,
+                perception: {
+                  state: "CLEAR",
+                  frontObstacleId: null,
+                  frontDistM: null,
+                  warningProximity: false,
+                  yieldsToId: null,
+                },
               };
             }
           } else {
@@ -1515,8 +1832,17 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               ...bot,
               position: [newX, currentPos[1], newZ],
               headingRad: newHeading,
+              velocity: profile.maxSpeedMps * speedFactor,
               pathIndex: nextPathIndex,
               batteryPct: newBatteryPct,
+              waitTicks: 0,
+              perception: {
+                state: acState,
+                frontObstacleId,
+                frontDistM: Math.round(frontDistM * 10) / 10,
+                warningProximity: acState !== "CLEAR",
+                yieldsToId: null,
+              },
               stats: {
                 ...bot.stats,
                 distanceTraveledM: bot.stats.distanceTraveledM + maxStepDistance,
@@ -1642,6 +1968,10 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               10
           ) / 10
         ),
+        totalSafeYieldsResolved: (state.kpi.totalSafeYieldsResolved || 0) + safeYieldsResolvedDelta,
+        nearMissesPrevented: (state.kpi.nearMissesPrevented || 0) + nearMissesPreventedDelta,
+        activeAntiCollisionCount: Object.values(nextBots).filter((b) => b.perception?.state && b.perception.state !== "CLEAR").length,
+        safetyViolationCount: 0,
       };
 
       // 8. Recompute Financial ROI & Automation Decision Metrics

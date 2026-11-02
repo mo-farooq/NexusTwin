@@ -49,6 +49,9 @@ interface BotStatusBadgeProps {
   batteryPct: number;
   isSelected: boolean;
   statusColor: string;
+  perceptionState?: string;
+  warningProximity?: boolean;
+  isBackingOff?: boolean;
   onClick: () => void;
 }
 
@@ -58,9 +61,28 @@ function BotStatusBadge({
   batteryPct,
   isSelected,
   statusColor,
+  perceptionState,
+  warningProximity,
+  isBackingOff,
   onClick,
 }: BotStatusBadgeProps) {
   const [hovered, setHovered] = useState(false);
+
+  const acBadge = useMemo(() => {
+    if (isBackingOff || perceptionState === "BACKING_OFF") {
+      return { label: "🛡️ SIDESTEP", color: "#8B5CF6", bg: "rgba(139, 92, 246, 0.18)" };
+    }
+    if (perceptionState === "YIELDING") {
+      return { label: "🛡️ YIELDING", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.2)" };
+    }
+    if (perceptionState === "HOLDING") {
+      return { label: "🛑 LiDAR HOLD", color: "#EF4444", bg: "rgba(239, 68, 68, 0.2)" };
+    }
+    if (perceptionState === "SLOWING") {
+      return { label: "⚠️ DECEL", color: "#FBBF24", bg: "rgba(251, 191, 36, 0.15)" };
+    }
+    return null;
+  }, [perceptionState, isBackingOff]);
 
   return (
     <div
@@ -75,6 +97,8 @@ function BotStatusBadge({
         color: BOT_THEME.BADGE_TEXT,
         border: isSelected
           ? `1.5px solid ${BOT_THEME.ACCENT_YELLOW}`
+          : warningProximity
+          ? "1.5px solid #F59E0B"
           : `1px solid ${BOT_THEME.BADGE_BORDER}`,
         padding: "4px 10px",
         borderRadius: "9999px",
@@ -84,6 +108,8 @@ function BotStatusBadge({
         letterSpacing: "0.02em",
         boxShadow: isSelected
           ? "0 0 14px rgba(248, 203, 70, 0.5)"
+          : warningProximity
+          ? "0 0 12px rgba(245, 158, 11, 0.45)"
           : "0 4px 12px rgba(0, 0, 0, 0.35)",
         cursor: "pointer",
         display: "flex",
@@ -110,6 +136,23 @@ function BotStatusBadge({
       <span style={{ color: "#E2E8F0", fontWeight: 600 }}>{status}</span>
       <span style={{ color: "#94A3B8", fontWeight: 400 }}>|</span>
       <span style={{ color: BOT_THEME.ACCENT_YELLOW }}>{Math.round(batteryPct)}%</span>
+      {acBadge && (
+        <>
+          <span style={{ color: "#94A3B8", fontWeight: 400 }}>|</span>
+          <span
+            style={{
+              color: acBadge.color,
+              background: acBadge.bg,
+              padding: "1px 6px",
+              borderRadius: "4px",
+              fontSize: "10px",
+              fontWeight: 800,
+            }}
+          >
+            {acBadge.label}
+          </span>
+        </>
+      )}
     </div>
   );
 }
@@ -263,6 +306,9 @@ function SingleBot({ bot, isSelected, onSelect }: SingleBotProps) {
             batteryPct={bot.batteryPct}
             isSelected={isSelected}
             statusColor={statusColor}
+            perceptionState={bot.perception?.state}
+            warningProximity={bot.perception?.warningProximity}
+            isBackingOff={bot.backingOff}
             onClick={onSelect}
           />
         </Html>
@@ -275,16 +321,78 @@ function SingleBot({ bot, isSelected, onSelect }: SingleBotProps) {
         >
           <ringGeometry args={[0.56, 0.72, 36]} />
           <meshBasicMaterial
-            color={statusColor}
+            color={
+              bot.perception?.state === "HOLDING" || bot.perception?.state === "YIELDING"
+                ? "#EF4444"
+                : bot.perception?.state === "SLOWING"
+                ? "#F59E0B"
+                : bot.perception?.state === "BACKING_OFF"
+                ? "#8B5CF6"
+                : statusColor
+            }
             transparent
-            opacity={isSelected ? 0.9 : 0.6}
+            opacity={isSelected ? 0.95 : 0.65}
             side={THREE.DoubleSide}
           />
         </mesh>
 
+        {/* 4. Dynamic LiDAR Proximity Safety Zone & Radar Bubble */}
+        <mesh position={[0, -0.188, 0]} rotation-x={-Math.PI / 2}>
+          <ringGeometry
+            args={[
+              0.76,
+              bot.perception?.state === "HOLDING" || bot.perception?.state === "YIELDING"
+                ? 1.28
+                : bot.perception?.state === "SLOWING"
+                ? 1.15
+                : 0.86,
+              32,
+            ]}
+          />
+          <meshBasicMaterial
+            color={
+              bot.perception?.state === "HOLDING" || bot.perception?.state === "YIELDING"
+                ? "#EF4444"
+                : bot.perception?.state === "SLOWING"
+                ? "#F59E0B"
+                : bot.perception?.state === "BACKING_OFF"
+                ? "#8B5CF6"
+                : "#38BDF8"
+            }
+            transparent
+            opacity={
+              bot.perception?.state && bot.perception.state !== "CLEAR"
+                ? 0.55
+                : isSelected
+                ? 0.28
+                : 0.12
+            }
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+
+        {/* 5. Forward LiDAR Perception Field-of-View Sweep (60 deg cone) */}
+        {bot.status === "ACTIVE" && (
+          <mesh position={[0, -0.186, 0.45]} rotation-x={-Math.PI / 2}>
+            <circleGeometry args={[1.6, 24, -Math.PI / 6, Math.PI / 3]} />
+            <meshBasicMaterial
+              color={
+                bot.perception?.state === "SLOWING"
+                  ? "#F59E0B"
+                  : bot.perception?.state === "HOLDING" || bot.perception?.state === "YIELDING"
+                  ? "#EF4444"
+                  : "#10B981"
+              }
+              transparent
+              opacity={bot.perception?.warningProximity ? 0.35 : 0.08}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+        )}
+
         {/* Selected Highlight Aura Disk */}
         {isSelected && (
-          <mesh position={[0, -0.185, 0]} rotation-x={-Math.PI / 2}>
+          <mesh position={[0, -0.19, 0]} rotation-x={-Math.PI / 2}>
             <circleGeometry args={[0.9, 36]} />
             <meshBasicMaterial
               color={BOT_THEME.ACCENT_YELLOW}

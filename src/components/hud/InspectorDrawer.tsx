@@ -253,6 +253,89 @@ export function InspectorDrawer() {
               </div>
             </div>
 
+            {/* Anti-Collision & LiDAR Telemetry View */}
+            <div
+              style={{
+                background: "#F8FAFC",
+                borderRadius: "12px",
+                padding: "12px",
+                border: "1px solid #E2E8F0",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "#0F172A" }}>
+                  LiDAR & ANTI-COLLISION RADAR
+                </span>
+                <span
+                  style={{
+                    fontSize: "10px",
+                    fontWeight: 800,
+                    padding: "2px 7px",
+                    borderRadius: "9999px",
+                    background:
+                      selectedBot.perception?.state === "HOLDING" || selectedBot.perception?.state === "YIELDING"
+                        ? "#FEF2F2"
+                        : selectedBot.perception?.state === "SLOWING"
+                        ? "#FFFBEB"
+                        : selectedBot.perception?.state === "BACKING_OFF"
+                        ? "#F5F3FF"
+                        : "#ECFDF5",
+                    color:
+                      selectedBot.perception?.state === "HOLDING" || selectedBot.perception?.state === "YIELDING"
+                        ? "#DC2626"
+                        : selectedBot.perception?.state === "SLOWING"
+                        ? "#D97706"
+                        : selectedBot.perception?.state === "BACKING_OFF"
+                        ? "#7C3AED"
+                        : "#059669",
+                  }}
+                >
+                  {selectedBot.perception?.state || "CLEAR"}
+                </span>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "11px" }}>
+                <div>
+                  <span style={{ color: "#64748B", display: "block" }}>Proximity Ahead:</span>
+                  <b
+                    style={{
+                      color:
+                        selectedBot.perception?.frontDistM && selectedBot.perception.frontDistM < 1.5
+                          ? "#DC2626"
+                          : "#0F172A",
+                    }}
+                  >
+                    {selectedBot.perception?.frontDistM
+                      ? `${selectedBot.perception.frontDistM} m (${selectedBot.perception.frontObstacleId || "Obstacle"})`
+                      : "Clear (> 3.0 m)"}
+                  </b>
+                </div>
+                <div>
+                  <span style={{ color: "#64748B", display: "block" }}>Right-of-Way Priority:</span>
+                  <b
+                    style={{
+                      color:
+                        selectedBot.currentPayloadKg > 0 || selectedBot.fsmState === "NAVIGATING_TO_DELIVERY"
+                          ? "#059669"
+                          : "#64748B",
+                    }}
+                  >
+                    {selectedBot.currentPayloadKg > 0 ? "Priority (Cargo)" : "Standard (Yields)"}
+                  </b>
+                </div>
+                <div>
+                  <span style={{ color: "#64748B", display: "block" }}>Safe Yields Done:</span>
+                  <b style={{ color: "#059669" }}>{selectedBot.safeYieldsCount || 0} times</b>
+                </div>
+                <div>
+                  <span style={{ color: "#64748B", display: "block" }}>Aisle Sidestep:</span>
+                  <b style={{ color: selectedBot.backingOff ? "#7C3AED" : "#64748B" }}>
+                    {selectedBot.backingOff ? "Active (Evasive)" : "Standby"}
+                  </b>
+                </div>
+              </div>
+            </div>
+
             {/* Mission Telemetry Stats */}
             <div style={{ background: "#F8FAFC", borderRadius: "12px", padding: "12px", border: "1px solid #E2E8F0" }}>
               <span style={{ fontSize: "11px", fontWeight: 800, color: "#0F172A", display: "block", marginBottom: "8px" }}>

@@ -195,6 +195,63 @@ export function OperationsTable() {
                         >
                           {bot.status}
                         </span>
+                        {bot.backingOff ? (
+                          <span
+                            style={{
+                              marginLeft: "4px",
+                              fontSize: "8px",
+                              fontWeight: 800,
+                              padding: "1px 4px",
+                              borderRadius: "3px",
+                              background: "#EDE9FE",
+                              color: "#7C3AED",
+                            }}
+                          >
+                            SIDESTEP
+                          </span>
+                        ) : bot.perception?.state === "YIELDING" ? (
+                          <span
+                            style={{
+                              marginLeft: "4px",
+                              fontSize: "8px",
+                              fontWeight: 800,
+                              padding: "1px 4px",
+                              borderRadius: "3px",
+                              background: "#FEF3C7",
+                              color: "#D97706",
+                            }}
+                          >
+                            YIELD
+                          </span>
+                        ) : bot.perception?.state === "HOLDING" ? (
+                          <span
+                            style={{
+                              marginLeft: "4px",
+                              fontSize: "8px",
+                              fontWeight: 800,
+                              padding: "1px 4px",
+                              borderRadius: "3px",
+                              background: "#FEE2E2",
+                              color: "#DC2626",
+                            }}
+                          >
+                            HOLD
+                          </span>
+                        ) : bot.perception?.state === "SLOWING" ? (
+                          <span
+                            style={{
+                              marginLeft: "4px",
+                              fontSize: "8px",
+                              fontWeight: 800,
+                              padding: "1px 4px",
+                              borderRadius: "3px",
+                              background: "#FEF9C3",
+                              color: "#CA8A04",
+                            }}
+                          >
+                            SLOW
+                          </span>
+                        ) : null}
                       </td>
                       <td style={{ padding: "7px 6px", fontWeight: 600, color: bot.batteryPct < 20 ? "#EF4444" : "#10B981" }}>
                         {Math.round(bot.batteryPct)}%
