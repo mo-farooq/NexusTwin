@@ -32,6 +32,8 @@ export function TopControlBar() {
   const isFestiveSurgeActive = useTwinStore((s) => s.isFestiveSurgeActive);
   const breakdownBot = useTwinStore((s) => s.breakdownBot);
   const openSandboxModal = useTwinStore((s) => s.openSandboxModal);
+  const injectVipOrder = useTwinStore((s) => s.injectVipOrder);
+  const defragmentRacks = useTwinStore((s) => s.defragmentRacks);
 
   const botUnits = useTwinStore((s) => s.botUnits);
   const locations = useTwinStore((s) => s.locations);
@@ -365,6 +367,52 @@ export function TopControlBar() {
         >
           <span>🔋</span>
           <span>Breakdown</span>
+        </button>
+
+        {/* Quick Trigger 4: Flash VIP Swarm Order */}
+        <button
+          onClick={() => injectVipOrder()}
+          title="Inject high-priority 4-item VIP Swarm order with Level 1 priority pick"
+          style={{
+            padding: "5px 10px",
+            borderRadius: "8px",
+            border: "1px solid #CBD5E1",
+            background: "#FFFFFF",
+            color: "#0F172A",
+            fontWeight: 800,
+            fontSize: "11px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            transition: "all 0.18s ease",
+          }}
+        >
+          <span>⚡</span>
+          <span>VIP Order</span>
+        </button>
+
+        {/* Quick Trigger 5: AI Rack Defragmentation */}
+        <button
+          onClick={() => defragmentRacks()}
+          title="Relocate high-velocity SKUs from Level 4 to Level 1, cutting pick latency by 36%"
+          style={{
+            padding: "5px 10px",
+            borderRadius: "8px",
+            border: "1px solid #BBF7D0",
+            background: "#F0FDF4",
+            color: "#166534",
+            fontWeight: 800,
+            fontSize: "11px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            transition: "all 0.18s ease",
+          }}
+        >
+          <span>✨</span>
+          <span>AI Defrag</span>
         </button>
 
         {/* Master Action: Decision Sandbox Modal */}

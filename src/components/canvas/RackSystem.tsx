@@ -49,6 +49,10 @@ interface SingleRackProps {
 
 function SingleRack({ shelf, congestionLevel, isHeatmapActive }: SingleRackProps) {
   const [x, z] = shelf.coords;
+  const selectRack = useTwinStore((s) => s.selectRack);
+  const selectedRackId = useTwinStore((s) => s.selectedRackId);
+  const isSelected = selectedRackId === shelf.id;
+
   const {
     WIDTH,
     DEPTH,
@@ -73,17 +77,20 @@ function SingleRack({ shelf, congestionLevel, isHeatmapActive }: SingleRackProps
 
   const showGlow = isHeatmapActive && congestionLevel > 0.08;
 
-  // Inventory boxes on each of the 4 tiers
+  // Inventory boxes on each of the 4 tiers (colored by SKU velocity in heatmap mode)
   const tierBoxes = useMemo(() => {
     const boxes: Array<{
       key: string;
       position: [number, number, number];
       size: [number, number, number];
       color: string;
+      emissive?: string;
+      emissiveIntensity?: number;
     }> = [];
 
     for (let tier = 1; tier <= TIER_COUNT; tier++) {
       const tierY = (tier - 1) * tierHeight + 0.1;
+      const tierData = shelf.tiers?.find((t) => t.level === tier);
 
       // 2 storage totes per tier
       for (let b = 0; b < 2; b++) {
@@ -92,21 +99,38 @@ function SingleRack({ shelf, congestionLevel, isHeatmapActive }: SingleRackProps
         const boxDepth = DEPTH - 0.22;
         const offsetX = -WIDTH / 4 + b * (WIDTH / 2);
 
-        // Pseudo-random box color based on shelf ID and tier
+        // Default pallet color
         const charCode = shelf.id.charCodeAt(shelf.id.length - 1) + tier + b;
-        const color = COLORS.BOX_PALETTE[charCode % COLORS.BOX_PALETTE.length];
+        let color = COLORS.BOX_PALETTE[charCode % COLORS.BOX_PALETTE.length];
+        let emissive = "#000000";
+        let emissiveIntensity = 0;
+
+        // In heatmap mode, highlight Level 4 high-velocity bottleneck vs Level 1 fast-picks
+        if (isHeatmapActive && tierData) {
+          if (tier === 4 && tierData.velocity === "HIGH") {
+            color = "#EF4444";
+            emissive = "#EF4444";
+            emissiveIntensity = 0.5;
+          } else if (tier <= 2 && tierData.velocity === "HIGH") {
+            color = "#0C831F";
+            emissive = "#0C831F";
+            emissiveIntensity = 0.35;
+          }
+        }
 
         boxes.push({
           key: `${shelf.id}-t${tier}-b${b}`,
           position: [offsetX, tierY + boxHeight / 2 + DECK_THICKNESS, 0],
           size: [boxWidth, boxHeight, boxDepth],
           color,
+          emissive,
+          emissiveIntensity,
         });
       }
     }
 
     return boxes;
-  }, [shelf.id, tierHeight, TIER_COUNT, WIDTH, DEPTH, DECK_THICKNESS, COLORS.BOX_PALETTE]);
+  }, [shelf.id, shelf.tiers, tierHeight, TIER_COUNT, WIDTH, DEPTH, DECK_THICKNESS, COLORS.BOX_PALETTE, isHeatmapActive]);
 
   // Corner post positions
   const postOffsets: Array<[number, number]> = useMemo(
@@ -120,7 +144,21 @@ function SingleRack({ shelf, congestionLevel, isHeatmapActive }: SingleRackProps
   );
 
   return (
-    <group position={[x, 0, z]}>
+    <group
+      position={[x, 0, z]}
+      onClick={(e) => {
+        e.stopPropagation();
+        selectRack(shelf.id);
+      }}
+    >
+      {/* Selected Rack Glow Base Plinth */}
+      {isSelected && (
+        <mesh position={[0, 0.035, 0]} rotation-x={-Math.PI / 2}>
+          <planeGeometry args={[WIDTH + 0.5, DEPTH + 0.5]} />
+          <meshBasicMaterial color="#F8CB46" transparent opacity={0.65} />
+        </mesh>
+      )}
+
       {/* 1. Volumetric Congestion Heatmap Aura (Glows Amber/Red when congested) */}
       {showGlow && (
         <group position={[0, TOTAL_HEIGHT / 2, 0]}>
@@ -254,6 +292,8 @@ function SingleRack({ shelf, congestionLevel, isHeatmapActive }: SingleRackProps
           >
             <meshStandardMaterial
               color={box.color}
+              emissive={box.emissive || "#000000"}
+              emissiveIntensity={box.emissiveIntensity || 0}
               roughness={0.65}
               metalness={0.15}
             />

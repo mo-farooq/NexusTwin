@@ -26,6 +26,9 @@ export function InspectorDrawer() {
   const elevators = useTwinStore((s) => s.elevators);
   const tasks = useTwinStore((s) => s.tasks);
   const injectBotFailure = useTwinStore((s) => s.injectBotFailure);
+  const explainableLogs = useTwinStore((s) => s.explainableLogs);
+  const defragmentRacks = useTwinStore((s) => s.defragmentRacks);
+  const defragMessage = useTwinStore((s) => s.defragMessage);
 
   const hasSelection = Boolean(
     selectedBotId || selectedRackId || selectedStationId || selectedElevatorId
@@ -297,7 +300,25 @@ export function InspectorDrawer() {
           </>
         )}
 
-        {/* STORAGE RACK TELEMETRY VIEW */}
+        {/* AI Defrag Notification */}
+        {defragMessage && (
+          <div
+            style={{
+              padding: "10px 12px",
+              borderRadius: "10px",
+              background: "#ECFDF5",
+              border: "1px solid #A7F3D0",
+              color: "#065F46",
+              fontSize: "11px",
+              fontWeight: 700,
+              lineHeight: 1.4,
+            }}
+          >
+            {defragMessage}
+          </div>
+        )}
+
+        {/* STORAGE RACK 4-TIER VISUAL BREAKDOWN */}
         {selectedRack && (
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             <div style={{ background: "#F8FAFC", borderRadius: "12px", padding: "12px", border: "1px solid #E2E8F0" }}>
@@ -306,11 +327,128 @@ export function InspectorDrawer() {
               </span>
               <div style={{ fontSize: "11px", display: "flex", flexDirection: "column", gap: "6px" }}>
                 <div><span style={{ color: "#64748B" }}>Zone:</span> <b>{selectedRack.zoneId}</b></div>
-                <div><span style={{ color: "#64748B" }}>Bay Coordinates:</span> <b>[{selectedRack.coords[0]}, {selectedRack.coords[1]}]</b></div>
                 <div><span style={{ color: "#64748B" }}>Access Point:</span> <b>[{selectedRack.accessPoint[0]}, {selectedRack.accessPoint[1]}]</b></div>
-                <div><span style={{ color: "#64748B" }}>Vertical Tiers:</span> <b>4 Storage Tiers</b></div>
-                <div><span style={{ color: "#64748B" }}>Capacity:</span> <b>8 Storage Totes (2 per tier)</b></div>
+                <div><span style={{ color: "#64748B" }}>Vertical Tiers:</span> <b>4 Storage Tiers (Levels 1 to 4)</b></div>
               </div>
+            </div>
+
+            {/* 4 Vertical Shelf Levels */}
+            <div style={{ background: "#FFFFFF", borderRadius: "12px", padding: "12px", border: "1px solid #E2E8F0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "#0F172A" }}>
+                  VERTICAL SLOTTING KINEMATICS
+                </span>
+                <span style={{ fontSize: "10px", color: "#64748B" }}>4 Tiers</span>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {(selectedRack.tiers || []).slice().reverse().map((tier) => {
+                  const isBottleneck = tier.level === 4 && tier.velocity === "HIGH";
+
+                  return (
+                    <div
+                      key={tier.level}
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: "8px",
+                        border: isBottleneck ? "1.5px solid #FCA5A5" : "1px solid #E2E8F0",
+                        background: isBottleneck ? "#FEF2F2" : "#F8FAFC",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        fontSize: "11px",
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span
+                            style={{
+                              background: isBottleneck ? "#EF4444" : "#0F172A",
+                              color: "#FFFFFF",
+                              fontWeight: 800,
+                              fontSize: "9px",
+                              padding: "1px 5px",
+                              borderRadius: "4px",
+                            }}
+                          >
+                            LVL {tier.level}
+                          </span>
+                          <span style={{ fontWeight: 700, color: "#0F172A" }}>
+                            {tier.skuName}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: "10px", color: "#64748B", marginTop: "2px" }}>
+                          Pick Duration: <b>{tier.pickDurationSec.toFixed(1)}s</b> · Battery: <b>{tier.batteryMultiplier}x</b>
+                        </div>
+                      </div>
+
+                      <span
+                        style={{
+                          fontSize: "9px",
+                          fontWeight: 800,
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          background:
+                            tier.velocity === "HIGH"
+                              ? "#FEE2E2"
+                              : tier.velocity === "MEDIUM"
+                              ? "#FEF3C7"
+                              : "#DCFCE7",
+                          color:
+                            tier.velocity === "HIGH"
+                              ? "#B91C1C"
+                              : tier.velocity === "MEDIUM"
+                              ? "#92400E"
+                              : "#166534",
+                        }}
+                      >
+                        {tier.velocity}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Slotting Bottleneck Banner */}
+              {selectedRack.tiers?.some((t) => t.level === 4 && t.velocity === "HIGH") && (
+                <div
+                  style={{
+                    marginTop: "10px",
+                    padding: "8px 10px",
+                    borderRadius: "8px",
+                    background: "#FFFBEB",
+                    border: "1px solid #FDE047",
+                    fontSize: "10px",
+                    color: "#854D0E",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  ⚠️ <b>Slotting Bottleneck:</b> High-velocity SKU on Level 4 causes 11.0s vertical mast lift delay, causing cascading aisle congestion.
+                </div>
+              )}
+
+              <button
+                onClick={() => defragmentRacks()}
+                style={{
+                  width: "100%",
+                  marginTop: "10px",
+                  padding: "8px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: "#0F172A",
+                  color: "#F8CB46",
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                }}
+              >
+                <span>✨</span>
+                <span>AI Re-Slot SKU to Level 1</span>
+              </button>
             </div>
           </div>
         )}
@@ -348,6 +486,40 @@ export function InspectorDrawer() {
             </div>
           </div>
         )}
+
+        {/* EXPLAINABLE AI DISPATCH FEED */}
+        <div style={{ background: "#F8FAFC", borderRadius: "12px", padding: "12px", border: "1px solid #E2E8F0", marginTop: "auto" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+            <span style={{ fontSize: "11px", fontWeight: 800, color: "#0F172A" }}>
+              EXPLAINABLE AI DISPATCH FEED
+            </span>
+            <span style={{ fontSize: "9px", color: "#64748B", fontWeight: 700, background: "#E2E8F0", padding: "1px 5px", borderRadius: "4px" }}>
+              A* AUDIT
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "160px", overflowY: "auto" }}>
+            {explainableLogs.slice(0, 4).map((log) => (
+              <div
+                key={log.id}
+                style={{
+                  padding: "6px 8px",
+                  borderRadius: "6px",
+                  background: "#FFFFFF",
+                  border: "1px solid #E2E8F0",
+                  fontSize: "10px",
+                  color: "#334155",
+                  lineHeight: 1.4,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", color: "#0F172A", fontWeight: 800, marginBottom: "2px" }}>
+                  <span>{log.botId} ➔ {log.taskId}</span>
+                  <span style={{ color: "#64748B", fontWeight: 500 }}>{log.timestamp}</span>
+                </div>
+                <div style={{ color: "#475569" }}>{log.reason}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </aside>
   );

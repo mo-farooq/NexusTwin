@@ -719,6 +719,25 @@ export function DecisionSandboxModal() {
           {/* ═════════════════════════════════════════════════════════ */}
           {activeTab === "payback" && (
             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              {/* Simulation Verdict Banner */}
+              <div
+                style={{
+                  padding: "14px 18px",
+                  borderRadius: "14px",
+                  background: "linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)",
+                  border: "1.5px solid #FCD34D",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  boxShadow: "0 2px 8px rgba(245, 158, 11, 0.12)",
+                }}
+              >
+                <span style={{ fontSize: "22px" }}>💡</span>
+                <div style={{ fontSize: "12px", color: "#854D0E", lineHeight: 1.5 }}>
+                  <b>Simulation Verdict:</b> Deploying <b>{botCount} {selectedFleetProfileId === "LIGHT_PICKER" ? "Lite Tote Bots" : "Heavy Rack Movers"}</b> (₹{(decisionMetrics.totalFleetCapexINR / 100000).toFixed(1)}L CapEx) achieves <b>{decisionMetrics.automatedThroughputPerHour} orders/hr</b> ({decisionMetrics.throughputGainPct > 0 ? `+${decisionMetrics.throughputGainPct}%` : ""} vs manual baseline) with <b>{kpi.slaCompliancePct.toFixed(1)}% SLA compliance</b> and pays back in <b>{decisionMetrics.paybackPeriodMonths} Months</b>. Primary constraint: <b>{decisionMetrics.bottleneckZoneName}</b> ({decisionMetrics.bottleneckCongestionPct}% traffic density).
+                </div>
+              </div>
+
               {/* Top Row: Live Decision Intelligence Highlights */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
                 {/* Highlight 1: Output With vs Without */}
