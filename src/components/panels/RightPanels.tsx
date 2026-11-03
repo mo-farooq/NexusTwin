@@ -183,14 +183,14 @@ export function LiveCameraPanel() {
             justifyContent: "center",
             flexDirection: "column",
             gap: "4px",
-            background: "radial-gradient(ellipse at 50% 50%, #0D1B2A 0%, #050B14 85%)",
+            background: "radial-gradient(ellipse at 50% 50%, #F8FAFC 0%, #E2E8F0 100%)",
           }}
         >
           <div style={{ fontSize: "24px" }}>📹</div>
-          <span style={{ fontSize: "10.5px", color: "var(--muted)", fontWeight: 600 }}>
+          <span style={{ fontSize: "10.5px", color: "var(--text)", fontWeight: 700 }}>
             {currentCam.label}
           </span>
-          <span style={{ fontSize: "9px", color: "#64748B", fontFamily: "var(--mono)" }}>
+          <span style={{ fontSize: "9px", color: "var(--muted)", fontFamily: "var(--mono)" }}>
             STREAM OK · 18 ms LATENCY
           </span>
         </div>

@@ -130,9 +130,9 @@ export function ThroughputPanel() {
           </defs>
 
           {/* Grid lines */}
-          <line x1="20" x2="290" y1="20" y2="20" stroke="#1E293B" strokeWidth="0.8" />
-          <line x1="20" x2="290" y1="50" y2="50" stroke="#1E293B" strokeWidth="0.8" />
-          <line x1="20" x2="290" y1="80" y2="80" stroke="#1E293B" strokeWidth="0.8" />
+          <line x1="20" x2="290" y1="20" y2="20" stroke="#E2E8F0" strokeWidth="0.8" />
+          <line x1="20" x2="290" y1="50" y2="50" stroke="#E2E8F0" strokeWidth="0.8" />
+          <line x1="20" x2="290" y1="80" y2="80" stroke="#E2E8F0" strokeWidth="0.8" />
 
           {/* Target Dashed Line */}
           <line x1="20" y1="65" x2="290" y2="20" stroke="#38BDF8" strokeWidth="1.5" strokeDasharray="4 3" />
@@ -175,7 +175,7 @@ export function RobotStatusPanel() {
     <Panel title="Fleet Distribution">
       <div className="donut-wrap">
         <svg viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r={R} fill="none" stroke="#1E293B" strokeWidth="12" />
+          <circle cx="50" cy="50" r={R} fill="none" stroke="#E2E8F0" strokeWidth="12" />
           {stats.parts.map((p) => {
             const len = (p.count / stats.total) * C;
             const el = (

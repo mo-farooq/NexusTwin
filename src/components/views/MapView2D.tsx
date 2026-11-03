@@ -43,10 +43,10 @@ export function MapView2D({ mode = "MAP" }: { mode?: "MAP" | "TRAFFIC" | "HEATMA
       className="map2d"
       viewBox={`-2 -4 ${W + 4} ${D + 8}`}
       preserveAspectRatio="xMidYMid meet"
-      style={{ width: "100%", height: "100%", background: "#05080F" }}
+      style={{ width: "100%", height: "100%", background: "#F8FAFC" }}
     >
       {/* Background Floor */}
-      <rect x="0" y="0" width={W} height={D} fill="#090E1A" stroke="#1E293B" strokeWidth="0.5" />
+      <rect x="0" y="0" width={W} height={D} fill="#FFFFFF" stroke="#CBD5E1" strokeWidth="0.5" />
 
       {/* 5m Grid Lines */}
       {Array.from({ length: Math.floor(W / 5) + 1 }, (_, i) => (
@@ -56,8 +56,8 @@ export function MapView2D({ mode = "MAP" }: { mode?: "MAP" | "TRAFFIC" | "HEATMA
           x2={i * 5}
           y1="0"
           y2={D}
-          stroke="#131D31"
-          strokeWidth="0.2"
+          stroke="#E2E8F0"
+          strokeWidth="0.25"
         />
       ))}
       {Array.from({ length: Math.floor(D / 5) + 1 }, (_, i) => (
@@ -67,8 +67,8 @@ export function MapView2D({ mode = "MAP" }: { mode?: "MAP" | "TRAFFIC" | "HEATMA
           y2={i * 5}
           x1="0"
           x2={W}
-          stroke="#131D31"
-          strokeWidth="0.2"
+          stroke="#E2E8F0"
+          strokeWidth="0.25"
         />
       ))}
 
@@ -113,8 +113,8 @@ export function MapView2D({ mode = "MAP" }: { mode?: "MAP" | "TRAFFIC" | "HEATMA
           y={r.coords[1] - 0.4}
           width={1.5}
           height={0.8}
-          fill="#1E293B"
-          stroke="#334155"
+          fill="#E2E8F0"
+          stroke="#94A3B8"
           strokeWidth="0.15"
           rx="0.1"
         />
@@ -128,15 +128,15 @@ export function MapView2D({ mode = "MAP" }: { mode?: "MAP" | "TRAFFIC" | "HEATMA
             y={s.coords[1] - 0.6}
             width={2.4}
             height={1.2}
-            fill="#1E293B"
-            stroke="#F59E0B"
+            fill="#FEF3C7"
+            stroke="#D97706"
             strokeWidth="0.25"
             rx="0.2"
           />
           <text
             x={s.coords[0]}
             y={s.coords[1] + 0.35}
-            fill="#FDE68A"
+            fill="#92400E"
             fontSize="0.9"
             fontWeight="700"
             textAnchor="middle"
@@ -261,7 +261,7 @@ export function MapView2D({ mode = "MAP" }: { mode?: "MAP" | "TRAFFIC" | "HEATMA
                 cy={bot.position[2]}
                 r="1.4"
                 fill="none"
-                stroke="#F8CB46"
+                stroke="#2563EB"
                 strokeWidth="0.3"
                 strokeDasharray="0.6 0.3"
               />
@@ -291,7 +291,7 @@ export function MapView2D({ mode = "MAP" }: { mode?: "MAP" | "TRAFFIC" | "HEATMA
             <text
               x={bot.position[0]}
               y={bot.position[2] + 1.25}
-              fill={isSel ? "#FFFFFF" : "#CBD5E1"}
+              fill={isSel ? "#2563EB" : "#334155"}
               fontSize="0.85"
               fontWeight={isSel ? "900" : "700"}
               textAnchor="middle"
