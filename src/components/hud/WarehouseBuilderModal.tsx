@@ -376,6 +376,138 @@ export function WarehouseBuilderModal() {
                 2. Facility Sizing & Material Flow
               </label>
 
+              {/* 1-Click Scale Presets */}
+              <div style={{ marginBottom: "12px" }}>
+                <span style={{ display: "block", fontSize: "10px", fontWeight: 700, color: "#64748B", marginBottom: "6px" }}>
+                  1-Click Facility Scale Presets:
+                </span>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                  <button
+                    onClick={() => {
+                      setWidthM(20);
+                      setDepthM(20);
+                      const layout = generateAutoZonedWarehouse({
+                        widthMeters: 20,
+                        depthMeters: 20,
+                        flowType,
+                        tierCount,
+                        pillarCells: detectedPillars,
+                        uploadedImageUrl: blueprintUrl || undefined,
+                      });
+                      setActiveLayout(layout);
+                    }}
+                    style={{
+                      padding: "8px 10px",
+                      background: widthM === 20 && depthM === 20 ? "#EFF6FF" : "#F8FAFC",
+                      border: widthM === 20 && depthM === 20 ? "2px solid #3B82F6" : "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: widthM === 20 && depthM === 20 ? "#1D4ED8" : "#334155",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <div style={{ fontWeight: 800 }}>⚡ Micro Dark Store</div>
+                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "1px" }}>20m × 20m · 3 AMRs</div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setWidthM(40);
+                      setDepthM(30);
+                      const layout = generateAutoZonedWarehouse({
+                        widthMeters: 40,
+                        depthMeters: 30,
+                        flowType,
+                        tierCount,
+                        pillarCells: detectedPillars,
+                        uploadedImageUrl: blueprintUrl || undefined,
+                      });
+                      setActiveLayout(layout);
+                    }}
+                    style={{
+                      padding: "8px 10px",
+                      background: widthM === 40 && depthM === 30 ? "#EFF6FF" : "#F8FAFC",
+                      border: widthM === 40 && depthM === 30 ? "2px solid #3B82F6" : "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: widthM === 40 && depthM === 30 ? "#1D4ED8" : "#334155",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <div style={{ fontWeight: 800 }}>📦 MSME Depot</div>
+                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "1px" }}>40m × 30m · 8 AMRs</div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setWidthM(60);
+                      setDepthM(40);
+                      const layout = generateAutoZonedWarehouse({
+                        widthMeters: 60,
+                        depthMeters: 40,
+                        flowType,
+                        tierCount,
+                        pillarCells: detectedPillars,
+                        uploadedImageUrl: blueprintUrl || undefined,
+                      });
+                      setActiveLayout(layout);
+                    }}
+                    style={{
+                      padding: "8px 10px",
+                      background: widthM === 60 && depthM === 40 ? "#EFF6FF" : "#F8FAFC",
+                      border: widthM === 60 && depthM === 40 ? "2px solid #3B82F6" : "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: widthM === 60 && depthM === 40 ? "#1D4ED8" : "#334155",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <div style={{ fontWeight: 800 }}>🏭 Standard Hub</div>
+                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "1px" }}>60m × 40m · 12 AMRs</div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setWidthM(80);
+                      setDepthM(50);
+                      const layout = generateAutoZonedWarehouse({
+                        widthMeters: 80,
+                        depthMeters: 50,
+                        flowType,
+                        tierCount,
+                        pillarCells: detectedPillars,
+                        uploadedImageUrl: blueprintUrl || undefined,
+                      });
+                      setActiveLayout(layout);
+                    }}
+                    style={{
+                      padding: "8px 10px",
+                      background: widthM === 80 && depthM === 50 ? "#EFF6FF" : "#F8FAFC",
+                      border: widthM === 80 && depthM === 50 ? "2px solid #3B82F6" : "1px solid #E2E8F0",
+                      borderRadius: "8px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: widthM === 80 && depthM === 50 ? "#1D4ED8" : "#334155",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <div style={{ fontWeight: 800 }}>🚀 Regional Mega DC</div>
+                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "1px" }}>80m × 50m · 22 AMRs</div>
+                  </button>
+                </div>
+              </div>
+
               {/* Width Slider */}
               <div style={{ marginBottom: "10px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", fontWeight: 700, marginBottom: "4px" }}>
@@ -545,10 +677,47 @@ export function WarehouseBuilderModal() {
                     <b style={{ color: "#D97706", fontSize: "12px" }}>{activeLayout.summary.estimatedThroughputPerHour} orders/hr</b>
                   </div>
                   <div>
-                    <span style={{ color: "#64748B", display: "block" }}>Aisle Clearance:</span>
-                    <b style={{ color: "#0F172A", fontSize: "12px" }}>2.0 m (Anti-Deadlock)</b>
+                    <span style={{ color: "#64748B", display: "block" }}>Floor Density:</span>
+                    <b style={{ color: "#0F172A", fontSize: "12px" }}>
+                      {Math.round((widthM * depthM) / (activeLayout.summary.recommendedFleetSize || 1))} m²/AMR
+                    </b>
                   </div>
                 </div>
+
+                {activeLayout.summary.fleetSizing && (
+                  <div
+                    style={{
+                      marginTop: "6px",
+                      padding: "8px 10px",
+                      background: "#EFF6FF",
+                      border: "1px solid #BFDBFE",
+                      borderRadius: "8px",
+                      fontSize: "11px",
+                      lineHeight: "1.4",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "3px" }}>
+                      <span style={{ fontWeight: 800, color: "#1E40AF" }}>
+                        📐 Auto-Sizing Engine:
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "9px",
+                          fontWeight: 800,
+                          background: "#DBEAFE",
+                          color: "#1E3A8A",
+                          padding: "1px 5px",
+                          borderRadius: "4px",
+                        }}
+                      >
+                        {activeLayout.summary.fleetSizing.categoryLabel}
+                      </span>
+                    </div>
+                    <div style={{ color: "#1D4ED8" }}>
+                      {activeLayout.summary.fleetSizing.rationale}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

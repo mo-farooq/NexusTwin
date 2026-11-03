@@ -43,6 +43,7 @@ export function DecisionSandboxModal() {
   const decisionMetrics = useTwinStore((s) => s.decisionMetrics);
   const kpi = useTwinStore((s) => s.kpi);
   const setFleetSize = useTwinStore((s) => s.setFleetSize);
+  const autoSizeFleet = useTwinStore((s) => s.autoSizeFleet);
 
   // Local Editable Inputs
   const botCount = Object.keys(botUnits).length;
@@ -849,18 +850,41 @@ export function DecisionSandboxModal() {
                     </div>
                     <input
                       type="range"
-                      min={5}
-                      max={30}
+                      min={2}
+                      max={36}
                       step={1}
                       value={botCount}
                       onChange={(e) => setFleetSize(Number(e.target.value))}
                       style={{ width: "100%", accentColor: "#F59E0B" }}
                     />
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#94A3B8" }}>
-                      <span>5 Bots (Min)</span>
-                      <span>15 (Standard)</span>
-                      <span>30 (Max)</span>
+                      <span>2 Bots (Micro Store)</span>
+                      <span>12 (Standard Hub)</span>
+                      <span>36 (Mega DC)</span>
                     </div>
+
+                    <button
+                      onClick={autoSizeFleet}
+                      style={{
+                        marginTop: "8px",
+                        width: "100%",
+                        padding: "6px 10px",
+                        background: "#EFF6FF",
+                        border: "1px solid #BFDBFE",
+                        borderRadius: "8px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "#1D4ED8",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <span>✨</span> Auto-Size Fleet to Facility Dimensions
+                    </button>
                   </div>
 
                   {/* Input 2: Manual Worker Wage (₹18,000/mo) */}

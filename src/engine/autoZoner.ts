@@ -47,6 +47,28 @@ export interface AutoZonerParams {
   customPaints?: Record<string, number>; // "col,row" -> cellType / zone
 }
 
+export interface FacilitySizingMetrics {
+  widthM: number;
+  depthM: number;
+  areaM2?: number;
+  rackCount?: number;
+  rackAisles?: number;
+  totalBins?: number;
+  chargingDocksCount?: number;
+  packingStationsCount?: number;
+  inboundBaysCount?: number;
+}
+
+export interface FleetSizingResult {
+  recommendedFleetSize: number;
+  minBots: number;
+  maxBots: number;
+  densityM2PerBot: number;
+  facilityCategory: "MICRO_DARK_STORE" | "COMPACT_DEPOT" | "STANDARD_FULFILLMENT" | "REGIONAL_MEGA_DC";
+  categoryLabel: string;
+  rationale: string;
+}
+
 export interface AutoZonedLayout {
   dimensions: GridDimensions;
   navGrid: NavGrid;
@@ -63,8 +85,93 @@ export interface AutoZonedLayout {
     aisleWidthMeters: number;
     inboundBaysCount: number;
     packingStationsCount: number;
+    fleetSizing?: FleetSizingResult;
   };
   blueprintUrl?: string | null;
+}
+
+/**
+ * Intelligent Warehouse Fleet Sizing Algorithm
+ * Dynamically computes optimal autonomous AMR fleet size based on floor area,
+ * storage rack volume, charging buffer, and packing throughput.
+ */
+export function computeOptimalFleetSize(metrics: FacilitySizingMetrics): FleetSizingResult {
+  const widthM = Math.max(15, metrics.widthM);
+  const depthM = Math.max(15, metrics.depthM);
+  const areaM2 = metrics.areaM2 || (widthM * depthM);
+  const rackCount = metrics.rackCount ?? Math.max(4, Math.round(areaM2 / 65));
+  const rackAisles = metrics.rackAisles ?? Math.max(1, Math.round(rackCount / 6));
+  const packingStationsCount = metrics.packingStationsCount ?? Math.max(1, Math.min(6, Math.floor(depthM / 9)));
+  const chargingDocksCount = metrics.chargingDocksCount ?? Math.max(2, Math.min(10, Math.floor(widthM / 7)));
+
+  // Demand components
+  const aisleDemand = rackAisles * 1.25;
+  const stationAbsorption = packingStationsCount * 2.2;
+  const chargerCeiling = chargingDocksCount * 2.5;
+
+  // Floor area clearance: ensures AMRs have sufficient maneuver room without deadlock
+  const m2PerBotTarget = areaM2 <= 600 ? 120 : areaM2 <= 1400 ? 140 : 180;
+  const areaCeiling = Math.max(2, Math.floor(areaM2 / m2PerBotTarget));
+
+  const rawRecommendation = (aisleDemand * 0.40) + (stationAbsorption * 0.30) + (areaCeiling * 0.30);
+  let recommended = Math.round(rawRecommendation);
+  recommended = Math.min(recommended, areaCeiling);
+  recommended = Math.min(recommended, Math.round(chargerCeiling + 2));
+
+  let facilityCategory: FleetSizingResult["facilityCategory"] = "STANDARD_FULFILLMENT";
+  let categoryLabel = "Standard Fulfillment Hub";
+  let minBots = 8;
+  let maxBots = 18;
+
+  if (areaM2 <= 600) {
+    facilityCategory = "MICRO_DARK_STORE";
+    categoryLabel = "Micro Dark Store (Quick Commerce)";
+    // Specifically 2 to 4 robots for small warehouse footprint
+    recommended = Math.max(2, Math.min(4, recommended));
+    minBots = 2;
+    maxBots = 4;
+  } else if (areaM2 <= 1400) {
+    facilityCategory = "COMPACT_DEPOT";
+    categoryLabel = "Compact MSME Depot";
+    recommended = Math.max(4, Math.min(9, recommended));
+    minBots = 4;
+    maxBots = 10;
+  } else if (areaM2 <= 2800) {
+    facilityCategory = "STANDARD_FULFILLMENT";
+    categoryLabel = "Standard Fulfillment Hub";
+    recommended = Math.max(8, Math.min(16, recommended));
+    minBots = 8;
+    maxBots = 18;
+  } else {
+    facilityCategory = "REGIONAL_MEGA_DC";
+    categoryLabel = "Regional Mega Distribution Center";
+    recommended = Math.max(16, Math.min(32, recommended));
+    minBots = 14;
+    maxBots = 36;
+  }
+
+  const densityM2PerBot = Math.round(areaM2 / recommended);
+
+  let rationale = "";
+  if (facilityCategory === "MICRO_DARK_STORE") {
+    rationale = `Sized to ${recommended} AMRs (${densityM2PerBot} m²/bot). In a compact dark store (${areaM2} m²), 2–4 robots prevent aisle congestion while fulfilling instant orders.`;
+  } else if (facilityCategory === "COMPACT_DEPOT") {
+    rationale = `Sized to ${recommended} AMRs (${densityM2PerBot} m²/bot). Balanced across ${rackAisles} picking aisles and ${packingStationsCount} packing stations with zero bottleneck queues.`;
+  } else if (facilityCategory === "STANDARD_FULFILLMENT") {
+    rationale = `Sized to ${recommended} AMRs (${densityM2PerBot} m²/bot). Optimized for ${rackCount} multi-tier racks and ${chargingDocksCount} EV charging pads with high throughput.`;
+  } else {
+    rationale = `Sized to ${recommended} AMRs (${densityM2PerBot} m²/bot). Enterprise scale across ${rackAisles} picking aisles, high-density storage, and motorized outbound conveyors.`;
+  }
+
+  return {
+    recommendedFleetSize: recommended,
+    minBots,
+    maxBots,
+    densityM2PerBot,
+    facilityCategory,
+    categoryLabel,
+    rationale,
+  };
 }
 
 /**
@@ -379,7 +486,7 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
     }
 
     // 3. CHARGING_DOCKS (Operational Green #0C831F)
-    const chargerCount = Math.max(4, Math.min(10, Math.floor(cols / 7)));
+    const chargerCount = Math.max(2, Math.min(10, Math.floor(cols / 7)));
     zones["ZONE_CHARGING"] = {
       id: "ZONE_CHARGING",
       name: "Autonomous EV Fast-Charging Bay",
@@ -418,7 +525,7 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
     }
 
     // 4. PACKING_STATIONS (Amber #F59E0B)
-    const packCount = Math.max(2, Math.min(6, Math.floor(rows / 9)));
+    const packCount = Math.max(1, Math.min(6, Math.floor(rows / 9)));
     zones["ZONE_PACKING"] = {
       id: "ZONE_PACKING",
       name: "Packing & Automated Sorting Section",
@@ -627,7 +734,7 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
     }
 
     // 4. CHARGING_DOCKS (North-East Perimeter)
-    const chargerCount = Math.max(4, Math.min(8, Math.floor(cols / 8)));
+    const chargerCount = Math.max(2, Math.min(8, Math.floor(cols / 8)));
     zones["ZONE_CHARGING"] = {
       id: "ZONE_CHARGING",
       name: "Autonomous EV Fast-Charging Bay",
@@ -666,9 +773,25 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
     }
   }
 
-  // Calculate high-confidence sizing metrics
+  // Calculate dynamic fleet sizing metrics
   const autoPlacedDocks = Object.keys(chargingDocks).length;
-  const recommendedFleetSize = Math.max(5, Math.min(24, Math.round(rackAisleCount * 2.2)));
+  const rackCount = Object.values(locations).filter((l) => l.type === "SHELF").length;
+  const packingStationsCount = Object.values(locations).filter((l) => l.type === "PACK_STATION").length;
+  const inboundBaysCount = Object.values(locations).filter((l) => l.type === "INBOUND_DOCK").length;
+
+  const sizingResult = computeOptimalFleetSize({
+    widthM: cols,
+    depthM: rows,
+    areaM2: cols * rows,
+    rackCount,
+    rackAisles: rackAisleCount,
+    totalBins,
+    chargingDocksCount: autoPlacedDocks,
+    packingStationsCount,
+    inboundBaysCount,
+  });
+
+  const recommendedFleetSize = sizingResult.recommendedFleetSize;
   const estimatedThroughput = Math.round(recommendedFleetSize * 28.5);
 
   return {
@@ -680,13 +803,14 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
     conveyors,
     summary: {
       totalStorageCapacityBins: totalBins,
-      rackCount: Object.values(locations).filter((l) => l.type === "SHELF").length,
+      rackCount,
       autoPlacedChargingDocks: autoPlacedDocks,
       recommendedFleetSize,
       estimatedThroughputPerHour: estimatedThroughput,
       aisleWidthMeters: 2.0,
-      inboundBaysCount: Object.values(locations).filter((l) => l.type === "INBOUND_DOCK").length,
-      packingStationsCount: Object.values(locations).filter((l) => l.type === "PACK_STATION").length,
+      inboundBaysCount,
+      packingStationsCount,
+      fleetSizing: sizingResult,
     },
     blueprintUrl: uploadedImageUrl || null,
   };

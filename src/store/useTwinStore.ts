@@ -20,7 +20,12 @@ import {
   type NavGrid,
   type GridDimensions,
 } from "../engine/pathfinder";
-import type { AutoZonedLayout, ConveyorSegment } from "../engine/autoZoner";
+import {
+  computeOptimalFleetSize,
+  type AutoZonedLayout,
+  type ConveyorSegment,
+  type FleetSizingResult,
+} from "../engine/autoZoner";
 
 // ─────────────────────────────────────────────────────────────
 // 1. Robot / BotUnit Profiles & Specifications (Vendor-Neutral)
@@ -569,12 +574,32 @@ function createDefaultLayout(dimensions: GridDimensions): {
   // Freight Elevators (Removed for unobstructed single-level automated layout)
   const elevators: Record<string, ElevatorNode> = {};
 
-  // Initialize fleet of 12 BotUnits
+  // Dynamically compute optimal fleet size based on warehouse size and rack capacity
+  const rackCount = Object.values(locations).filter((l) => l.type === "SHELF").length;
+  const rackAisles = Math.max(1, Math.round(rackCount / 6));
+  const autoPlacedDocks = Object.keys(chargingDocks).length;
+  const packingStationsCount = Object.values(locations).filter((l) => l.type === "PACK_STATION").length;
+  const inboundBaysCount = Object.values(locations).filter((l) => l.type === "INBOUND_DOCK").length;
+
+  const sizing = computeOptimalFleetSize({
+    widthM: cols,
+    depthM: rows,
+    areaM2: cols * rows,
+    rackCount,
+    rackAisles,
+    chargingDocksCount: autoPlacedDocks,
+    packingStationsCount,
+    inboundBaysCount,
+  });
+
+  const fleetSize = sizing.recommendedFleetSize;
   const initialBotUnits: Record<string, BotUnit> = {};
-  for (let i = 1; i <= 12; i++) {
+
+  const spawnColsCount = Math.max(2, Math.floor(cols / 4));
+  for (let i = 1; i <= fleetSize; i++) {
     const botId = `BOT-${i < 10 ? "0" + i : i}`;
-    const spawnCol = 10 + ((i - 1) % 6) * 3;
-    const spawnRow = 5 + Math.floor((i - 1) / 6) * 2;
+    const spawnCol = Math.min(cols - 4, 6 + ((i - 1) % spawnColsCount) * 3);
+    const spawnRow = Math.min(rows - 4, 4 + Math.floor((i - 1) / spawnColsCount) * 2);
 
     initialBotUnits[botId] = {
       id: botId,
@@ -701,6 +726,7 @@ export interface NexusTwinState {
   toggleFloorObstacle: (col: number, row: number) => void;
   clearFloorObstacles: () => void;
   setFleetSize: (count: number) => void;
+  autoSizeFleet: () => void;
   breakdownBot: (botId?: string) => void;
   repairFleet: () => void;
 
@@ -1268,15 +1294,11 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     selectRack: (id) => set({ selectedRackId: id, selectedBotId: null, selectedElevatorId: null, selectedStationId: null }),
     setFocusTarget: (target) => set({ focusTarget: target }),
     setLayoutPreset: (preset) => {
-      // Adjust fleet sizing based on preset
-      const currentBots = get().botUnits;
-      const profile = preset === "DARK_STORE" ? "LIGHT_PICKER" : preset === "REGIONAL_HUB" ? "MEDIUM_HAULER" : "HEAVY_PALLET";
-      const updated = { ...currentBots };
-      Object.keys(updated).forEach((id) => {
-        updated[id] = { ...updated[id], profileId: profile };
-      });
-      const decisionMetrics = computeFinancials(updated, BOT_PROFILES, get().kpi, get().financialParams);
-      set({ layoutPreset: preset, selectedFleetProfileId: profile, botUnits: updated, decisionMetrics });
+      const profile = preset === "DARK_STORE" ? "LIGHT_PICKER" : preset === "REGIONAL_HUB" ? "HEAVY_PALLET" : "MEDIUM_HAULER";
+      const targetFleetSize = preset === "DARK_STORE" ? 3 : preset === "REGIONAL_HUB" ? 18 : 8;
+
+      set({ layoutPreset: preset, selectedFleetProfileId: profile });
+      get().setFleetSize(targetFleetSize);
     },
     toggleHeatmapMode: () => set((s) => ({ heatmapMode: !s.heatmapMode })),
     setHeatmapMode: (active) => set({ heatmapMode: active }),
@@ -1388,10 +1410,14 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       const fleetSize = layout.summary.recommendedFleetSize || 12;
       const nextBots: Record<string, BotUnit> = {};
 
+      const cols = layout.dimensions.cols;
+      const rows = layout.dimensions.rows;
+      const maxCols = Math.max(2, Math.floor(cols / 4));
+
       for (let i = 1; i <= fleetSize; i++) {
         const botId = `BOT-${String(i).padStart(2, "0")}`;
-        const spawnCol = 4 + ((i - 1) % 6) * 3;
-        const spawnRow = 5 + Math.floor((i - 1) / 6) * 2;
+        const spawnCol = Math.max(2, Math.min(cols - 3, 3 + ((i - 1) % maxCols) * 3));
+        const spawnRow = Math.max(2, Math.min(rows - 3, 3 + Math.floor((i - 1) / maxCols) * 2));
         const [wx, wz] = cellToWorld(spawnCol, spawnRow, layout.dimensions.cellSize);
 
         nextBots[botId] = {
@@ -1486,7 +1512,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     },
 
     setFleetSize: (count) => {
-      const clamped = Math.min(30, Math.max(5, count));
+      const clamped = Math.min(40, Math.max(2, count));
       const { botUnits, selectedFleetProfileId, kpi, financialParams, navGrid } = get();
       const currentBotKeys = Object.keys(botUnits);
       const currentCount = currentBotKeys.length;
@@ -1497,10 +1523,11 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
 
       if (clamped > currentCount) {
         // Add bots
+        const colsCount = Math.max(2, Math.floor(navGrid.cols / 4));
         for (let i = currentCount + 1; i <= clamped; i++) {
           const botId = `BOT-${String(i).padStart(2, "0")}`;
-          const depotCol = 10 + ((i - 1) % 8) * 3;
-          const depotRow = 32 + Math.floor((i - 1) / 8) * 2;
+          const depotCol = Math.min(navGrid.cols - 3, 3 + ((i - 1) % colsCount) * 3);
+          const depotRow = Math.min(navGrid.rows - 3, 3 + Math.floor((i - 1) / colsCount) * 2);
           const [wx, wz] = cellToWorld(depotCol, depotRow, navGrid.cellSize);
           nextBots[botId] = {
             id: botId,
@@ -1552,6 +1579,38 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
 
       const decisionMetrics = computeFinancials(nextBots, BOT_PROFILES, kpi, financialParams);
       set({ botUnits: nextBots, decisionMetrics });
+    },
+
+    autoSizeFleet: () => {
+      const state = get();
+      const { navGrid, locations, chargingDocks } = state;
+      const rackCount = Object.values(locations).filter((l) => l.type === "SHELF").length;
+      const packingStationsCount = Object.values(locations).filter((l) => l.type === "PACK_STATION").length;
+      const chargingDocksCount = Object.keys(chargingDocks).length;
+      const sizing = computeOptimalFleetSize({
+        widthM: navGrid.cols,
+        depthM: navGrid.rows,
+        areaM2: navGrid.cols * navGrid.rows,
+        rackCount,
+        chargingDocksCount,
+        packingStationsCount,
+      });
+      state.setFleetSize(sizing.recommendedFleetSize);
+
+      const secondsStr = String(Math.floor((state.tick * 0.1) % 60)).padStart(2, "0");
+      const minutesStr = String(Math.floor((state.tick * 0.1) / 60)).padStart(2, "0");
+      const logEntry: ExplainableDispatchLog = {
+        id: `LOG-RESIZE-${state.tick}`,
+        timestamp: `00:${minutesStr}:${secondsStr}`,
+        botId: "FLEET_CONTROLLER",
+        taskId: "FLEET_SIZING",
+        targetRack: sizing.categoryLabel,
+        tier: 1,
+        reason: `📐 ${sizing.rationale}`,
+      };
+      set((s) => ({
+        explainableLogs: [logEntry, ...s.explainableLogs].slice(0, 20),
+      }));
     },
 
     breakdownBot: (botId) => {

@@ -14,6 +14,7 @@ import { Panel, StatRow, Dot, Icon } from "../ui/primitives";
 
 export function FleetOverviewPanel() {
   const botUnits = useTwinStore((s) => s.botUnits);
+  const gridDimensions = useTwinStore((s) => s.gridDimensions);
   const setModal = useTwinStore((s) => s.setModal);
 
   const bots = Object.values(botUnits);
@@ -22,6 +23,17 @@ export function FleetOverviewPanel() {
   const charging = bots.filter((b) => b.status === "CHARGING").length;
   const idle = bots.filter((b) => b.status === "IDLE" || b.status === "WARNING").length;
   const error = bots.filter((b) => b.status === "ERROR" || b.status === "OFFLINE").length;
+
+  const areaM2 = gridDimensions.widthM * gridDimensions.depthM;
+  const density = total > 0 ? Math.round(areaM2 / total) : 0;
+  const scaleBadge =
+    areaM2 <= 600
+      ? "Micro Dark Store"
+      : areaM2 <= 1400
+      ? "Compact MSME Depot"
+      : areaM2 <= 2800
+      ? "Standard Hub"
+      : "Regional Mega DC";
 
   return (
     <Panel
@@ -33,6 +45,8 @@ export function FleetOverviewPanel() {
       }
     >
       <StatRow label="Total Autonomous Bots" value={total} big />
+      <StatRow label="Facility Scale" value={scaleBadge} color="#2563EB" />
+      <StatRow label="Floor Clearance" value={`${density} m² / AMR`} />
       <StatRow label="Active in Transit" value={active} color="#10B981" />
       <StatRow label="EV Fast Charging" value={charging} color="#3B82F6" />
       <StatRow label="Idle / Standby" value={idle} color="#F59E0B" />
