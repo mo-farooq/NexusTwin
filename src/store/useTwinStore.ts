@@ -550,31 +550,8 @@ function createDefaultLayout(dimensions: GridDimensions): {
     };
   }
 
-  // Freight Elevators connecting Ground & Mezzanine Levels
-  const elevators: Record<string, ElevatorNode> = {
-    "LIFT-01": {
-      id: "LIFT-01",
-      name: "Freight Lift 01 (North Mezzanine)",
-      coords: [30.0, 14.0],
-      currentFloor: 1,
-      targetFloor: null,
-      status: "IDLE",
-      queueLength: 0,
-      doorState: "CLOSED",
-    },
-    "LIFT-02": {
-      id: "LIFT-02",
-      name: "Freight Lift 02 (South Mezzanine)",
-      coords: [30.0, 26.0],
-      currentFloor: 1,
-      targetFloor: null,
-      status: "IDLE",
-      queueLength: 0,
-      doorState: "CLOSED",
-    },
-  };
-  setGridRect(navGrid, 29, 13, 31, 15, 1); // Lift 1 footprint
-  setGridRect(navGrid, 29, 25, 31, 27, 1); // Lift 2 footprint
+  // Freight Elevators (Removed for unobstructed single-level automated layout)
+  const elevators: Record<string, ElevatorNode> = {};
 
   // Initialize fleet of 12 BotUnits
   const initialBotUnits: Record<string, BotUnit> = {};

@@ -9,7 +9,7 @@
 
 import React, { useState } from "react";
 import { RoundedBox, Html } from "@react-three/drei";
-import { useTwinStore, type WarehouseLocation, type ElevatorNode } from "../../store/useTwinStore";
+import { useTwinStore, type WarehouseLocation } from "../../store/useTwinStore";
 
 // ─────────────────────────────────────────────────────────────
 // Architectural Colors & Styling
@@ -24,9 +24,6 @@ const COLORS = {
   STATION_SURFACE: "#1E293B",
   OVERHEAD_MONITOR: "#0F172A",
   CONVEYOR_BELT: "#0284C7",
-  SHAFT_FRAME: "#1E293B",
-  SHAFT_TRIM_YELLOW: "#F8CB46",
-  ELEVATOR_CABIN: "#475569",
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -186,156 +183,13 @@ function WorkstationNode({ station, isSelected, onSelect }: WorkstationNodeProps
 }
 
 // ─────────────────────────────────────────────────────────────
-// 3. Freight Elevator Shaft Component
-// ─────────────────────────────────────────────────────────────
-
-interface ElevatorShaftProps {
-  elevator: ElevatorNode;
-  isSelected: boolean;
-  onSelect: () => void;
-}
-
-function ElevatorShaft({ elevator, isSelected, onSelect }: ElevatorShaftProps) {
-  const showLabels = useTwinStore((s) => s.showLabels);
-  const [x, z] = elevator.coords;
-  const shaftHeight = 8.5;
-  const shaftWidth = 2.8;
-  const shaftDepth = 2.8;
-
-  const cornerPosts = [
-    [-shaftWidth / 2 + 0.1, -shaftDepth / 2 + 0.1],
-    [shaftWidth / 2 - 0.1, -shaftDepth / 2 + 0.1],
-    [-shaftWidth / 2 + 0.1, shaftDepth / 2 - 0.1],
-    [shaftWidth / 2 - 0.1, shaftDepth / 2 - 0.1],
-  ];
-
-  return (
-    <group position={[x, 0, z]}>
-      {/* Clickable <Html distanceFactor={40}> Floating Status Pill */}
-      {(showLabels || isSelected) && (
-        <Html
-          position={[0, shaftHeight + 1.2, 0]}
-          center
-          distanceFactor={40}
-          zIndexRange={[10, 0]}
-        >
-          <StatusPill
-            label={elevator.name}
-            subtext={`FLOOR ${elevator.currentFloor} · ${elevator.status}`}
-            onClick={onSelect}
-            isActive={isSelected}
-          />
-        </Html>
-      )}
-
-      {/* 4 Vertical Structural Shaft Columns */}
-      {cornerPosts.map(([cx, cz], i) => (
-        <group key={`elevator-col-${i}`} position={[cx, shaftHeight / 2, cz]}>
-          <RoundedBox
-            args={[0.18, shaftHeight, 0.18]}
-            radius={0.02}
-            smoothness={4}
-            castShadow
-          >
-            <meshStandardMaterial
-              color={COLORS.SHAFT_FRAME}
-              roughness={0.4}
-              metalness={0.7}
-            />
-          </RoundedBox>
-        </group>
-      ))}
-
-      {/* Overhead Drive Machinery Room with #F8CB46 Trim */}
-      <group position={[0, shaftHeight + 0.4, 0]}>
-        <RoundedBox
-          args={[shaftWidth + 0.1, 0.8, shaftDepth + 0.1]}
-          radius={0.05}
-          smoothness={4}
-          castShadow
-        >
-          <meshStandardMaterial
-            color="#0F172A"
-            roughness={0.3}
-            metalness={0.7}
-          />
-        </RoundedBox>
-
-        {/* Yellow Header Fascia Accent */}
-        <group position={[0, 0.38, 0]}>
-          <RoundedBox
-            args={[shaftWidth + 0.12, 0.12, shaftDepth + 0.12]}
-            radius={0.02}
-            smoothness={4}
-          >
-            <meshStandardMaterial
-              color={COLORS.SHAFT_TRIM_YELLOW}
-              roughness={0.2}
-              emissive={COLORS.SHAFT_TRIM_YELLOW}
-              emissiveIntensity={0.2}
-            />
-          </RoundedBox>
-        </group>
-      </group>
-
-      {/* Translucent Safety Glass / Enclosure Grille */}
-      <group position={[0, shaftHeight / 2, 0]}>
-        <RoundedBox
-          args={[shaftWidth - 0.08, shaftHeight - 0.2, shaftDepth - 0.08]}
-          radius={0.04}
-          smoothness={4}
-        >
-          <meshStandardMaterial
-            color="#38BDF8"
-            transparent
-            opacity={0.12}
-            roughness={0.1}
-            metalness={0.9}
-          />
-        </RoundedBox>
-      </group>
-
-      {/* Moving Elevator Platform / Cabin */}
-      <group position={[0, elevator.currentFloor === 2 ? 4.5 : 0.2, 0]}>
-        <RoundedBox
-          args={[shaftWidth - 0.4, 0.25, shaftDepth - 0.4]}
-          radius={0.03}
-          smoothness={4}
-          castShadow
-        >
-          <meshStandardMaterial
-            color={COLORS.ELEVATOR_CABIN}
-            roughness={0.5}
-            metalness={0.5}
-          />
-        </RoundedBox>
-
-        {/* Platform Yellow Safety Edge Strip */}
-        <group position={[0, 0.14, 0]}>
-          <RoundedBox
-            args={[shaftWidth - 0.36, 0.04, shaftDepth - 0.36]}
-            radius={0.01}
-            smoothness={4}
-          >
-            <meshStandardMaterial color={COLORS.SHAFT_TRIM_YELLOW} />
-          </RoundedBox>
-        </group>
-      </group>
-    </group>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// 4. Primary StationNodes Composite Export
+// 3. Primary StationNodes Composite Export
 // ─────────────────────────────────────────────────────────────
 
 export function StationNodes() {
   const locations = useTwinStore((s) => s.locations);
-  const elevators = useTwinStore((s) => s.elevators);
   const selectedStationId = useTwinStore((s) => s.selectedStationId);
-  const selectedElevatorId = useTwinStore((s) => s.selectedElevatorId);
   const selectStation = useTwinStore((s) => s.selectStation);
-  const selectElevator = useTwinStore((s) => s.selectElevator);
 
   const activeWorkstations = Object.values(locations).filter(
     (l) => l.type === "PACK_STATION" || l.type === "INBOUND_DOCK"
@@ -350,16 +204,6 @@ export function StationNodes() {
           station={station}
           isSelected={selectedStationId === station.id}
           onSelect={() => selectStation(station.id)}
-        />
-      ))}
-
-      {/* Multi-Tier Freight Elevators */}
-      {Object.values(elevators).map((elevator) => (
-        <ElevatorShaft
-          key={elevator.id}
-          elevator={elevator}
-          isSelected={selectedElevatorId === elevator.id}
-          onSelect={() => selectElevator(elevator.id)}
         />
       ))}
     </group>

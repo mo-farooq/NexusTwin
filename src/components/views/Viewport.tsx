@@ -62,10 +62,8 @@ export function Viewport() {
             setActiveFloor(v as "all" | "exploded" | 1 | 2);
           }}
         >
-          <option value="all">All Floors</option>
-          <option value="1">Floor 1 · Ground Core</option>
-          <option value="2">Floor 2 · Mezzanine</option>
-          <option value="exploded">Exploded 3D</option>
+          <option value="1">Main Logistics Floor</option>
+          <option value="all">Full Facility</option>
         </select>
 
         <button className="icon-btn" title="Reset Camera Focus" onClick={resetCamera}>
