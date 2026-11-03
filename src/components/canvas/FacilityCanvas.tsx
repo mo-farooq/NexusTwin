@@ -16,6 +16,8 @@ import { useTwinStore, type ChargingDock } from "../../store/useTwinStore";
 import { RackSystem } from "./RackSystem";
 import { StationNodes } from "./StationNodes";
 import { BotFleet } from "./BotFleet";
+import { ZoneSections } from "./ZoneSections";
+import { ConveyorSystem } from "./ConveyorSystem";
 
 // ─────────────────────────────────────────────────────────────
 // Color Palette & Architectural Constants
@@ -472,6 +474,37 @@ function FloorObstaclesCollection() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// 5.5 Blueprint Ground Underlay (Rendered when custom CAD blueprint is active)
+// ─────────────────────────────────────────────────────────────
+
+function BlueprintGroundUnderlay({ widthM, depthM }: { widthM: number; depthM: number }) {
+  const customBlueprintUrl = useTwinStore((s) => s.customBlueprintUrl);
+  const texture = useMemo(() => {
+    if (!customBlueprintUrl) return null;
+    const loader = new THREE.TextureLoader();
+    const tex = loader.load(customBlueprintUrl);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }, [customBlueprintUrl]);
+
+  if (!texture) return null;
+
+  return (
+    <mesh position={[widthM / 2, 0.006, depthM / 2]} rotation-x={-Math.PI / 2}>
+      <planeGeometry args={[widthM, depthM]} />
+      <meshBasicMaterial
+        map={texture}
+        transparent
+        opacity={0.38}
+        depthWrite={false}
+        polygonOffset
+        polygonOffsetFactor={-1}
+      />
+    </mesh>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // 6. Main Scene Composite
 // ─────────────────────────────────────────────────────────────
 
@@ -489,6 +522,9 @@ function FacilityScene({ controlsRef }: { controlsRef: React.RefObject<OrbitCont
       {/* Ground Click Deselects Active Bot */}
       <group onPointerMissed={() => selectBot(null)}>
         <FloorAndTransitLanes widthM={widthM} depthM={depthM} />
+        <BlueprintGroundUnderlay widthM={widthM} depthM={depthM} />
+        <ZoneSections />
+        <ConveyorSystem />
         <ChargingPadsCollection />
         <FloorObstaclesCollection />
         <StationNodes />

@@ -18,6 +18,7 @@ import {
   type NavGrid,
   type GridDimensions,
 } from "../engine/pathfinder";
+import type { AutoZonedLayout, ConveyorSegment } from "../engine/autoZoner";
 
 // ─────────────────────────────────────────────────────────────
 // 1. Robot / BotUnit Profiles & Specifications (Vendor-Neutral)
@@ -176,7 +177,7 @@ export interface ExplainableDispatchLog {
 
 export interface Task {
   id: string;
-  type: "ORDER_PICK" | "REPLENISHMENT" | "CROSS_DOCK";
+  type: "ORDER_PICK" | "INBOUND_PUTAWAY" | "REPLENISHMENT" | "CROSS_DOCK";
   priority: TaskPriority;
   status: TaskStatus;
   assignedBotId: string | null;
@@ -211,6 +212,7 @@ export interface WarehouseZone {
   congestionScore: number; // 0.0 to 1.0
   isBlocked: boolean;
   blockedReason: string | null;
+  sectionType?: "INBOUND" | "STORAGE" | "CHARGING" | "PACKING" | "OUTBOUND";
 }
 
 export interface ChargingDock {
@@ -647,6 +649,14 @@ export interface NexusTwinState {
   breakdownBot: (botId?: string) => void;
   repairFleet: () => void;
 
+  // Blueprint Upload & Auto-Zoning Studio
+  customBlueprintUrl: string | null;
+  conveyors: ConveyorSegment[];
+  isBuilderModalOpen: boolean;
+  openBuilderModal: () => void;
+  closeBuilderModal: () => void;
+  applyCustomLayout: (layout: AutoZonedLayout, blueprintUrl?: string | null) => void;
+
   // Chaos, VIP Swarm & AI Defragmentation
   injectFestiveSurge: (orderCount?: number, multiplier?: number) => void;
   injectVipOrder: () => void;
@@ -846,6 +856,32 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     financialParams: defaultFinancialParams,
     decisionMetrics: initialDecisionMetrics,
 
+    // Blueprint Upload & Auto-Zoning Studio
+    customBlueprintUrl: null,
+    conveyors: [
+      {
+        id: "CONV-01",
+        name: "Express Pack-to-Dock Line 1",
+        startCoords: [39.0, 32.0],
+        endCoords: [57.0, 32.0],
+        lengthM: 18,
+        speedMps: 1.5,
+        isJammed: false,
+      },
+      {
+        id: "CONV-02",
+        name: "Express Pack-to-Dock Line 2",
+        startCoords: [46.0, 32.0],
+        endCoords: [57.0, 32.0],
+        lengthM: 11,
+        speedMps: 1.5,
+        isJammed: false,
+      },
+    ],
+    isBuilderModalOpen: false,
+    openBuilderModal: () => set({ isBuilderModalOpen: true }),
+    closeBuilderModal: () => set({ isBuilderModalOpen: false }),
+
     startSimulation: () => set({ isRunning: true }),
     pauseSimulation: () => set({ isRunning: false }),
     setSimulationSpeed: (speed) => set({ simulationSpeed: speed }),
@@ -967,6 +1003,108 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       set({
         customObstacles: [],
         navGrid: { ...navGrid, cells: newCells },
+      });
+    },
+
+    applyCustomLayout: (layout: AutoZonedLayout, blueprintUrl?: string | null) => {
+      const { botProfiles, financialParams } = get();
+      const fleetSize = layout.summary.recommendedFleetSize || 12;
+      const nextBots: Record<string, BotUnit> = {};
+
+      for (let i = 1; i <= fleetSize; i++) {
+        const botId = `BOT-${String(i).padStart(2, "0")}`;
+        const spawnCol = 4 + ((i - 1) % 6) * 3;
+        const spawnRow = 5 + Math.floor((i - 1) / 6) * 2;
+        const [wx, wz] = cellToWorld(spawnCol, spawnRow, layout.dimensions.cellSize);
+
+        nextBots[botId] = {
+          id: botId,
+          profileId: "LIGHT_PICKER",
+          position: [wx, 0.25, wz],
+          headingRad: 0,
+          velocity: 0,
+          batteryPct: 88 + (i * 3) % 12,
+          status: "IDLE",
+          fsmState: "IDLE",
+          healthPct: 98,
+          currentTaskId: null,
+          targetLocationId: null,
+          path: [],
+          pathIndex: 0,
+          currentPayloadKg: 0,
+          stats: {
+            distanceTraveledM: 0,
+            tasksCompleted: 0,
+            energyConsumedWh: 0,
+            busyTicks: 0,
+            idleTicks: 0,
+            waitTicks: 0,
+          },
+          perception: {
+            state: "CLEAR",
+            frontObstacleId: null,
+            frontDistM: null,
+            warningProximity: false,
+            yieldsToId: null,
+          },
+          waitTicks: 0,
+          backingOff: false,
+          resumeGoalCoords: null,
+          resumeTaskId: null,
+          resumeLocationId: null,
+          resumeFsmState: null,
+          safeYieldsCount: 0,
+        };
+      }
+
+      const totalCells = layout.dimensions.cols * layout.dimensions.rows;
+      const initialKpi: SimulationKpi = {
+        tick: 0,
+        simTimeSeconds: 0,
+        throughputPerHour: 0,
+        totalCompletedTasks: 0,
+        pendingTasksCount: 0,
+        averageTaskDurationSec: 0,
+        fleetUtilizationPct: 0,
+        fleetHealthAvgPct: 98,
+        activeCongestionIndex: 0,
+        totalEnergyKwh: 0,
+        slaCompliancePct: 99.4,
+        totalSafeYieldsResolved: 0,
+        nearMissesPrevented: 0,
+        activeAntiCollisionCount: 0,
+        safetyViolationCount: 0,
+      };
+
+      const initialMetrics = computeFinancials(
+        nextBots,
+        botProfiles,
+        initialKpi,
+        financialParams,
+        layout.zones
+      );
+
+      set({
+        gridDimensions: layout.dimensions,
+        navGrid: layout.navGrid,
+        zones: layout.zones,
+        locations: layout.locations,
+        chargingDocks: layout.chargingDocks,
+        conveyors: layout.conveyors,
+        customBlueprintUrl: blueprintUrl || layout.blueprintUrl || null,
+        botUnits: nextBots,
+        tasks: {},
+        taskSequence: 2000,
+        trafficDensityMap: new Float32Array(totalCells),
+        activeCongestionMap: new Float32Array(totalCells),
+        kpi: initialKpi,
+        decisionMetrics: initialMetrics,
+        selectedBotId: null,
+        selectedElevatorId: null,
+        selectedStationId: null,
+        selectedRackId: null,
+        focusTarget: [layout.dimensions.widthM / 2, 0, layout.dimensions.depthM / 2],
+        isBuilderModalOpen: false,
       });
     },
 
@@ -1283,6 +1421,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       const nextZones = { ...zones };
 
       // 1. Task Generation: Regular steady-state order stream or Festive Surge
+      // Supports dual-stream: 25% Inbound Put-Away vs. 75% Order Pick & Fulfillment
       let seq = state.taskSequence;
       const pendingTaskCount = Object.values(nextTasks).filter((t) => t.status === "PENDING").length;
       const surgeMult = state.isFestiveSurgeActive ? state.surgeMultiplier || 3 : 1;
@@ -1293,29 +1432,49 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         seq++;
         const shelfKeys = Object.keys(locations).filter((k) => locations[k].type === "SHELF");
         const packKeys = Object.keys(locations).filter((k) => locations[k].type === "PACK_STATION");
-        const sLoc = locations[shelfKeys[Math.floor(rng() * shelfKeys.length)]];
-        const dLoc = locations[packKeys[Math.floor(rng() * packKeys.length)]];
-        const chosenTier = ((Math.floor(rng() * 4) + 1) as 1 | 2 | 3 | 4);
-        const tierData = sLoc.tiers?.find((t) => t.level === chosenTier);
+        const inboundKeys = Object.keys(locations).filter((k) => locations[k].type === "INBOUND_DOCK");
 
-        const taskId = `TASK-${seq}`;
-        nextTasks[taskId] = {
-          id: taskId,
-          type: "ORDER_PICK",
-          priority: state.isFestiveSurgeActive ? "FLASH_SURGE" : "NORMAL",
-          status: "PENDING",
-          assignedBotId: null,
-          sourceLocId: sLoc.id,
-          sourceCoords: [sLoc.accessPoint[0], sLoc.accessPoint[1]],
-          destLocId: dLoc.id,
-          destCoords: [dLoc.accessPoint[0], dLoc.accessPoint[1]],
-          payloadKg: 10 + Math.floor(rng() * 40),
-          createdTick: currentTick,
-          assignedTick: null,
-          completedTick: null,
-          targetTier: chosenTier,
-          skuName: tierData?.skuName || `SKU Tier ${chosenTier}`,
-        };
+        if (shelfKeys.length > 0) {
+          const isInbound = rng() < 0.25 && inboundKeys.length > 0;
+          let sLoc: WarehouseLocation;
+          let dLoc: WarehouseLocation;
+          let taskType: "ORDER_PICK" | "INBOUND_PUTAWAY" = "ORDER_PICK";
+
+          if (isInbound) {
+            taskType = "INBOUND_PUTAWAY";
+            sLoc = locations[inboundKeys[Math.floor(rng() * inboundKeys.length)]];
+            dLoc = locations[shelfKeys[Math.floor(rng() * shelfKeys.length)]];
+          } else {
+            taskType = "ORDER_PICK";
+            sLoc = locations[shelfKeys[Math.floor(rng() * shelfKeys.length)]];
+            dLoc = packKeys.length > 0
+              ? locations[packKeys[Math.floor(rng() * packKeys.length)]]
+              : locations[shelfKeys[Math.floor(rng() * shelfKeys.length)]];
+          }
+
+          const chosenTier = ((Math.floor(rng() * 4) + 1) as 1 | 2 | 3 | 4);
+          const targetLoc = taskType === "ORDER_PICK" ? sLoc : dLoc;
+          const tierData = targetLoc.tiers?.find((t) => t.level === chosenTier);
+
+          const taskId = `TASK-${seq}`;
+          nextTasks[taskId] = {
+            id: taskId,
+            type: taskType,
+            priority: state.isFestiveSurgeActive ? "FLASH_SURGE" : "NORMAL",
+            status: "PENDING",
+            assignedBotId: null,
+            sourceLocId: sLoc.id,
+            sourceCoords: [sLoc.accessPoint[0], sLoc.accessPoint[1]],
+            destLocId: dLoc.id,
+            destCoords: [dLoc.accessPoint[0], dLoc.accessPoint[1]],
+            payloadKg: taskType === "INBOUND_PUTAWAY" ? 35 + Math.floor(rng() * 25) : 10 + Math.floor(rng() * 30),
+            createdTick: currentTick,
+            assignedTick: null,
+            completedTick: null,
+            targetTier: chosenTier,
+            skuName: tierData?.skuName || `${taskType === "INBOUND_PUTAWAY" ? "Inbound Pallet" : "SKU"} Tier ${chosenTier}`,
+          };
+        }
       }
 
       // 2. Dynamic Cell Reservation Map (Prevent Collisions) & Custom Floor Obstacles

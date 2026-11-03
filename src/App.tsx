@@ -14,6 +14,7 @@ import { InspectorDrawer } from "./components/hud/InspectorDrawer";
 import { OperationsTable } from "./components/hud/OperationsTable";
 import { OrderLifecycleBar } from "./components/hud/OrderLifecycleBar";
 import { DecisionSandboxModal } from "./components/hud/DecisionSandboxModal";
+import { WarehouseBuilderModal } from "./components/hud/WarehouseBuilderModal";
 import { useTwinStore } from "./store/useTwinStore";
 
 export function App() {
@@ -54,6 +55,7 @@ export function App() {
       <OperationsTable />
       <OrderLifecycleBar />
       <DecisionSandboxModal />
+      <WarehouseBuilderModal />
     </div>
   );
 }

@@ -32,6 +32,7 @@ export function TopControlBar() {
   const isFestiveSurgeActive = useTwinStore((s) => s.isFestiveSurgeActive);
   const breakdownBot = useTwinStore((s) => s.breakdownBot);
   const openSandboxModal = useTwinStore((s) => s.openSandboxModal);
+  const openBuilderModal = useTwinStore((s) => s.openBuilderModal);
   const injectVipOrder = useTwinStore((s) => s.injectVipOrder);
   const defragmentRacks = useTwinStore((s) => s.defragmentRacks);
 
@@ -413,6 +414,31 @@ export function TopControlBar() {
         >
           <span>✨</span>
           <span>AI Defrag</span>
+        </button>
+
+        {/* Warehouse Layout Builder & Blueprint Studio */}
+        <button
+          onClick={() => openBuilderModal()}
+          title="Open Warehouse Layout Builder & Blueprint Auto-Zoner Studio"
+          style={{
+            padding: "6px 14px",
+            borderRadius: "9px",
+            border: "1px solid #4F46E5",
+            background: "linear-gradient(135deg, #4338CA 0%, #6366F1 100%)",
+            color: "#FFFFFF",
+            fontWeight: 800,
+            fontSize: "12px",
+            letterSpacing: "-0.01em",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            boxShadow: "0 4px 14px rgba(79, 70, 229, 0.35)",
+            transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+          }}
+        >
+          <span style={{ fontSize: "13px" }}>🏗️</span>
+          <span>Build / Upload Warehouse</span>
         </button>
 
         {/* Master Action: Decision Sandbox Modal */}
