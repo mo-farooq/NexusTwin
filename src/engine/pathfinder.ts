@@ -344,3 +344,65 @@ export function setGridRect(
     }
   }
 }
+
+/**
+ * Fast ray-marching line-of-sight check across navigation grid
+ */
+export function checkLineOfSight(
+  grid: NavGrid,
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number
+): boolean {
+  const d = Math.hypot(x1 - x0, z1 - z0);
+  const n = Math.max(1, Math.ceil(d / 0.5));
+  for (let i = 1; i < n; i++) {
+    const t = i / n;
+    const [c, r] = worldToCell(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t, grid.cellSize);
+    if (!isCellTraversable(grid, c, r)) return false;
+  }
+  return true;
+}
+
+/**
+ * 2D Oriented Bounding Box (OBB) intersection test using Separating Axis Theorem (SAT).
+ * ax, az: center of box A
+ * ah: heading angle of box A in radians
+ * bx, bz: center of box B
+ * bh: heading angle of box B in radians
+ * margin: safety buffer in meters (default: 0.05)
+ * halfLen: chassis half-length in meters (default: 0.48)
+ * halfWidth: chassis half-width in meters (default: 0.35)
+ */
+export function obbOverlap(
+  ax: number,
+  az: number,
+  ah: number,
+  bx: number,
+  bz: number,
+  bh: number,
+  margin = 0.05,
+  halfLen = 0.48,
+  halfWidth = 0.35
+): boolean {
+  const dx = bx - ax;
+  const dz = bz - az;
+  // Test the 4 normal axes of the two oriented bounding boxes
+  for (const angle of [ah, ah + Math.PI / 2, bh, bh + Math.PI / 2]) {
+    const ux = Math.cos(angle);
+    const uz = Math.sin(angle);
+    const ra =
+      halfLen * Math.abs(ux * Math.cos(ah) + uz * Math.sin(ah)) +
+      halfWidth * Math.abs(-ux * Math.sin(ah) + uz * Math.cos(ah));
+    const rb =
+      halfLen * Math.abs(ux * Math.cos(bh) + uz * Math.sin(bh)) +
+      halfWidth * Math.abs(-ux * Math.sin(bh) + uz * Math.cos(bh));
+    // If the projection of the center distance exceeds the sum of projected extents + margin:
+    // a separating axis is found, boxes do not overlap.
+    if (Math.abs(dx * ux + dz * uz) > ra + rb + margin) {
+      return false;
+    }
+  }
+  return true;
+}

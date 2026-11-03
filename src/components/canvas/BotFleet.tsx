@@ -423,16 +423,16 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths }: SingleB
           />
         </mesh>
 
-        {/* 4. Dynamic LiDAR Proximity Safety Zone & Radar Bubble */}
+        {/* 4. Compact LiDAR Proximity Safety Zone & Chassis Footprint */}
         <mesh position={[0, -0.188, 0]} rotation-x={-Math.PI / 2}>
           <ringGeometry
             args={[
-              0.76,
+              0.52,
               bot.perception?.state === "HOLDING" || bot.perception?.state === "YIELDING"
-                ? 1.28
+                ? 0.72
                 : bot.perception?.state === "SLOWING"
-                ? 1.15
-                : 0.86,
+                ? 0.66
+                : 0.58,
               32,
             ]}
           />
@@ -449,19 +449,19 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths }: SingleB
             transparent
             opacity={
               bot.perception?.state && bot.perception.state !== "CLEAR"
-                ? 0.55
+                ? 0.45
                 : isSelected
                 ? 0.28
-                : 0.12
+                : 0.10
             }
             side={THREE.DoubleSide}
           />
         </mesh>
 
-        {/* 5. Forward LiDAR Perception Field-of-View Sweep (60 deg cone) */}
-        {bot.status === "ACTIVE" && (
-          <mesh position={[0, -0.186, 0.45]} rotation-x={-Math.PI / 2}>
-            <circleGeometry args={[1.6, 24, -Math.PI / 6, Math.PI / 3]} />
+        {/* 5. Directional Forward Path Guidance Ray (Compact & Clean) */}
+        {isSelected && (
+          <mesh position={[0, -0.186, 0.35]} rotation-x={-Math.PI / 2}>
+            <circleGeometry args={[0.9, 24, -Math.PI / 6, Math.PI / 3]} />
             <meshBasicMaterial
               color={
                 bot.perception?.state === "SLOWING"
@@ -471,7 +471,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths }: SingleB
                   : "#10B981"
               }
               transparent
-              opacity={bot.perception?.warningProximity ? 0.35 : 0.08}
+              opacity={0.22}
               side={THREE.DoubleSide}
             />
           </mesh>
