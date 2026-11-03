@@ -2182,10 +2182,30 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             }
           }
 
+          // Scan dynamic human workers (ISO 3691-4 Cobot Safety Priority)
+          let humanInPerimeter = false;
+          for (const person of Object.values(nextPeople)) {
+            const pdx = person.position[0] - currentPos[0];
+            const pdz = person.position[2] - currentPos[2];
+            const pdist = Math.hypot(pdx, pdz);
+
+            const angleToPerson = Math.atan2(pdz, pdx);
+            let relAngle = angleToPerson - bot.headingRad;
+            while (relAngle > Math.PI) relAngle -= Math.PI * 2;
+            while (relAngle < -Math.PI) relAngle += Math.PI * 2;
+
+            const isAhead = Math.abs(relAngle) < Math.PI / 2.5 || pdist < 1.35;
+            if (isAhead && pdist < frontDistM) {
+              frontDistM = pdist;
+              frontObstacleId = person.name;
+              humanInPerimeter = true;
+            }
+          }
+
           // Check if upcoming cell is occupied by another robot in the connected fleet
           const nextOccupantId = robotOccupancy.get(cellKey(targetWaypoint[0], targetWaypoint[1]));
           const cellIsOccupied = !!(nextOccupantId && nextOccupantId !== bot.id);
-          const isPhysicallyBlocked = (frontDistM < 1.25 && !!nearestOtherBot) || cellIsOccupied;
+          const isPhysicallyBlocked = (frontDistM < 1.25 && (!!nearestOtherBot || humanInPerimeter)) || cellIsOccupied;
 
           // Station Arrival Buffer: If within 2 cells of destination and entrance is crowded,
           // conclude navigation directly to prevent station bottleneck queues!
@@ -2218,7 +2238,8 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
           }
 
           // ── Right-of-Way Evaluation & Speed Regulation ──
-          const yieldsTo = nearestOtherBot ? checkRobotYieldsTo(bot, nearestOtherBot) : false;
+          // Human workers have absolute right-of-way over all automated machinery (ISO 3691-4 Cobot Safety)
+          const yieldsTo = humanInPerimeter || (nearestOtherBot ? checkRobotYieldsTo(bot, nearestOtherBot) : false);
           let acState: AntiCollisionState = "CLEAR";
           let speedFactor = 1.0;
           let shouldHold = false;
