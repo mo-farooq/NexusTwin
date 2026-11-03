@@ -103,20 +103,23 @@ interface WorkstationNodeProps {
 }
 
 function WorkstationNode({ station, isSelected, onSelect }: WorkstationNodeProps) {
+  const showLabels = useTwinStore((s) => s.showLabels);
   const [x, z] = station.coords;
   const isPacking = station.type === "PACK_STATION";
 
   return (
     <group position={[x, 0, z]}>
       {/* Clickable <Html distanceFactor={40}> Floating Status Pill */}
-      <Html position={[0, 2.7, 0]} center distanceFactor={40} zIndexRange={[10, 0]}>
-        <StatusPill
-          label={station.name}
-          subtext={isPacking ? "READY (58 picks/hr)" : "RECEIVING"}
-          onClick={onSelect}
-          isActive={isSelected}
-        />
-      </Html>
+      {(showLabels || isSelected) && (
+        <Html position={[0, 2.7, 0]} center distanceFactor={40} zIndexRange={[10, 0]}>
+          <StatusPill
+            label={station.name}
+            subtext={isPacking ? "READY (58 picks/hr)" : "RECEIVING"}
+            onClick={onSelect}
+            isActive={isSelected}
+          />
+        </Html>
+      )}
 
       {/* Main Heavy-Duty Work Table */}
       <group position={[0, 0.45, 0]}>
@@ -193,6 +196,7 @@ interface ElevatorShaftProps {
 }
 
 function ElevatorShaft({ elevator, isSelected, onSelect }: ElevatorShaftProps) {
+  const showLabels = useTwinStore((s) => s.showLabels);
   const [x, z] = elevator.coords;
   const shaftHeight = 8.5;
   const shaftWidth = 2.8;
@@ -208,19 +212,21 @@ function ElevatorShaft({ elevator, isSelected, onSelect }: ElevatorShaftProps) {
   return (
     <group position={[x, 0, z]}>
       {/* Clickable <Html distanceFactor={40}> Floating Status Pill */}
-      <Html
-        position={[0, shaftHeight + 1.2, 0]}
-        center
-        distanceFactor={40}
-        zIndexRange={[10, 0]}
-      >
-        <StatusPill
-          label={elevator.name}
-          subtext={`FLOOR ${elevator.currentFloor} · ${elevator.status}`}
-          onClick={onSelect}
-          isActive={isSelected}
-        />
-      </Html>
+      {(showLabels || isSelected) && (
+        <Html
+          position={[0, shaftHeight + 1.2, 0]}
+          center
+          distanceFactor={40}
+          zIndexRange={[10, 0]}
+        >
+          <StatusPill
+            label={elevator.name}
+            subtext={`FLOOR ${elevator.currentFloor} · ${elevator.status}`}
+            onClick={onSelect}
+            isActive={isSelected}
+          />
+        </Html>
+      )}
 
       {/* 4 Vertical Structural Shaft Columns */}
       {cornerPosts.map(([cx, cz], i) => (

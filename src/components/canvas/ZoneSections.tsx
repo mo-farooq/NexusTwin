@@ -72,6 +72,9 @@ function SectionSignage({
   color: string;
   position: [number, number, number];
 }) {
+  const showLabels = useTwinStore((s) => s.showLabels);
+  if (!showLabels) return null;
+
   return (
     <Html position={position} center distanceFactor={48} zIndexRange={[12, 0]}>
       <div

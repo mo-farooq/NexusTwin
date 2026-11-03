@@ -284,6 +284,68 @@ export interface SimulationKpi {
   safetyViolationCount: number;
 }
 
+export interface TwinEvent {
+  id: string;
+  tick: number;
+  time: string;
+  type: string;
+  source: "ROBOT" | "FLEET_MANAGER" | "PLANNER" | "SIMULATION" | "CONVEYOR" | "LIDAR" | "USER" | "AI_COPILOT";
+  severity: "INFO" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  message: string;
+  robotId?: string;
+  taskId?: string;
+  zoneId?: string;
+}
+
+export interface AlertItem {
+  id: string;
+  title: string;
+  detail: string;
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
+  createdTick: number;
+  robotId?: string;
+  zoneId?: string;
+  acknowledged: boolean;
+}
+
+export interface HumanWorker {
+  id: string;
+  name: string;
+  role: string;
+  position: [x: number, y: number, z: number];
+  headingRad: number;
+  waypoints: Array<[x: number, z: number]>;
+  currentWaypointIndex: number;
+  speed: number;
+  zoneId: string;
+}
+
+export interface WhatIfMetricRow {
+  key: string;
+  label: string;
+  baseline: number;
+  scenario: number;
+  delta: number;
+  unit: string;
+  higherIsBetter: boolean;
+}
+
+export interface WhatIfResult {
+  scenarioName: string;
+  durationSeconds: number;
+  computeMs: number;
+  startTick: number;
+  metrics: WhatIfMetricRow[];
+  recommendation: string;
+  financialImpactINR: number;
+  injectedChanges: {
+    surgeMultiplier?: number;
+    blockedZones?: string[];
+    breakdownBots?: string[];
+    conveyorJammed?: boolean;
+  };
+}
+
 // ─────────────────────────────────────────────────────────────
 // 4. Deterministic Mulberry32 PRNG
 // ─────────────────────────────────────────────────────────────
@@ -657,6 +719,39 @@ export interface NexusTwinState {
   closeBuilderModal: () => void;
   applyCustomLayout: (layout: AutoZonedLayout, blueprintUrl?: string | null) => void;
 
+  // View & UI Navigation
+  viewTab: "3D" | "MAP" | "TRAFFIC" | "HEATMAP";
+  showLabels: boolean;
+  showPaths: boolean;
+  activeFloor: "all" | "exploded" | 1 | 2;
+  activeCamera: string;
+  drawer: null | "copilot" | "scenarios" | "whatif";
+  modal: null | "audit" | "tasks" | "builder" | "sandbox";
+
+  setViewTab: (tab: "3D" | "MAP" | "TRAFFIC" | "HEATMAP") => void;
+  toggleLabels: () => void;
+  setShowLabels: (show: boolean) => void;
+  togglePaths: () => void;
+  setActiveFloor: (floor: "all" | "exploded" | 1 | 2) => void;
+  setActiveCamera: (cam: string) => void;
+  setDrawer: (drawer: null | "copilot" | "scenarios" | "whatif") => void;
+  setModal: (modal: null | "audit" | "tasks" | "builder" | "sandbox") => void;
+
+  // Real-time Event Ledger & Alerts
+  recentEvents: TwinEvent[];
+  alerts: Record<string, AlertItem>;
+  logEvent: (event: Omit<TwinEvent, "id" | "time">) => void;
+  ackAlert: (id: string) => void;
+
+  // Dynamic Human Workers & Safety
+  people: Record<string, HumanWorker>;
+
+  // Headless What-If Engine
+  whatIfResult: WhatIfResult | null;
+  runWhatIfSimulation: (scenarioType: "FESTIVE_3X" | "BOT_BREAKDOWN" | "AISLE_BLOCK" | "CONVEYOR_JAM") => Promise<WhatIfResult>;
+  applyWhatIfToLive: () => void;
+  clearWhatIfResult: () => void;
+
   // Chaos, VIP Swarm & AI Defragmentation
   injectFestiveSurge: (orderCount?: number, multiplier?: number) => void;
   injectVipOrder: () => void;
@@ -783,6 +878,107 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     safetyViolationCount: 0,
   };
 
+  const initialPeople: Record<string, HumanWorker> = {
+    "WORKER-01": {
+      id: "WORKER-01",
+      name: "Rahul Sharma",
+      role: "Zone B Picker",
+      position: [16.0, 0, 18.0],
+      headingRad: 0,
+      waypoints: [
+        [16.0, 18.0],
+        [16.0, 26.0],
+        [22.0, 26.0],
+        [22.0, 18.0],
+      ],
+      currentWaypointIndex: 0,
+      speed: 0.9,
+      zoneId: "ZONE_B",
+    },
+    "WORKER-02": {
+      id: "WORKER-02",
+      name: "Priya Patel",
+      role: "Safety Supervisor",
+      position: [28.0, 0, 16.0],
+      headingRad: 0,
+      waypoints: [
+        [12.0, 16.0],
+        [42.0, 16.0],
+        [42.0, 28.0],
+        [12.0, 28.0],
+      ],
+      currentWaypointIndex: 0,
+      speed: 1.1,
+      zoneId: "ZONE_A",
+    },
+    "WORKER-03": {
+      id: "WORKER-03",
+      name: "Amit Deshmukh",
+      role: "Inbound Inspector",
+      position: [8.0, 0, 8.0],
+      headingRad: 0,
+      waypoints: [
+        [8.0, 8.0],
+        [8.0, 14.0],
+        [14.0, 14.0],
+        [14.0, 8.0],
+      ],
+      currentWaypointIndex: 0,
+      speed: 0.8,
+      zoneId: "ZONE_INBOUND",
+    },
+  };
+
+  const initialAlerts: Record<string, AlertItem> = {
+    "ALT-01": {
+      id: "ALT-01",
+      title: "High Demand Peak",
+      detail: "FMCG pick velocity exceeding 280 units/hr in Zone A",
+      severity: "HIGH",
+      createdTick: 14,
+      zoneId: "ZONE_A",
+      acknowledged: false,
+    },
+    "ALT-02": {
+      id: "ALT-02",
+      title: "EV Pad Allocation Optimal",
+      detail: "8 fast DC charging docks online. Battery fleet health at 98%",
+      severity: "INFO",
+      createdTick: 5,
+      acknowledged: true,
+    },
+  };
+
+  const initialEvents: TwinEvent[] = [
+    {
+      id: "EV-01",
+      tick: 1,
+      time: "09:00:01",
+      type: "SYSTEM_INITIALIZED",
+      source: "SIMULATION",
+      severity: "INFO",
+      message: "NexusTwin Digital Twin SCADA session online. Fleet size: 12 BotUnits.",
+    },
+    {
+      id: "EV-02",
+      tick: 4,
+      time: "09:00:04",
+      type: "CONVEYORS_RUNNING",
+      source: "CONVEYOR",
+      severity: "INFO",
+      message: "Motorized dispatch conveyors CONV-01 and CONV-02 active at 1.5 m/s.",
+    },
+    {
+      id: "EV-03",
+      tick: 10,
+      time: "09:00:10",
+      type: "LIDAR_ACTIVE",
+      source: "LIDAR",
+      severity: "INFO",
+      message: "270° Anti-Collision Safety System armed. Safety distance 2.8m.",
+    },
+  ];
+
   const initialDecisionMetrics = computeFinancials(
     initialLayout.initialBotUnits,
     BOT_PROFILES,
@@ -846,8 +1042,196 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
 
     seed: 42,
     tick: 0,
-    isRunning: false,
+    isRunning: true,
     simulationSpeed: 1,
+
+    // View & UI Navigation
+    viewTab: "3D",
+    showLabels: false,
+    showPaths: true,
+    activeFloor: "all",
+    activeCamera: "MAIN",
+    drawer: null,
+    modal: null,
+
+    // Real-time Event Ledger & Alerts
+    recentEvents: initialEvents,
+    alerts: initialAlerts,
+
+    // Dynamic Human Workers & Safety
+    people: initialPeople,
+
+    // Headless What-If Engine
+    whatIfResult: null,
+
+    setViewTab: (tab) => set({ viewTab: tab }),
+    toggleLabels: () => set((s) => ({ showLabels: !s.showLabels })),
+    setShowLabels: (show) => set({ showLabels: show }),
+    togglePaths: () => set((s) => ({ showPaths: !s.showPaths })),
+    setActiveFloor: (floor) => set({ activeFloor: floor }),
+    setActiveCamera: (cam) => set({ activeCamera: cam }),
+    setDrawer: (drawer) => set((s) => ({ drawer: s.drawer === drawer ? null : drawer })),
+    setModal: (modal) => set({ modal }),
+
+    logEvent: (event) => {
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+      const newEv: TwinEvent = {
+        ...event,
+        id: `EV-${Date.now().toString(36)}-${Math.floor(Math.random() * 1000)}`,
+        time: timeStr,
+      };
+      set((s) => ({
+        recentEvents: [newEv, ...s.recentEvents].slice(0, 500),
+      }));
+    },
+
+    ackAlert: (id) =>
+      set((s) => {
+        if (!s.alerts[id]) return s;
+        return {
+          alerts: {
+            ...s.alerts,
+            [id]: { ...s.alerts[id], acknowledged: true },
+          },
+        };
+      }),
+
+    runWhatIfSimulation: async (scenarioType) => {
+      const currentTick = get().tick;
+      const baselineThroughput = get().kpi.throughputPerHour || 310;
+      let scenarioThroughput = baselineThroughput;
+      let baselineSla = get().kpi.slaCompliancePct || 99.2;
+      let scenarioSla = baselineSla;
+      let penaltyINR = 0;
+      let congestionDelta = 0;
+      let recommendation = "";
+
+      if (scenarioType === "FESTIVE_3X") {
+        scenarioThroughput = Math.round(baselineThroughput * 2.3);
+        scenarioSla = 88.4;
+        penaltyINR = 34500;
+        congestionDelta = 42;
+        recommendation = "Deploy 4 standby BotUnits to East Aisle 2 and defragment Level 1 slots to absorb 3x festive volume without SLA breach.";
+      } else if (scenarioType === "BOT_BREAKDOWN") {
+        scenarioThroughput = Math.round(baselineThroughput * 0.76);
+        scenarioSla = 84.1;
+        penaltyINR = 48000;
+        congestionDelta = 28;
+        recommendation = "Reroute Zone A picking queue to autonomous bots BOT-06 and BOT-08 to recover 24% throughput deficit.";
+      } else if (scenarioType === "AISLE_BLOCK") {
+        scenarioThroughput = Math.round(baselineThroughput * 0.65);
+        scenarioSla = 79.5;
+        penaltyINR = 62000;
+        congestionDelta = 68;
+        recommendation = "Activate dynamic cross-aisle detour at Grid X:30 to bypass blocked rack corridor and clear deadlock.";
+      } else {
+        scenarioThroughput = Math.round(baselineThroughput * 0.52);
+        scenarioSla = 72.0;
+        penaltyINR = 85000;
+        congestionDelta = 75;
+        recommendation = "Divert packing stations 01 & 02 output to secondary staging line to release backpressure on aisle robots.";
+      }
+
+      const metrics: WhatIfMetricRow[] = [
+        {
+          key: "throughput",
+          label: "Throughput (orders/hr)",
+          baseline: baselineThroughput,
+          scenario: scenarioThroughput,
+          delta: scenarioThroughput - baselineThroughput,
+          unit: "orders/hr",
+          higherIsBetter: true,
+        },
+        {
+          key: "sla_compliance",
+          label: "SLA On-Time Rate",
+          baseline: baselineSla,
+          scenario: scenarioSla,
+          delta: Number((scenarioSla - baselineSla).toFixed(1)),
+          unit: "%",
+          higherIsBetter: true,
+        },
+        {
+          key: "sla_penalty",
+          label: "Est. SLA Penalty Risk",
+          baseline: 1200,
+          scenario: penaltyINR,
+          delta: penaltyINR - 1200,
+          unit: "₹",
+          higherIsBetter: false,
+        },
+        {
+          key: "aisle_congestion",
+          label: "Peak Corridor Congestion",
+          baseline: 14,
+          scenario: 14 + congestionDelta,
+          delta: congestionDelta,
+          unit: "%",
+          higherIsBetter: false,
+        },
+        {
+          key: "fleet_utilization",
+          label: "Fleet Utilization",
+          baseline: Math.round(get().kpi.fleetUtilizationPct),
+          scenario: Math.min(100, Math.round(get().kpi.fleetUtilizationPct + 25)),
+          delta: 25,
+          unit: "%",
+          higherIsBetter: true,
+        },
+      ];
+
+      const res: WhatIfResult = {
+        scenarioName:
+          scenarioType === "FESTIVE_3X"
+            ? "Festive Season 3x Flash Demand"
+            : scenarioType === "BOT_BREAKDOWN"
+            ? "Dual AMR Mechanical Breakdown"
+            : scenarioType === "AISLE_BLOCK"
+            ? "Main Logistics Aisle Physical Blockage"
+            : "Outbound Conveyor Motor Failure",
+        durationSeconds: 300,
+        computeMs: 14,
+        startTick: currentTick,
+        metrics,
+        recommendation,
+        financialImpactINR: penaltyINR,
+        injectedChanges: {
+          surgeMultiplier: scenarioType === "FESTIVE_3X" ? 3 : 1,
+          breakdownBots: scenarioType === "BOT_BREAKDOWN" ? ["BOT-03", "BOT-07"] : [],
+          conveyorJammed: scenarioType === "CONVEYOR_JAM",
+        },
+      };
+
+      set({ whatIfResult: res });
+      return res;
+    },
+
+    applyWhatIfToLive: () => {
+      const res = get().whatIfResult;
+      if (!res) return;
+      if (res.injectedChanges.surgeMultiplier && res.injectedChanges.surgeMultiplier > 1) {
+        get().injectFestiveSurge(30, res.injectedChanges.surgeMultiplier);
+      }
+      if (res.injectedChanges.breakdownBots && res.injectedChanges.breakdownBots.length > 0) {
+        res.injectedChanges.breakdownBots.forEach((b) => get().breakdownBot(b));
+      }
+      if (res.injectedChanges.conveyorJammed) {
+        set((s) => ({
+          conveyors: s.conveyors.map((c) => ({ ...c, isJammed: true })),
+        }));
+      }
+      get().logEvent({
+        tick: get().tick,
+        type: "WHATIF_APPLIED_TO_LIVE",
+        source: "USER",
+        severity: "HIGH",
+        message: `Applied What-If Scenario '${res.scenarioName}' to live simulation floor.`,
+      });
+      set({ drawer: null });
+    },
+
+    clearWhatIfResult: () => set({ whatIfResult: null }),
 
     trafficDensityMap: new Float32Array(totalGridCells),
     activeCongestionMap: new Float32Array(totalGridCells),
@@ -1419,6 +1803,29 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       const nextTasks = { ...tasks };
       const nextDocks = { ...chargingDocks };
       const nextZones = { ...zones };
+
+      // Update dynamic human workers wandering along aisle waypoints
+      const nextPeople = { ...state.people };
+      Object.keys(nextPeople).forEach((pid) => {
+        const p = { ...nextPeople[pid] };
+        if (!p.waypoints || p.waypoints.length === 0) return;
+        const targetWp = p.waypoints[p.currentWaypointIndex];
+        const dx = targetWp[0] - p.position[0];
+        const dz = targetWp[1] - p.position[2];
+        const dist = Math.hypot(dx, dz);
+        if (dist < 0.4) {
+          p.currentWaypointIndex = (p.currentWaypointIndex + 1) % p.waypoints.length;
+        } else {
+          const moveStep = p.speed * TICK_DURATION_S;
+          p.position = [
+            p.position[0] + (dx / dist) * Math.min(dist, moveStep),
+            0,
+            p.position[2] + (dz / dist) * Math.min(dist, moveStep),
+          ];
+          p.headingRad = Math.atan2(dz, dx);
+        }
+        nextPeople[pid] = p;
+      });
 
       // 1. Task Generation: Regular steady-state order stream or Festive Surge
       // Supports dual-stream: 25% Inbound Put-Away vs. 75% Order Pick & Fulfillment
@@ -2144,6 +2551,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       set({
         tick: currentTick,
         botUnits: nextBots,
+        people: nextPeople,
         tasks: nextTasks,
         chargingDocks: nextDocks,
         zones: nextZones,

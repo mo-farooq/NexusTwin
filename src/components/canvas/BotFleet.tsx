@@ -158,6 +158,61 @@ function BotStatusBadge({
 }
 
 // ─────────────────────────────────────────────────────────────
+// 1.5 Selected Robot Perception Gizmo (270° Virtual LiDAR Arc)
+// ─────────────────────────────────────────────────────────────
+
+function PerceptionGizmo({ bot }: { bot: BotUnit }) {
+  const pState = bot.perception?.state || "CLEAR";
+  const color =
+    pState === "HOLDING" || pState === "YIELDING"
+      ? "#EF4444"
+      : pState === "SLOWING"
+      ? "#F59E0B"
+      : "#38BDF8";
+  const range = 3.6;
+
+  return (
+    <group position={[0, -0.17, 0]}>
+      {/* 270° LiDAR Ground Scanning Arc */}
+      <mesh rotation-x={-Math.PI / 2}>
+        <ringGeometry args={[0.65, range, 48, 1, -Math.PI * 0.75, Math.PI * 1.5]} />
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={pState === "HOLDING" ? 0.22 : 0.12}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+
+      {/* Outer Border Rim */}
+      <mesh rotation-x={-Math.PI / 2}>
+        <ringGeometry args={[range - 0.05, range, 48, 1, -Math.PI * 0.75, Math.PI * 1.5]} />
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={0.65}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+
+      {/* Forward Heading Clearance Ray */}
+      <Line
+        points={[
+          [0, 0.05, 0],
+          [Math.sin(bot.headingRad) * range, 0.05, Math.cos(bot.headingRad) * range],
+        ]}
+        color={color}
+        lineWidth={2.2}
+        transparent
+        opacity={0.85}
+      />
+    </group>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // 2. Individual BotUnit Mesh & Frame Interpolation Loop
 // ─────────────────────────────────────────────────────────────
 
@@ -165,9 +220,12 @@ interface SingleBotProps {
   bot: BotUnit;
   isSelected: boolean;
   onSelect: () => void;
+  showLabels: boolean;
+  showPaths: boolean;
 }
 
-function SingleBot({ bot, isSelected, onSelect }: SingleBotProps) {
+function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths }: SingleBotProps) {
+  const [hovered, setHovered] = useState(false);
   const groupRef = useRef<THREE.Group>(null!);
   const wheelsRef = useRef<THREE.Group>(null!);
   const ledRingRef = useRef<THREE.Mesh>(null!);
@@ -230,7 +288,7 @@ function SingleBot({ bot, isSelected, onSelect }: SingleBotProps) {
 
   // Calculate remaining continuous A* route in world coordinates
   const isMoving = bot.status === "ACTIVE" && bot.path.length > 0;
-  const showRoute = isSelected || isMoving;
+  const showRoute = isSelected || (showPaths && isMoving);
 
   const routePoints = useMemo(() => {
     if (!showRoute || !bot.path || bot.path.length === 0) return null;
@@ -292,26 +350,55 @@ function SingleBot({ bot, isSelected, onSelect }: SingleBotProps) {
         ref={groupRef}
         position={initRef.current.pos}
         rotation-y={initRef.current.heading}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          setHovered(true);
+        }}
+        onPointerOut={() => {
+          setHovered(false);
+        }}
       >
-        {/* Clickable Hovering HTML Status Badge */}
-        <Html
-          position={[0, 1.45, 0]}
-          center
-          distanceFactor={28}
-          zIndexRange={[12, 0]}
-        >
-          <BotStatusBadge
-            botId={bot.id}
-            status={bot.status}
-            batteryPct={bot.batteryPct}
-            isSelected={isSelected}
-            statusColor={statusColor}
-            perceptionState={bot.perception?.state}
-            warningProximity={bot.perception?.warningProximity}
-            isBackingOff={bot.backingOff}
-            onClick={onSelect}
-          />
-        </Html>
+        {/* Clickable Hovering HTML Status Badge (Shown when selected, hovered, or labels toggled ON) */}
+        {(showLabels || isSelected || hovered) && (
+          <Html
+            position={[0, 1.45, 0]}
+            center
+            distanceFactor={32}
+            zIndexRange={[15, 0]}
+          >
+            {isSelected ? (
+              <BotStatusBadge
+                botId={bot.id}
+                status={bot.status}
+                batteryPct={bot.batteryPct}
+                isSelected={isSelected}
+                statusColor={statusColor}
+                perceptionState={bot.perception?.state}
+                warningProximity={bot.perception?.warningProximity}
+                isBackingOff={bot.backingOff}
+                onClick={onSelect}
+              />
+            ) : (
+              <div
+                className={`lbl ${bot.status === "ERROR" ? "err" : bot.status === "CHARGING" ? "chg" : ""}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect();
+                }}
+              >
+                {bot.status === "ERROR" ? "⚠ " : ""}
+                {bot.id}
+              </div>
+            )}
+          </Html>
+        )}
+
+        {/* 2.5 Selected Robot Perception Gizmo */}
+        {isSelected && <PerceptionGizmo bot={bot} />}
 
         {/* 3. Breathing Status LED Ring on Floor */}
         <mesh
@@ -542,6 +629,8 @@ export function BotFleet() {
   const botUnits = useTwinStore((s) => s.botUnits);
   const selectedBotId = useTwinStore((s) => s.selectedBotId);
   const selectBot = useTwinStore((s) => s.selectBot);
+  const showLabels = useTwinStore((s) => s.showLabels);
+  const showPaths = useTwinStore((s) => s.showPaths);
 
   return (
     <group name="BotFleet">
@@ -551,6 +640,8 @@ export function BotFleet() {
           bot={bot}
           isSelected={selectedBotId === bot.id}
           onSelect={() => selectBot(bot.id)}
+          showLabels={showLabels}
+          showPaths={showPaths}
         />
       ))}
     </group>

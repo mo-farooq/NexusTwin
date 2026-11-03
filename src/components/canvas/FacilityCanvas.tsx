@@ -18,6 +18,7 @@ import { StationNodes } from "./StationNodes";
 import { BotFleet } from "./BotFleet";
 import { ZoneSections } from "./ZoneSections";
 import { ConveyorSystem } from "./ConveyorSystem";
+import { HumanWorkers } from "./HumanWorkers";
 
 // ─────────────────────────────────────────────────────────────
 // Color Palette & Architectural Constants
@@ -387,6 +388,7 @@ function FloorObstaclesCollection() {
   const customObstacles = useTwinStore((s) => s.customObstacles);
   const toggleFloorObstacle = useTwinStore((s) => s.toggleFloorObstacle);
   const cellSize = useTwinStore((s) => s.navGrid.cellSize);
+  const showLabels = useTwinStore((s) => s.showLabels);
 
   return (
     <group>
@@ -443,29 +445,31 @@ function FloorObstaclesCollection() {
             <pointLight position={[0, 0.6, 0]} color="#F59E0B" intensity={1.5} distance={3.5} />
 
             {/* Click to remove Pill */}
-            <Html position={[0, 0.75, 0]} center distanceFactor={35}>
-              <div
-                style={{
-                  background: "rgba(15, 23, 42, 0.92)",
-                  color: "#F8CB46",
-                  padding: "3px 8px",
-                  borderRadius: "6px",
-                  fontSize: "10px",
-                  fontWeight: 800,
-                  whiteSpace: "nowrap",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  border: "1px solid rgba(248, 203, 70, 0.4)",
-                  fontFamily: "'Inter', sans-serif",
-                }}
-              >
-                <span>🚧 Blocked</span>
-                <span style={{ color: "#EF4444", marginLeft: "2px" }}>✕</span>
-              </div>
-            </Html>
+            {showLabels && (
+              <Html position={[0, 0.75, 0]} center distanceFactor={35}>
+                <div
+                  style={{
+                    background: "rgba(15, 23, 42, 0.92)",
+                    color: "#F8CB46",
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                    fontSize: "10px",
+                    fontWeight: 800,
+                    whiteSpace: "nowrap",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    border: "1px solid rgba(248, 203, 70, 0.4)",
+                    fontFamily: "'Inter', sans-serif",
+                  }}
+                >
+                  <span>🚧 Blocked</span>
+                  <span style={{ color: "#EF4444", marginLeft: "2px" }}>✕</span>
+                </div>
+              </Html>
+            )}
           </group>
         );
       })}
@@ -529,6 +533,7 @@ function FacilityScene({ controlsRef }: { controlsRef: React.RefObject<OrbitCont
         <FloorObstaclesCollection />
         <StationNodes />
         <RackSystem />
+        <HumanWorkers />
         <BotFleet />
 
         {/* Soft Grounding Contact Shadows */}
