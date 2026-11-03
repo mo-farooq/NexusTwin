@@ -17,9 +17,10 @@ import type { ConveyorSegment } from "../../engine/autoZoner";
 
 interface SingleConveyorProps {
   conveyor: ConveyorSegment;
+  simulationSpeed: number;
 }
 
-function SingleConveyor({ conveyor }: SingleConveyorProps) {
+function SingleConveyor({ conveyor, simulationSpeed }: SingleConveyorProps) {
   const { startCoords, endCoords, lengthM, speedMps = 1.5, isJammed } = conveyor;
   const rollersRef = useRef<THREE.Group>(null!);
   const packagesRef = useRef<THREE.Group>(null!);
@@ -41,18 +42,19 @@ function SingleConveyor({ conveyor }: SingleConveyorProps) {
 
   useFrame((_, dt) => {
     if (isJammed) return;
+    const effectiveDt = dt * Math.max(1, simulationSpeed);
 
     // Rotate rollers
     if (rollersRef.current) {
       rollersRef.current.children.forEach((child) => {
-        (child as THREE.Mesh).rotation.z -= (speedMps / 0.1) * dt;
+        (child as THREE.Mesh).rotation.z -= (speedMps / 0.1) * effectiveDt;
       });
     }
 
     // Move packages along conveyor
     if (packagesRef.current) {
       packagesRef.current.children.forEach((child, i) => {
-        pkgOffsets.current[i] = (pkgOffsets.current[i] + speedMps * dt) % lengthM;
+        pkgOffsets.current[i] = (pkgOffsets.current[i] + speedMps * effectiveDt) % lengthM;
         // Position relative to conveyor center
         child.position.x = pkgOffsets.current[i] - lengthM / 2;
       });
@@ -134,13 +136,14 @@ function SingleConveyor({ conveyor }: SingleConveyorProps) {
 
 export function ConveyorSystem() {
   const conveyors = useTwinStore((s) => s.conveyors);
+  const simulationSpeed = useTwinStore((s) => s.simulationSpeed);
 
   if (!conveyors || conveyors.length === 0) return null;
 
   return (
     <group>
       {conveyors.map((conv) => (
-        <SingleConveyor key={conv.id} conveyor={conv} />
+        <SingleConveyor key={conv.id} conveyor={conv} simulationSpeed={simulationSpeed} />
       ))}
     </group>
   );

@@ -222,9 +222,10 @@ interface SingleBotProps {
   onSelect: () => void;
   showLabels: boolean;
   showPaths: boolean;
+  simulationSpeed: number;
 }
 
-function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths }: SingleBotProps) {
+function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulationSpeed }: SingleBotProps) {
   const [hovered, setHovered] = useState(false);
   const groupRef = useRef<THREE.Group>(null!);
   const wheelsRef = useRef<THREE.Group>(null!);
@@ -257,13 +258,14 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths }: SingleB
     }
   }, [bot.status]);
 
-  // High-precision useFrame interpolation loop (60fps smoothing across 100ms ticks)
+  // High-precision useFrame interpolation loop (scales proportionally with simulationSpeed 1x/2x/5x/10x)
   useFrame(({ clock }, dt) => {
     const grp = groupRef.current;
     if (!grp) return;
 
-    // Exponential smoothing factor: smoothly glides toward authoritative tick position
-    const k = 1.0 - Math.pow(0.0005, dt);
+    // Scale smoothing factor by simulationSpeed so 3D meshes track accelerated ticks accurately
+    const effectiveDt = dt * Math.max(1, simulationSpeed);
+    const k = 1.0 - Math.pow(0.0005, effectiveDt);
     grp.position.x += (bot.position[0] - grp.position.x) * k;
     grp.position.z += (bot.position[2] - grp.position.z) * k;
     grp.position.y = 0.2; // Keep fixed ground clearance
@@ -274,9 +276,9 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths }: SingleB
     while (dHeading < -Math.PI) dHeading += Math.PI * 2;
     grp.rotation.y += dHeading * k;
 
-    // Rotate wheels dynamically based on linear movement velocity
+    // Rotate wheels dynamically based on linear movement velocity and simulationSpeed
     if (wheelsRef.current && bot.velocity > 0.05) {
-      wheelsRef.current.rotation.x -= (bot.velocity / 0.08) * dt;
+      wheelsRef.current.rotation.x -= (bot.velocity / 0.08) * effectiveDt;
     }
 
     // Breathing pulse animation for status LED ring
@@ -631,6 +633,7 @@ export function BotFleet() {
   const selectBot = useTwinStore((s) => s.selectBot);
   const showLabels = useTwinStore((s) => s.showLabels);
   const showPaths = useTwinStore((s) => s.showPaths);
+  const simulationSpeed = useTwinStore((s) => s.simulationSpeed);
 
   return (
     <group name="BotFleet">
@@ -642,6 +645,7 @@ export function BotFleet() {
           onSelect={() => selectBot(bot.id)}
           showLabels={showLabels}
           showPaths={showPaths}
+          simulationSpeed={simulationSpeed}
         />
       ))}
     </group>

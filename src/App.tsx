@@ -59,17 +59,43 @@ export function App() {
   const simulationSpeed = useTwinStore((s) => s.simulationSpeed);
   const stepSimulation = useTwinStore((s) => s.stepSimulation);
 
-  // Deterministic simulation tick engine (100ms baseline adjusted by simulationSpeed)
+  // High-performance requestAnimationFrame simulation runner with time accumulator
+  // Synchronizes ticks to the display frame rate without throttling or flooding React dispatches
   useEffect(() => {
-    if (!isRunning) return;
+    let rafId = 0;
+    let lastTime = performance.now();
+    let accumulator = 0;
+    const TICK_S = 0.1; // 100ms baseline simulation tick
+    const MAX_TICKS_PER_FRAME = 20;
 
-    const intervalMs = Math.max(10, Math.round(100 / simulationSpeed));
-    const timer = setInterval(() => {
-      stepSimulation();
-    }, intervalMs);
+    const loop = (now: number) => {
+      rafId = requestAnimationFrame(loop);
+      const dt = Math.min(0.25, (now - lastTime) / 1000);
+      lastTime = now;
 
-    return () => clearInterval(timer);
-  }, [isRunning, simulationSpeed, stepSimulation]);
+      const state = useTwinStore.getState();
+      if (!state.isRunning) {
+        accumulator = 0;
+        return;
+      }
+
+      const speed = state.simulationSpeed;
+      accumulator += dt * speed;
+
+      let ticksToStep = 0;
+      while (accumulator >= TICK_S && ticksToStep < MAX_TICKS_PER_FRAME) {
+        accumulator -= TICK_S;
+        ticksToStep++;
+      }
+
+      if (ticksToStep > 0) {
+        state.stepSimulation(ticksToStep);
+      }
+    };
+
+    rafId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
 
   return (
     <div className="shell">

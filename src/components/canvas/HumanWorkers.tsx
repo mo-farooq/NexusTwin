@@ -11,28 +11,51 @@ import { Html, RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
 import { useTwinStore, type HumanWorker } from "../../store/useTwinStore";
 
-function SingleHumanWorker({ worker, showLabels }: { worker: HumanWorker; showLabels: boolean }) {
+function SingleHumanWorker({
+  worker,
+  showLabels,
+  simulationSpeed,
+}: {
+  worker: HumanWorker;
+  showLabels: boolean;
+  simulationSpeed: number;
+}) {
   const groupRef = useRef<THREE.Group>(null!);
   const leftLegRef = useRef<THREE.Group>(null!);
   const rightLegRef = useRef<THREE.Group>(null!);
 
-  useFrame(({ clock }) => {
+  // Initial mount coordinate references to avoid transform snaps on React dispatches
+  const initRef = useRef<{ pos: [number, number, number]; heading: number } | null>(null);
+  if (!initRef.current) {
+    initRef.current = {
+      pos: [worker.position[0], 0, worker.position[2]],
+      heading: worker.headingRad,
+    };
+  }
+
+  useFrame(({ clock }, dt) => {
     const grp = groupRef.current;
     if (!grp) return;
 
-    // Smooth movement interpolation
-    grp.position.x += (worker.position[0] - grp.position.x) * 0.15;
-    grp.position.z += (worker.position[2] - grp.position.z) * 0.15;
+    const effectiveDt = dt * Math.max(1, simulationSpeed);
+    const k = 1.0 - Math.pow(0.001, effectiveDt);
+
+    // Smooth movement interpolation along continuous floor plane
+    grp.position.x += (worker.position[0] - grp.position.x) * k;
+    grp.position.z += (worker.position[2] - grp.position.z) * k;
     grp.position.y = 0;
 
     // Angular orientation
     let dh = worker.headingRad - grp.rotation.y;
     while (dh > Math.PI) dh -= Math.PI * 2;
     while (dh < -Math.PI) dh += Math.PI * 2;
-    grp.rotation.y += dh * 0.15;
+    grp.rotation.y += dh * k;
 
-    // Walking leg cycle
-    const walkPhase = clock.elapsedTime * 6 * worker.speed;
+    // Walking leg cycle (pauses when yielding/standing still)
+    const isWalking = !worker.isYielding && worker.speed > 0;
+    const walkPhase = isWalking
+      ? clock.elapsedTime * 6 * worker.speed * Math.max(1, simulationSpeed * 0.7)
+      : 0;
     if (leftLegRef.current && rightLegRef.current) {
       leftLegRef.current.rotation.x = Math.sin(walkPhase) * 0.45;
       rightLegRef.current.rotation.x = -Math.sin(walkPhase) * 0.45;
@@ -40,7 +63,7 @@ function SingleHumanWorker({ worker, showLabels }: { worker: HumanWorker; showLa
   });
 
   return (
-    <group ref={groupRef} position={[worker.position[0], 0, worker.position[2]]}>
+    <group ref={groupRef} position={initRef.current.pos} rotation-y={initRef.current.heading}>
       {/* Dynamic 2.0m Human LiDAR Safety Perimeter Ring */}
       <mesh position={[0, 0.02, 0]} rotation-x={-Math.PI / 2}>
         <ringGeometry args={[1.2, 1.35, 32]} />
@@ -153,13 +176,19 @@ function SingleHumanWorker({ worker, showLabels }: { worker: HumanWorker; showLa
 export function HumanWorkers() {
   const people = useTwinStore((s) => s.people);
   const showLabels = useTwinStore((s) => s.showLabels);
+  const simulationSpeed = useTwinStore((s) => s.simulationSpeed);
 
   if (!people) return null;
 
   return (
     <group name="HumanWorkers">
       {Object.values(people).map((worker) => (
-        <SingleHumanWorker key={worker.id} worker={worker} showLabels={showLabels} />
+        <SingleHumanWorker
+          key={worker.id}
+          worker={worker}
+          showLabels={showLabels}
+          simulationSpeed={simulationSpeed}
+        />
       ))}
     </group>
   );
