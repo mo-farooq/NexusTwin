@@ -401,16 +401,16 @@ const BATTERY_CRITICAL_THRESHOLD = 10.0;
 const BATTERY_TARGET_CHARGE = 95.0;
 
 const SIM_PARAMS = {
-  MIN_SEP: 1.30,              // Center-to-center minimum clearance in meters (prevents physical touching/clipping)
+  MIN_SEP: 1.05,              // Center-to-center minimum clearance in meters
   ROBOT_HALF_LEN: 0.48,       // AMR half length (m)
   ROBOT_HALF_W: 0.35,         // AMR half width (m)
-  LIDAR_RANGE: 4.0,           // Virtual LiDAR radius (m)
+  LIDAR_RANGE: 3.5,           // Virtual LiDAR radius (m)
   LIDAR_FOV: Math.PI * 1.5,   // 270 degrees
-  PERC_STOP: 1.8,             // Safe stop before touching (1.8m)
-  PERC_SLOW: 2.8,             // Decelerate smoothly when approaching (2.8m)
+  PERC_STOP: 1.15,            // Safe stop distance before touching (1.15m)
+  PERC_SLOW: 2.2,             // Decelerate smoothly when approaching (2.2m)
   PERC_LOOKAHEAD: 3,          // React to obstacles on upcoming path cells
-  WAIT_REPLAN_TICKS: 6,       // Rapid dynamic replanning after 0.6s (avoids blockades!)
-  WAIT_BACKOFF_TICKS: 16,     // Controlled back-off / turnout after 1.6s
+  WAIT_REPLAN_TICKS: 4,       // Rapid dynamic replanning after 0.4s (avoids blockades!)
+  WAIT_BACKOFF_TICKS: 12,     // Controlled back-off / turnout after 1.2s
   STATION_ARRIVE_CELLS: 2,    // Dwell / conclude when within 2 cells of station
 };
 
@@ -1828,7 +1828,6 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
 
       // 1. Task Generation: Regular steady-state order stream or Festive Surge
       // Supports dual-stream: 25% Inbound Put-Away vs. 75% Order Pick & Fulfillment
-      let seq = state.taskSequence;
       const pendingTaskCount = Object.values(nextTasks).filter((t) => t.status === "PENDING").length;
       const surgeMult = state.isFestiveSurgeActive ? state.surgeMultiplier || 3 : 1;
       const taskInterval = Math.max(12, Math.floor(50 / surgeMult));
@@ -2200,6 +2199,9 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
           let frontDistM = Infinity;
           let nearestOtherBot: BotUnit | null = null;
 
+          const cosH = Math.cos(desiredHeading);
+          const sinH = Math.sin(desiredHeading);
+
           for (const other of Object.values(nextBots)) {
             if (other.id === bot.id || other.status === "OFFLINE" || other.status === "ERROR") continue;
             const odx = other.position[0] - currentPos[0];
@@ -2218,16 +2220,28 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               continue;
             }
 
-            // Proximity & 360° Safety Perception
+            // Project relative position onto forward heading and lateral lane axis
+            const distAhead = odx * cosH + odz * sinH;
+            const distLateral = Math.abs(-odx * sinH + odz * cosH);
+
+            // If other is behind our intended motion direction (distAhead < -0.15),
+            // moving toward targetWaypoint is moving AWAY from other: it cannot block forward stepping!
+            if (distAhead < -0.15) continue;
+
+            // If robot is actively backing off away from this specific priority bot, allow retreat
+            if (bot.backingOff && bot.perception.yieldsToId && other.id === bot.perception.yieldsToId && distAhead < 0.25) {
+              continue;
+            }
+
             const oCell = worldToCell(other.position[0], other.position[2], navGrid.cellSize);
             const isOnPath = upcomingPathCells.has(cellKey(oCell[0], oCell[1]));
-            const isVeryClose = odist < 2.0;
+            
+            // Forward lane conflict: directly ahead (distAhead > 0.15m && distAhead < 2.5m) and laterally in our lane (distLateral < 0.58m)
+            const inSameLaneAhead = distAhead > 0.15 && distAhead < 2.5 && distLateral < 0.58;
+            // Proximity hazard ahead within forward cone
+            const isHazardAhead = odist < 1.05 && distAhead > 0.05 && distLateral < 0.65;
 
-            // Check if robots are heading toward each other
-            const headingDiff = Math.abs(bot.headingRad - other.headingRad);
-            const isConverging = Math.abs(headingDiff - Math.PI) < 1.1;
-
-            if ((isOnPath || isVeryClose || (isConverging && odist < 3.0)) && odist < frontDistM) {
+            if ((isOnPath || inSameLaneAhead || isHazardAhead) && odist < frontDistM) {
               frontDistM = odist;
               frontObstacleId = other.id;
               nearestOtherBot = other;
@@ -2240,18 +2254,26 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             const pdx = person.position[0] - currentPos[0];
             const pdz = person.position[2] - currentPos[2];
             const pdist = Math.hypot(pdx, pdz);
-            if (pdist > 3.2 || pdist < 1e-6) continue;
+            if (pdist > 3.0 || pdist < 1e-6) continue;
 
             let b = Math.atan2(pdz, pdx) - bot.headingRad;
             while (b > Math.PI) b -= 2 * Math.PI;
             while (b < -Math.PI) b += 2 * Math.PI;
-            if (Math.abs(b) > SIM_PARAMS.LIDAR_FOV / 2 && pdist > 1.8) continue;
+            if (Math.abs(b) > SIM_PARAMS.LIDAR_FOV / 2 && pdist > 1.2) continue;
 
             if (!checkLineOfSight(navGrid, currentPos[0], currentPos[2], person.position[0], person.position[2])) {
               continue;
             }
 
-            if (pdist < frontDistM) {
+            const pDistAhead = pdx * cosH + pdz * sinH;
+            const pDistLateral = Math.abs(-pdx * sinH + pdz * cosH);
+            if (pDistAhead < -0.15) continue; // Moving away from person
+
+            const pCell = worldToCell(person.position[0], person.position[2], navGrid.cellSize);
+            const isOnPath = upcomingPathCells.has(cellKey(pCell[0], pCell[1]));
+
+            // Only react to human if in front on path, in lane, or emergency proximity
+            if ((isOnPath || (pDistAhead > 0.1 && pDistAhead < 1.8 && pDistLateral < 0.65) || (pdist < 1.15 && pDistAhead > 0.05)) && pdist < frontDistM) {
               frontDistM = pdist;
               frontObstacleId = person.name;
               humanInPerimeter = true;
@@ -2270,9 +2292,17 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
           }
 
           let blockedBy: string | null = (entering && occId && occId !== bot.id) ? occId : null;
+          // Emergency stop if obstacle is within safe stop distance in our immediate forward cone
           const percStop = (frontObstacleId !== null && frontDistM < SIM_PARAMS.PERC_STOP);
           if (!blockedBy && percStop) {
             blockedBy = frontObstacleId;
+          }
+
+          // If robot is actively backing off away from a priority bot, don't let that priority bot block its retreat
+          if (bot.backingOff && blockedBy && bot.perception.yieldsToId && blockedBy === bot.perception.yieldsToId) {
+            if (frontDistM >= 0.85) {
+              blockedBy = null;
+            }
           }
 
           // Station Arrival Buffer: If within 2 cells of destination and entrance is blocked,
@@ -2312,8 +2342,48 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             const blockedWait = bot.waitTicks + 1;
             const yieldsTo = humanInPerimeter || (otherBot ? checkRobotYieldsTo(bot, otherBot) : false);
 
+            // Priority Glide-Past:
+            // If this robot has right-of-way (!yieldsTo) against otherBot (and no human hazard ahead):
+            // Continue advancing at glide speed (0.55x) unless otherBot is physically touching (< 0.95m)
+            const canPriorityGlide = !yieldsTo && !humanInPerimeter && otherBot && frontDistM >= 0.95 && (
+              !occId || occId === otherBot.id
+            );
+
+            if (canPriorityGlide) {
+              const passSpeedFactor = 0.55;
+              const maxStep = profile.maxSpeedMps * TICK_DURATION_S * passSpeedFactor;
+              let nX = currentPos[0];
+              let nZ = currentPos[2];
+              let nIdx = bot.pathIndex;
+              if (distToWaypoint <= maxStep) {
+                nX = targetX;
+                nZ = targetZ;
+                nIdx++;
+              } else {
+                nX += (dx / distToWaypoint) * maxStep;
+                nZ += (dz / distToWaypoint) * maxStep;
+              }
+
+              nextBots[bot.id] = {
+                ...bot,
+                position: [nX, currentPos[1], nZ],
+                headingRad: desiredHeading,
+                velocity: profile.maxSpeedMps * passSpeedFactor,
+                pathIndex: nIdx,
+                waitTicks: 0,
+                perception: {
+                  state: "SLOWING",
+                  frontObstacleId: blockedBy,
+                  frontDistM: frontDistM < Infinity ? Math.round(frontDistM * 10) / 10 : null,
+                  warningProximity: true,
+                  yieldsToId: null,
+                },
+              };
+              return;
+            }
+
             // 1. Proactive Dynamic A* Replanning (Reroute around traffic via parallel aisle/bypass immediately)
-            if (blockedWait >= 4 && !bot.backingOff && bot.path.length > 0) {
+            if (blockedWait >= 3 && !bot.backingOff && bot.path.length > 0) {
               const detourBlocked = new Set<string>();
               if (otherBot) {
                 const oc = worldToCell(otherBot.position[0], otherBot.position[2], navGrid.cellSize);
@@ -2331,41 +2401,44 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               });
 
               if (alternatePath && alternatePath.length > 0) {
-                safeYieldsResolvedDelta++;
-                const secondsStr = String(Math.floor(simTimeSec % 60)).padStart(2, "0");
-                const minutesStr = String(Math.floor(simTimeSec / 60)).padStart(2, "0");
-                const logEntry: ExplainableDispatchLog = {
-                  id: `REROUTE-${currentTick}-${bot.id}`,
-                  timestamp: `00:${minutesStr}:${secondsStr}`,
-                  botId: bot.id,
-                  taskId: bot.currentTaskId || "TRANSIT",
-                  targetRack: "Bypass Corridor",
-                  tier: 1,
-                  reason: `🔄 Dynamic Anti-Collision Replanning: ${bot.id} rerouted around ${blockedBy || "traffic"} via parallel aisle (${alternatePath.length} waypoints).`,
-                };
-                nextLogs.unshift(logEntry);
-                if (nextLogs.length > 20) nextLogs.pop();
+                const isTrulyDifferent = alternatePath[0][0] !== targetWaypoint[0] || alternatePath[0][1] !== targetWaypoint[1];
+                if (isTrulyDifferent) {
+                  safeYieldsResolvedDelta++;
+                  const secondsStr = String(Math.floor(simTimeSec % 60)).padStart(2, "0");
+                  const minutesStr = String(Math.floor(simTimeSec / 60)).padStart(2, "0");
+                  const logEntry: ExplainableDispatchLog = {
+                    id: `REROUTE-${currentTick}-${bot.id}`,
+                    timestamp: `00:${minutesStr}:${secondsStr}`,
+                    botId: bot.id,
+                    taskId: bot.currentTaskId || "TRANSIT",
+                    targetRack: "Bypass Corridor",
+                    tier: 1,
+                    reason: `🔄 Dynamic Anti-Collision Replanning: ${bot.id} rerouted around ${blockedBy || "traffic"} via parallel aisle (${alternatePath.length} waypoints).`,
+                  };
+                  nextLogs.unshift(logEntry);
+                  if (nextLogs.length > 20) nextLogs.pop();
 
-                nextBots[bot.id] = {
-                  ...bot,
-                  path: alternatePath,
-                  pathIndex: 0,
-                  waitTicks: 0,
-                  velocity: 0,
-                  perception: {
-                    state: "CLEAR",
-                    frontObstacleId: null,
-                    frontDistM: null,
-                    warningProximity: false,
-                    yieldsToId: null,
-                  },
-                };
-                return;
+                  nextBots[bot.id] = {
+                    ...bot,
+                    path: alternatePath,
+                    pathIndex: 0,
+                    waitTicks: 0,
+                    velocity: 0,
+                    perception: {
+                      state: "CLEAR",
+                      frontObstacleId: null,
+                      frontDistM: null,
+                      warningProximity: false,
+                      yieldsToId: null,
+                    },
+                  };
+                  return;
+                }
               }
             }
 
             // 2. Cooperative Yielding & Sidestep into Turnout / Bay
-            if (yieldsTo && blockedWait >= 4 && !bot.backingOff) {
+            if (yieldsTo && blockedWait >= 3 && !bot.backingOff) {
               const claimed = new Set<string>();
               Object.values(nextBots).forEach((o) => {
                 if (o.id === bot.id) return;
@@ -2400,7 +2473,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                 const oCell = worldToCell(otherBot.position[0], otherBot.position[2], navGrid.cellSize);
                 const backColDir = Math.sign(myCell[0] - oCell[0]) || 0;
                 const backRowDir = Math.sign(myCell[1] - oCell[1]) || 0;
-                for (let step = 1; step <= 3; step++) {
+                for (let step = 4; step >= 1; step--) {
                   const candCol = myCell[0] + backColDir * step;
                   const candRow = myCell[1] + backRowDir * step;
                   if (isCellTraversable(navGrid, candCol, candRow, claimed)) {
@@ -2412,7 +2485,8 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
 
               if (bestCell) {
                 const sidestepPath = findPathAStar(navGrid, myCell, bestCell, { blockedCells: claimed }) ??
-                                     findPathAStar(navGrid, myCell, bestCell);
+                                     findPathAStar(navGrid, myCell, bestCell) ??
+                                     [bestCell];
                 if (sidestepPath && sidestepPath.length > 0) {
                   safeYieldsResolvedDelta++;
                   const resumeTarget = bot.path.length > 0 ? bot.path[bot.path.length - 1] : myCell;
@@ -2457,8 +2531,8 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               }
             }
 
-            // 2. Dynamic A* Rerouting for Priority Bot or Persistent Obstacle
-            if (blockedWait >= 14 && blockedWait % 8 === 0 && !bot.backingOff) {
+            // 3. Dynamic A* Rerouting for Priority Bot or Persistent Obstacle
+            if (blockedWait >= 10 && blockedWait % 6 === 0 && !bot.backingOff && bot.path.length > 0) {
               const detourBlocked = new Set<string>();
               if (otherBot) {
                 const oc = worldToCell(otherBot.position[0], otherBot.position[2], navGrid.cellSize);
@@ -2468,44 +2542,48 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               const alternatePath = findPathAStar(navGrid, myCell, goalCell, {
                 blockedCells: detourBlocked,
                 congestionCostMap: activeCongestionMap,
+                flowDirectionMap: state.aisleFlowMap,
               });
 
               if (alternatePath && alternatePath.length > 0) {
-                safeYieldsResolvedDelta++;
-                const secondsStr = String(Math.floor(simTimeSec % 60)).padStart(2, "0");
-                const minutesStr = String(Math.floor(simTimeSec / 60)).padStart(2, "0");
-                const logEntry: ExplainableDispatchLog = {
-                  id: `REROUTE-${currentTick}-${bot.id}`,
-                  timestamp: `00:${minutesStr}:${secondsStr}`,
-                  botId: bot.id,
-                  taskId: bot.currentTaskId || "TRANSIT",
-                  targetRack: "Bypass Corridor",
-                  tier: 1,
-                  reason: `🔄 Dynamic Anti-Collision Replanning: ${bot.id} rerouted around ${blockedBy || "traffic"} via parallel aisle (${alternatePath.length} waypoints).`,
-                };
-                nextLogs.unshift(logEntry);
-                if (nextLogs.length > 20) nextLogs.pop();
+                const isTrulyDifferent = alternatePath[0][0] !== targetWaypoint[0] || alternatePath[0][1] !== targetWaypoint[1];
+                if (isTrulyDifferent) {
+                  safeYieldsResolvedDelta++;
+                  const secondsStr = String(Math.floor(simTimeSec % 60)).padStart(2, "0");
+                  const minutesStr = String(Math.floor(simTimeSec / 60)).padStart(2, "0");
+                  const logEntry: ExplainableDispatchLog = {
+                    id: `REROUTE-${currentTick}-${bot.id}`,
+                    timestamp: `00:${minutesStr}:${secondsStr}`,
+                    botId: bot.id,
+                    taskId: bot.currentTaskId || "TRANSIT",
+                    targetRack: "Bypass Corridor",
+                    tier: 1,
+                    reason: `🔄 Dynamic Anti-Collision Replanning: ${bot.id} rerouted around ${blockedBy || "traffic"} via parallel aisle (${alternatePath.length} waypoints).`,
+                  };
+                  nextLogs.unshift(logEntry);
+                  if (nextLogs.length > 20) nextLogs.pop();
 
-                nextBots[bot.id] = {
-                  ...bot,
-                  path: alternatePath,
-                  pathIndex: 0,
-                  waitTicks: 0,
-                  velocity: 0,
-                  perception: {
-                    state: "CLEAR",
-                    frontObstacleId: null,
-                    frontDistM: null,
-                    warningProximity: false,
-                    yieldsToId: null,
-                  },
-                };
-                return;
+                  nextBots[bot.id] = {
+                    ...bot,
+                    path: alternatePath,
+                    pathIndex: 0,
+                    waitTicks: 0,
+                    velocity: 0,
+                    perception: {
+                      state: "CLEAR",
+                      frontObstacleId: null,
+                      frontDistM: null,
+                      warningProximity: false,
+                      yieldsToId: null,
+                    },
+                  };
+                  return;
+                }
               }
             }
 
-            // 3. Failsafe Queue/Jam Breaker (waited > 3.0s with no resolution)
-            if (blockedWait >= 30 && !bot.backingOff) {
+            // 4. Failsafe Queue/Jam Breaker (waited > 2.0s with no resolution)
+            if (blockedWait >= 20) {
               const claimed = new Set<string>();
               Object.values(nextBots).forEach((o) => {
                 if (o.id === bot.id) return;
@@ -2514,38 +2592,46 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               });
 
               let bestCell: GridCell | null = null;
-              for (let dr = -3; dr <= 3; dr++) {
-                for (let dc = -3; dc <= 3; dc++) {
-                  if (dr === 0 && dc === 0) continue;
-                  const candCol = myCell[0] + dc;
-                  const candRow = myCell[1] + dr;
-                  if (isCellTraversable(navGrid, candCol, candRow, claimed)) {
-                    bestCell = [candCol, candRow];
-                    break;
+              for (let radius = 1; radius <= 4; radius++) {
+                for (let dr = -radius; dr <= radius; dr++) {
+                  for (let dc = -radius; dc <= radius; dc++) {
+                    if (dr === 0 && dc === 0) continue;
+                    const candCol = myCell[0] + dc;
+                    const candRow = myCell[1] + dr;
+                    if (isCellTraversable(navGrid, candCol, candRow, claimed)) {
+                      bestCell = [candCol, candRow];
+                      break;
+                    }
                   }
+                  if (bestCell) break;
                 }
                 if (bestCell) break;
               }
 
               if (bestCell) {
-                const sidestepPath = findPathAStar(navGrid, myCell, bestCell);
-                if (sidestepPath && sidestepPath.length > 0) {
-                  const resumeTarget = bot.path.length > 0 ? bot.path[bot.path.length - 1] : myCell;
-                  const resumeWorld = cellToWorld(resumeTarget[0], resumeTarget[1], navGrid.cellSize);
-                  nextBots[bot.id] = {
-                    ...bot,
-                    path: sidestepPath,
-                    pathIndex: 0,
-                    backingOff: true,
-                    resumeGoalCoords: resumeWorld,
-                    resumeTaskId: bot.currentTaskId,
-                    resumeLocationId: bot.targetLocationId,
-                    resumeFsmState: bot.fsmState,
-                    waitTicks: 0,
-                    velocity: 0,
-                  };
-                  return;
-                }
+                const breakoutPath = findPathAStar(navGrid, myCell, bestCell) ?? [bestCell];
+                const resumeTarget = bot.path.length > 0 ? bot.path[bot.path.length - 1] : myCell;
+                const resumeWorld = cellToWorld(resumeTarget[0], resumeTarget[1], navGrid.cellSize);
+                nextBots[bot.id] = {
+                  ...bot,
+                  path: breakoutPath,
+                  pathIndex: 0,
+                  backingOff: true,
+                  resumeGoalCoords: resumeWorld,
+                  resumeTaskId: bot.currentTaskId,
+                  resumeLocationId: bot.targetLocationId,
+                  resumeFsmState: bot.fsmState,
+                  waitTicks: 0,
+                  velocity: 0,
+                  perception: {
+                    state: "BACKING_OFF",
+                    frontObstacleId: null,
+                    frontDistM: null,
+                    warningProximity: false,
+                    yieldsToId: null,
+                  },
+                };
+                return;
               }
             }
 
@@ -2718,12 +2804,13 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             if (bot.backingOff && bot.resumeGoalCoords) {
               const [rgx, rgz] = bot.resumeGoalCoords;
 
-              // Check if the priority obstacle bot is still passing nearby (< 2.6m)
+              // Check if the priority obstacle bot is still passing nearby (< 2.0m)
               let stillWaitingForPass = false;
               if (bot.perception.yieldsToId && nextBots[bot.perception.yieldsToId]) {
                 const priorityBot = nextBots[bot.perception.yieldsToId];
-                const pDist = Math.hypot(currentPos[0] - priorityBot.position[0], currentPos[2] - priorityBot.position[2]);
-                if (pDist < 2.6) {
+                const pDist = Math.hypot(newX - priorityBot.position[0], newZ - priorityBot.position[2]);
+                // Yield until priority bot has passed OR failsafe timeout of 16 ticks (1.6s) expires
+                if (pDist < 2.0 && bot.waitTicks < 16) {
                   stillWaitingForPass = true;
                 }
               }
@@ -2732,6 +2819,8 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                 // Hold position in cutout/turnout until priority unit finishes passing
                 nextBots[bot.id] = {
                   ...bot,
+                  position: [newX, currentPos[1], newZ],
+                  headingRad: newHeading,
                   velocity: 0,
                   waitTicks: bot.waitTicks + 1,
                   perception: {
@@ -2749,7 +2838,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                 blockedCells: reservedCells,
                 congestionCostMap: activeCongestionMap,
                 flowDirectionMap: state.aisleFlowMap,
-              });
+              }) ?? findPathAStar(navGrid, startCell, goalCell) ?? [];
 
               nextBots[bot.id] = {
                 ...bot,

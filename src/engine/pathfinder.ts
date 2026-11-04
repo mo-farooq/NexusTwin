@@ -284,13 +284,13 @@ export function findPathAStar(
         traversalCost += congestionCostMap[neighborIndex];
       }
 
-      // Aisle traffic flow directional penalty (prevents head-on deadlock in narrow aisles)
+      // Aisle traffic flow directional penalty (strictly enforces unidirectional loop in storage aisles)
       if (flowDirectionMap && neighborIndex !== goalIndex) {
         const flow = flowDirectionMap[neighborIndex];
-        if (flow === 1 && dRow > 0) traversalCost += 8.0;       // North-bound aisle, penalized going South (+dRow)
-        else if (flow === 2 && dRow < 0) traversalCost += 8.0;  // South-bound aisle, penalized going North (-dRow)
-        else if (flow === 3 && dCol < 0) traversalCost += 8.0;  // East-bound aisle, penalized going West (-dCol)
-        else if (flow === 4 && dCol > 0) traversalCost += 8.0;  // West-bound aisle, penalized going East (+dCol)
+        if (flow === 1 && dRow > 0) traversalCost += 250.0;       // North-bound aisle, penalized going South (+dRow)
+        else if (flow === 2 && dRow < 0) traversalCost += 250.0;  // South-bound aisle, penalized going North (-dRow)
+        else if (flow === 3 && dCol < 0) traversalCost += 250.0;  // East-bound aisle, penalized going West (-dCol)
+        else if (flow === 4 && dCol > 0) traversalCost += 250.0;  // West-bound aisle, penalized going East (+dCol)
       }
 
       const tentativeG = gCosts[currentIndex] + traversalCost;
