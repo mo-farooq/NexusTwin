@@ -37,19 +37,26 @@ function SingleHumanWorker({
     const grp = groupRef.current;
     if (!grp) return;
 
-    const effectiveDt = dt * Math.max(1, simulationSpeed);
-    const k = 1.0 - Math.pow(0.001, effectiveDt);
+    const speedMultiplier = simulationSpeed >= 5 ? 4.8 : simulationSpeed >= 2 ? 2.4 : 1.0;
+    const effectiveDt = dt * speedMultiplier;
+    const k = Math.min(1.0, 1.0 - Math.pow(0.0001, effectiveDt));
 
-    // Smooth movement interpolation along continuous floor plane
-    grp.position.x += (worker.position[0] - grp.position.x) * k;
-    grp.position.z += (worker.position[2] - grp.position.z) * k;
+    const distToTarget = Math.hypot(worker.position[0] - grp.position.x, worker.position[2] - grp.position.z);
+    if (distToTarget > 1.8 || simulationSpeed >= 5) {
+      const fastK = Math.max(k, 0.88);
+      grp.position.x += (worker.position[0] - grp.position.x) * fastK;
+      grp.position.z += (worker.position[2] - grp.position.z) * fastK;
+    } else {
+      grp.position.x += (worker.position[0] - grp.position.x) * k;
+      grp.position.z += (worker.position[2] - grp.position.z) * k;
+    }
     grp.position.y = 0;
 
     // Angular orientation
     let dh = worker.headingRad - grp.rotation.y;
     while (dh > Math.PI) dh -= Math.PI * 2;
     while (dh < -Math.PI) dh += Math.PI * 2;
-    grp.rotation.y += dh * k;
+    grp.rotation.y += dh * (simulationSpeed >= 5 ? Math.max(k, 0.85) : k);
 
     // Walking leg cycle (pauses when yielding/standing still)
     const isWalking = !worker.isYielding && worker.speed > 0;

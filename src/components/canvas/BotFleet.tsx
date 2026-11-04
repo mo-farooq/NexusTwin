@@ -263,18 +263,27 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
     const grp = groupRef.current;
     if (!grp) return;
 
-    // Scale smoothing factor by simulationSpeed so 3D meshes track accelerated ticks accurately
-    const effectiveDt = dt * Math.max(1, simulationSpeed);
-    const k = 1.0 - Math.pow(0.0005, effectiveDt);
-    grp.position.x += (bot.position[0] - grp.position.x) * k;
-    grp.position.z += (bot.position[2] - grp.position.z) * k;
+    // Scale smoothing factor proportionally with simulationSpeed (1x/2x/5x) so 3D meshes track 2D speed accurately
+    const speedMultiplier = simulationSpeed >= 5 ? 4.8 : simulationSpeed >= 2 ? 2.4 : 1.0;
+    const effectiveDt = dt * speedMultiplier;
+    const k = Math.min(1.0, 1.0 - Math.pow(0.00001, effectiveDt));
+
+    const distToTarget = Math.hypot(bot.position[0] - grp.position.x, bot.position[2] - grp.position.z);
+    if (distToTarget > 1.8 || simulationSpeed >= 5) {
+      const fastK = Math.max(k, 0.88);
+      grp.position.x += (bot.position[0] - grp.position.x) * fastK;
+      grp.position.z += (bot.position[2] - grp.position.z) * fastK;
+    } else {
+      grp.position.x += (bot.position[0] - grp.position.x) * k;
+      grp.position.z += (bot.position[2] - grp.position.z) * k;
+    }
     grp.position.y = 0.2; // Keep fixed ground clearance
 
     // Shortest angular turn interpolation
     let dHeading = bot.headingRad - grp.rotation.y;
     while (dHeading > Math.PI) dHeading -= Math.PI * 2;
     while (dHeading < -Math.PI) dHeading += Math.PI * 2;
-    grp.rotation.y += dHeading * k;
+    grp.rotation.y += dHeading * (simulationSpeed >= 5 ? Math.max(k, 0.85) : k);
 
     // Rotate wheels dynamically based on linear movement velocity and simulationSpeed
     if (wheelsRef.current && bot.velocity > 0.05) {

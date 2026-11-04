@@ -16,6 +16,7 @@ import {
   isCellTraversable,
   obbOverlap,
   checkLineOfSight,
+  buildAisleFlowMap,
   type GridCell,
   type NavGrid,
   type GridDimensions,
@@ -26,6 +27,8 @@ import {
   type ConveyorSegment,
   type FleetSizingResult,
 } from "../engine/autoZoner";
+import { runHeadlessWhatIf } from "../engine/whatif";
+import { generateHumanWorkers } from "../engine/humanTraffic";
 
 // ─────────────────────────────────────────────────────────────
 // 1. Robot / BotUnit Profiles & Specifications (Vendor-Neutral)
@@ -338,21 +341,31 @@ export interface WhatIfMetricRow {
   delta: number;
   unit: string;
   higherIsBetter: boolean;
+  confidenceRange?: { min: number; median: number; max: number };
 }
 
 export interface WhatIfResult {
   scenarioName: string;
   durationSeconds: number;
+  ensembleSeeds: number;
   computeMs: number;
   startTick: number;
+  divergenceTick: number | null;
+  firstDivergenceEvent: {
+    tick: number;
+    scenarioEvent: string;
+    baselineEvent: string;
+  } | null;
   metrics: WhatIfMetricRow[];
   recommendation: string;
   financialImpactINR: number;
+  paybackHorizonMonthsDelta: number;
   injectedChanges: {
     surgeMultiplier?: number;
     blockedZones?: string[];
     breakdownBots?: string[];
     conveyorJammed?: boolean;
+    recommendedBotsCount?: number;
   };
 }
 
@@ -388,21 +401,22 @@ const BATTERY_CRITICAL_THRESHOLD = 10.0;
 const BATTERY_TARGET_CHARGE = 95.0;
 
 const SIM_PARAMS = {
-  MIN_SEP: 0.90,              // Center-to-center minimum clearance in meters
+  MIN_SEP: 1.30,              // Center-to-center minimum clearance in meters (prevents physical touching/clipping)
   ROBOT_HALF_LEN: 0.48,       // AMR half length (m)
   ROBOT_HALF_W: 0.35,         // AMR half width (m)
   LIDAR_RANGE: 4.0,           // Virtual LiDAR radius (m)
   LIDAR_FOV: Math.PI * 1.5,   // 270 degrees
-  PERC_STOP: 1.7,             // Stop when on-path obstacle is closer than 1.7m
-  PERC_SLOW: 2.8,             // Decelerate when on-path obstacle is closer than 2.8m
-  PERC_LOOKAHEAD: 3,          // Only react to obstacles on upcoming 3 path cells
-  WAIT_REPLAN_TICKS: 25,      // Replan after waiting 2.5 seconds (25 ticks)
-  WAIT_BACKOFF_TICKS: 60,     // Back-off / yield after waiting 6.0 seconds if still stuck
+  PERC_STOP: 1.8,             // Safe stop before touching (1.8m)
+  PERC_SLOW: 2.8,             // Decelerate smoothly when approaching (2.8m)
+  PERC_LOOKAHEAD: 3,          // React to obstacles on upcoming path cells
+  WAIT_REPLAN_TICKS: 6,       // Rapid dynamic replanning after 0.6s (avoids blockades!)
+  WAIT_BACKOFF_TICKS: 16,     // Controlled back-off / turnout after 1.6s
   STATION_ARRIVE_CELLS: 2,    // Dwell / conclude when within 2 cells of station
 };
 
 function createDefaultLayout(dimensions: GridDimensions): {
   navGrid: NavGrid;
+  aisleFlowMap: Uint8Array;
   zones: Record<string, WarehouseZone>;
   locations: Record<string, WarehouseLocation>;
   chargingDocks: Record<string, ChargingDock>;
@@ -644,7 +658,8 @@ function createDefaultLayout(dimensions: GridDimensions): {
     };
   }
 
-  return { navGrid, zones, locations, chargingDocks, elevators, initialBotUnits };
+  const aisleFlowMap = buildAisleFlowMap(navGrid);
+  return { navGrid, aisleFlowMap, zones, locations, chargingDocks, elevators, initialBotUnits };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -655,6 +670,7 @@ export interface NexusTwinState {
   // Warehouse & Grid Environment
   gridDimensions: GridDimensions;
   navGrid: NavGrid;
+  aisleFlowMap: Uint8Array;
   zones: Record<string, WarehouseZone>;
   locations: Record<string, WarehouseLocation>;
   chargingDocks: Record<string, ChargingDock>;
@@ -770,7 +786,11 @@ export interface NexusTwinState {
 
   // Headless What-If Engine
   whatIfResult: WhatIfResult | null;
-  runWhatIfSimulation: (scenarioType: "FESTIVE_3X" | "BOT_BREAKDOWN" | "AISLE_BLOCK" | "CONVEYOR_JAM") => Promise<WhatIfResult>;
+  runWhatIfSimulation: (
+    scenarioType: "FESTIVE_3X" | "BOT_BREAKDOWN" | "AISLE_BLOCK" | "CONVEYOR_JAM",
+    durationSeconds?: number,
+    ensembleSeeds?: number
+  ) => Promise<WhatIfResult>;
   applyWhatIfToLive: () => void;
   clearWhatIfResult: () => void;
 
@@ -900,56 +920,10 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     safetyViolationCount: 0,
   };
 
-  const initialPeople: Record<string, HumanWorker> = {
-    "WORKER-01": {
-      id: "WORKER-01",
-      name: "Rahul Sharma",
-      role: "Zone A/B Picker",
-      position: [26.0, 0, 12.0],
-      headingRad: 0,
-      waypoints: [
-        [26.0, 12.0],
-        [16.0, 12.0],
-        [16.0, 20.0],
-        [26.0, 20.0],
-      ],
-      currentWaypointIndex: 0,
-      speed: 0.9,
-      zoneId: "ZONE_A",
-    },
-    "WORKER-02": {
-      id: "WORKER-02",
-      name: "Priya Patel",
-      role: "Safety Supervisor",
-      position: [28.0, 0, 6.0],
-      headingRad: 0,
-      waypoints: [
-        [28.0, 6.0],
-        [28.0, 26.0],
-        [32.0, 26.0],
-        [32.0, 6.0],
-      ],
-      currentWaypointIndex: 0,
-      speed: 1.1,
-      zoneId: "ZONE_CENTRAL",
-    },
-    "WORKER-03": {
-      id: "WORKER-03",
-      name: "Amit Deshmukh",
-      role: "Inbound Inspector",
-      position: [6.0, 0, 6.0],
-      headingRad: 0,
-      waypoints: [
-        [6.0, 6.0],
-        [22.0, 6.0],
-        [22.0, 8.0],
-        [6.0, 8.0],
-      ],
-      currentWaypointIndex: 0,
-      speed: 0.8,
-      zoneId: "ZONE_INBOUND",
-    },
-  };
+  const initialPeople: Record<string, HumanWorker> = generateHumanWorkers(
+    initialLayout.navGrid,
+    initialDimensions
+  );
 
   const initialAlerts: Record<string, AlertItem> = {
     "ALT-01": {
@@ -1012,6 +986,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
   return {
     gridDimensions: initialDimensions,
     navGrid: initialLayout.navGrid,
+    aisleFlowMap: initialLayout.aisleFlowMap,
     zones: initialLayout.zones,
     locations: initialLayout.locations,
     chargingDocks: initialLayout.chargingDocks,
@@ -1119,112 +1094,9 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         };
       }),
 
-    runWhatIfSimulation: async (scenarioType) => {
-      const currentTick = get().tick;
-      const baselineThroughput = get().kpi.throughputPerHour || 310;
-      let scenarioThroughput = baselineThroughput;
-      let baselineSla = get().kpi.slaCompliancePct || 99.2;
-      let scenarioSla = baselineSla;
-      let penaltyINR = 0;
-      let congestionDelta = 0;
-      let recommendation = "";
-
-      if (scenarioType === "FESTIVE_3X") {
-        scenarioThroughput = Math.round(baselineThroughput * 2.3);
-        scenarioSla = 88.4;
-        penaltyINR = 34500;
-        congestionDelta = 42;
-        recommendation = "Deploy 4 standby BotUnits to East Aisle 2 and defragment Level 1 slots to absorb 3x festive volume without SLA breach.";
-      } else if (scenarioType === "BOT_BREAKDOWN") {
-        scenarioThroughput = Math.round(baselineThroughput * 0.76);
-        scenarioSla = 84.1;
-        penaltyINR = 48000;
-        congestionDelta = 28;
-        recommendation = "Reroute Zone A picking queue to autonomous bots BOT-06 and BOT-08 to recover 24% throughput deficit.";
-      } else if (scenarioType === "AISLE_BLOCK") {
-        scenarioThroughput = Math.round(baselineThroughput * 0.65);
-        scenarioSla = 79.5;
-        penaltyINR = 62000;
-        congestionDelta = 68;
-        recommendation = "Activate dynamic cross-aisle detour at Grid X:30 to bypass blocked rack corridor and clear deadlock.";
-      } else {
-        scenarioThroughput = Math.round(baselineThroughput * 0.52);
-        scenarioSla = 72.0;
-        penaltyINR = 85000;
-        congestionDelta = 75;
-        recommendation = "Divert packing stations 01 & 02 output to secondary staging line to release backpressure on aisle robots.";
-      }
-
-      const metrics: WhatIfMetricRow[] = [
-        {
-          key: "throughput",
-          label: "Throughput (orders/hr)",
-          baseline: baselineThroughput,
-          scenario: scenarioThroughput,
-          delta: scenarioThroughput - baselineThroughput,
-          unit: "orders/hr",
-          higherIsBetter: true,
-        },
-        {
-          key: "sla_compliance",
-          label: "SLA On-Time Rate",
-          baseline: baselineSla,
-          scenario: scenarioSla,
-          delta: Number((scenarioSla - baselineSla).toFixed(1)),
-          unit: "%",
-          higherIsBetter: true,
-        },
-        {
-          key: "sla_penalty",
-          label: "Est. SLA Penalty Risk",
-          baseline: 1200,
-          scenario: penaltyINR,
-          delta: penaltyINR - 1200,
-          unit: "₹",
-          higherIsBetter: false,
-        },
-        {
-          key: "aisle_congestion",
-          label: "Peak Corridor Congestion",
-          baseline: 14,
-          scenario: 14 + congestionDelta,
-          delta: congestionDelta,
-          unit: "%",
-          higherIsBetter: false,
-        },
-        {
-          key: "fleet_utilization",
-          label: "Fleet Utilization",
-          baseline: Math.round(get().kpi.fleetUtilizationPct),
-          scenario: Math.min(100, Math.round(get().kpi.fleetUtilizationPct + 25)),
-          delta: 25,
-          unit: "%",
-          higherIsBetter: true,
-        },
-      ];
-
-      const res: WhatIfResult = {
-        scenarioName:
-          scenarioType === "FESTIVE_3X"
-            ? "Festive Season 3x Flash Demand"
-            : scenarioType === "BOT_BREAKDOWN"
-            ? "Dual AMR Mechanical Breakdown"
-            : scenarioType === "AISLE_BLOCK"
-            ? "Main Logistics Aisle Physical Blockage"
-            : "Outbound Conveyor Motor Failure",
-        durationSeconds: 300,
-        computeMs: 14,
-        startTick: currentTick,
-        metrics,
-        recommendation,
-        financialImpactINR: penaltyINR,
-        injectedChanges: {
-          surgeMultiplier: scenarioType === "FESTIVE_3X" ? 3 : 1,
-          breakdownBots: scenarioType === "BOT_BREAKDOWN" ? ["BOT-03", "BOT-07"] : [],
-          conveyorJammed: scenarioType === "CONVEYOR_JAM",
-        },
-      };
-
+    runWhatIfSimulation: async (scenarioType, durationSeconds = 300, ensembleSeeds = 3) => {
+      const state = get();
+      const res = await runHeadlessWhatIf(state, scenarioType, durationSeconds, ensembleSeeds);
       set({ whatIfResult: res });
       return res;
     },
@@ -1242,6 +1114,9 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         set((s) => ({
           conveyors: s.conveyors.map((c) => ({ ...c, isJammed: true })),
         }));
+      }
+      if (res.injectedChanges.recommendedBotsCount) {
+        get().setFleetSize(res.injectedChanges.recommendedBotsCount);
       }
       get().logEvent({
         tick: get().tick,
@@ -1490,15 +1365,20 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         layout.zones
       );
 
+      const nextPeople = generateHumanWorkers(layout.navGrid, layout.dimensions);
+      const nextFlowMap = buildAisleFlowMap(layout.navGrid);
+
       set({
         gridDimensions: layout.dimensions,
         navGrid: layout.navGrid,
+        aisleFlowMap: nextFlowMap,
         zones: layout.zones,
         locations: layout.locations,
         chargingDocks: layout.chargingDocks,
         conveyors: layout.conveyors,
         customBlueprintUrl: blueprintUrl || layout.blueprintUrl || null,
         botUnits: nextBots,
+        people: nextPeople,
         tasks: {},
         taskSequence: 2000,
         trafficDensityMap: new Float32Array(totalCells),
@@ -1889,7 +1769,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               targetCell = worldToCell(targetWp[0], targetWp[1], navGrid.cellSize);
             }
 
-            const newPath = findPathAStar(navGrid, hCell, targetCell);
+            const newPath = findPathAStar(navGrid, hCell, targetCell, { allowDiagonal: false });
             if (newPath && newPath.length > 0) {
               p.path = newPath;
               p.pathIndex = 0;
@@ -1900,14 +1780,14 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             }
           }
 
-          // Check if an AMR robot is directly ahead within 1.35m (Cobot safety clearance)
+          // Check if an AMR robot is directly ahead within 1.8m (ISO 3691-4 Cobot safety clearance)
           let botAhead = false;
           for (const b of Object.values(nextBots)) {
             if (b.status === "OFFLINE" || b.status === "ERROR") continue;
             const bdx = b.position[0] - p.position[0];
             const bdz = b.position[2] - p.position[2];
             const bdist = Math.hypot(bdx, bdz);
-            if (bdist < 1.35) {
+            if (bdist < 1.8) {
               botAhead = true;
               break;
             }
@@ -2338,9 +2218,16 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               continue;
             }
 
-            // Only react to other bots located on upcoming path cells
+            // Proximity & 360° Safety Perception
             const oCell = worldToCell(other.position[0], other.position[2], navGrid.cellSize);
-            if (upcomingPathCells.has(cellKey(oCell[0], oCell[1])) && odist < frontDistM) {
+            const isOnPath = upcomingPathCells.has(cellKey(oCell[0], oCell[1]));
+            const isVeryClose = odist < 2.0;
+
+            // Check if robots are heading toward each other
+            const headingDiff = Math.abs(bot.headingRad - other.headingRad);
+            const isConverging = Math.abs(headingDiff - Math.PI) < 1.1;
+
+            if ((isOnPath || isVeryClose || (isConverging && odist < 3.0)) && odist < frontDistM) {
               frontDistM = odist;
               frontObstacleId = other.id;
               nearestOtherBot = other;
@@ -2353,19 +2240,18 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             const pdx = person.position[0] - currentPos[0];
             const pdz = person.position[2] - currentPos[2];
             const pdist = Math.hypot(pdx, pdz);
-            if (pdist > SIM_PARAMS.LIDAR_RANGE || pdist < 1e-6) continue;
+            if (pdist > 3.2 || pdist < 1e-6) continue;
 
             let b = Math.atan2(pdz, pdx) - bot.headingRad;
             while (b > Math.PI) b -= 2 * Math.PI;
             while (b < -Math.PI) b += 2 * Math.PI;
-            if (Math.abs(b) > SIM_PARAMS.LIDAR_FOV / 2) continue;
+            if (Math.abs(b) > SIM_PARAMS.LIDAR_FOV / 2 && pdist > 1.8) continue;
 
             if (!checkLineOfSight(navGrid, currentPos[0], currentPos[2], person.position[0], person.position[2])) {
               continue;
             }
 
-            const pCell = worldToCell(person.position[0], person.position[2], navGrid.cellSize);
-            if (upcomingPathCells.has(cellKey(pCell[0], pCell[1])) && pdist < frontDistM) {
+            if (pdist < frontDistM) {
               frontDistM = pdist;
               frontObstacleId = person.name;
               humanInPerimeter = true;
@@ -2426,7 +2312,59 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             const blockedWait = bot.waitTicks + 1;
             const yieldsTo = humanInPerimeter || (otherBot ? checkRobotYieldsTo(bot, otherBot) : false);
 
-            // 1. Cooperative Yielding & Deadlock Breaker
+            // 1. Proactive Dynamic A* Replanning (Reroute around traffic via parallel aisle/bypass immediately)
+            if (blockedWait >= 4 && !bot.backingOff && bot.path.length > 0) {
+              const detourBlocked = new Set<string>();
+              if (otherBot) {
+                const oc = worldToCell(otherBot.position[0], otherBot.position[2], navGrid.cellSize);
+                detourBlocked.add(cellKey(oc[0], oc[1]));
+                if (otherBot.path && otherBot.pathIndex < otherBot.path.length) {
+                  const oNext = otherBot.path[otherBot.pathIndex];
+                  detourBlocked.add(cellKey(oNext[0], oNext[1]));
+                }
+              }
+              const goalCell = bot.path[bot.path.length - 1];
+              const alternatePath = findPathAStar(navGrid, myCell, goalCell, {
+                blockedCells: detourBlocked,
+                congestionCostMap: activeCongestionMap,
+                flowDirectionMap: state.aisleFlowMap,
+              });
+
+              if (alternatePath && alternatePath.length > 0) {
+                safeYieldsResolvedDelta++;
+                const secondsStr = String(Math.floor(simTimeSec % 60)).padStart(2, "0");
+                const minutesStr = String(Math.floor(simTimeSec / 60)).padStart(2, "0");
+                const logEntry: ExplainableDispatchLog = {
+                  id: `REROUTE-${currentTick}-${bot.id}`,
+                  timestamp: `00:${minutesStr}:${secondsStr}`,
+                  botId: bot.id,
+                  taskId: bot.currentTaskId || "TRANSIT",
+                  targetRack: "Bypass Corridor",
+                  tier: 1,
+                  reason: `🔄 Dynamic Anti-Collision Replanning: ${bot.id} rerouted around ${blockedBy || "traffic"} via parallel aisle (${alternatePath.length} waypoints).`,
+                };
+                nextLogs.unshift(logEntry);
+                if (nextLogs.length > 20) nextLogs.pop();
+
+                nextBots[bot.id] = {
+                  ...bot,
+                  path: alternatePath,
+                  pathIndex: 0,
+                  waitTicks: 0,
+                  velocity: 0,
+                  perception: {
+                    state: "CLEAR",
+                    frontObstacleId: null,
+                    frontDistM: null,
+                    warningProximity: false,
+                    yieldsToId: null,
+                  },
+                };
+                return;
+              }
+            }
+
+            // 2. Cooperative Yielding & Sidestep into Turnout / Bay
             if (yieldsTo && blockedWait >= 4 && !bot.backingOff) {
               const claimed = new Set<string>();
               Object.values(nextBots).forEach((o) => {
@@ -2779,11 +2717,38 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             // Handle arrival after backing-off / sidestep
             if (bot.backingOff && bot.resumeGoalCoords) {
               const [rgx, rgz] = bot.resumeGoalCoords;
+
+              // Check if the priority obstacle bot is still passing nearby (< 2.6m)
+              let stillWaitingForPass = false;
+              if (bot.perception.yieldsToId && nextBots[bot.perception.yieldsToId]) {
+                const priorityBot = nextBots[bot.perception.yieldsToId];
+                const pDist = Math.hypot(currentPos[0] - priorityBot.position[0], currentPos[2] - priorityBot.position[2]);
+                if (pDist < 2.6) {
+                  stillWaitingForPass = true;
+                }
+              }
+
+              if (stillWaitingForPass) {
+                // Hold position in cutout/turnout until priority unit finishes passing
+                nextBots[bot.id] = {
+                  ...bot,
+                  velocity: 0,
+                  waitTicks: bot.waitTicks + 1,
+                  perception: {
+                    ...bot.perception,
+                    state: "YIELDING",
+                    warningProximity: true,
+                  },
+                };
+                return;
+              }
+
               const startCell = worldToCell(newX, newZ, navGrid.cellSize);
               const goalCell = worldToCell(rgx, rgz, navGrid.cellSize);
               const resumedPath = findPathAStar(navGrid, startCell, goalCell, {
                 blockedCells: reservedCells,
                 congestionCostMap: activeCongestionMap,
+                flowDirectionMap: state.aisleFlowMap,
               });
 
               nextBots[bot.id] = {
@@ -2919,8 +2884,11 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               findPathAStar(navGrid, startCell, goalCell, {
                 blockedCells: reservedCells,
                 congestionCostMap: activeCongestionMap,
+                flowDirectionMap: state.aisleFlowMap,
               }) ??
-              findPathAStar(navGrid, startCell, goalCell) ??
+              findPathAStar(navGrid, startCell, goalCell, {
+                flowDirectionMap: state.aisleFlowMap,
+              }) ??
               [];
 
             nextBots[bot.id] = {
@@ -3036,13 +3004,11 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         safetyViolationCount: 0,
       };
 
-      // 8. Recompute Financial ROI & Automation Decision Metrics
-      const nextDecisionMetrics = computeFinancials(
-        nextBots,
-        botProfiles,
-        nextKpi,
-        state.financialParams
-      );
+      // 8. Recompute Financial ROI & Automation Decision Metrics (sampled every 10 ticks = 1.0s for locked 60 FPS performance)
+      const nextDecisionMetrics =
+        (currentTick % 10 === 0 || !state.decisionMetrics)
+          ? computeFinancials(nextBots, botProfiles, nextKpi, state.financialParams)
+          : state.decisionMetrics;
 
       set({
         tick: currentTick,

@@ -32,6 +32,8 @@ export interface NavGrid {
 export interface PathfinderOptions {
   blockedCells?: Set<string>;
   congestionCostMap?: Float32Array;
+  flowDirectionMap?: Uint8Array; // 0=ANY, 1=NORTH(-row), 2=SOUTH(+row), 3=EAST(+col), 4=WEST(-col)
+  allowDiagonal?: boolean;
   maxExpansions?: number;
 }
 
@@ -209,7 +211,7 @@ export function findPathAStar(
   options: PathfinderOptions = {}
 ): GridCell[] | null {
   const { cols, rows, cells } = grid;
-  const { blockedCells, congestionCostMap, maxExpansions = 50000 } = options;
+  const { blockedCells, congestionCostMap, flowDirectionMap, allowDiagonal = true, maxExpansions = 50000 } = options;
 
   const toIndex = (c: number, r: number) => r * cols + c;
 
@@ -232,6 +234,7 @@ export function findPathAStar(
   frontier.push(octileHeuristic(start[0], start[1], goal[0], goal[1]), startIndex);
 
   let expansions = 0;
+  const neighborLimit = allowDiagonal ? NEIGHBOR_DIRECTIONS.length : 4; // First 4 are orthogonal (no diagonal corner-cutting)
 
   while (frontier.size > 0) {
     const currentIndex = frontier.pop();
@@ -248,7 +251,8 @@ export function findPathAStar(
     const currCol = currentIndex % cols;
     const currRow = Math.floor(currentIndex / cols);
 
-    for (const [dCol, dRow, baseDist] of NEIGHBOR_DIRECTIONS) {
+    for (let d = 0; d < neighborLimit; d++) {
+      const [dCol, dRow, baseDist] = NEIGHBOR_DIRECTIONS[d];
       const nextCol = currCol + dCol;
       const nextRow = currRow + dRow;
 
@@ -278,6 +282,15 @@ export function findPathAStar(
       let traversalCost = baseDist * (cellType === 2 ? 1.5 : 1.0);
       if (congestionCostMap) {
         traversalCost += congestionCostMap[neighborIndex];
+      }
+
+      // Aisle traffic flow directional penalty (prevents head-on deadlock in narrow aisles)
+      if (flowDirectionMap && neighborIndex !== goalIndex) {
+        const flow = flowDirectionMap[neighborIndex];
+        if (flow === 1 && dRow > 0) traversalCost += 8.0;       // North-bound aisle, penalized going South (+dRow)
+        else if (flow === 2 && dRow < 0) traversalCost += 8.0;  // South-bound aisle, penalized going North (-dRow)
+        else if (flow === 3 && dCol < 0) traversalCost += 8.0;  // East-bound aisle, penalized going West (-dCol)
+        else if (flow === 4 && dCol > 0) traversalCost += 8.0;  // West-bound aisle, penalized going East (+dCol)
       }
 
       const tentativeG = gCosts[currentIndex] + traversalCost;
@@ -405,4 +418,70 @@ export function obbOverlap(
     }
   }
   return true;
+}
+
+/**
+ * Build an automated directional flow map for storage rack aisles.
+ * Alternates flow directions (North/South for vertical aisles, East/West for horizontal aisles)
+ * to eliminate head-on deadlocks and ensure continuous unidirectional loop flow.
+ * Returns Uint8Array of size cols * rows: 0=ANY, 1=NORTH, 2=SOUTH, 3=EAST, 4=WEST.
+ */
+export function buildAisleFlowMap(grid: NavGrid): Uint8Array {
+  const { cols, rows, cells } = grid;
+  const flowMap = new Uint8Array(cols * rows);
+
+  // Scan columns to detect vertical aisles flanked by racks (cells === 1)
+  for (let c = 1; c < cols - 1; c++) {
+    let rackFlankCount = 0;
+    for (let r = 2; r < rows - 2; r++) {
+      const idx = r * cols + c;
+      if (cells[idx] === 0) {
+        const leftRack = cells[r * cols + (c - 1)] === 1 || cells[r * cols + Math.max(0, c - 2)] === 1;
+        const rightRack = cells[r * cols + (c + 1)] === 1 || cells[r * cols + Math.min(cols - 1, c + 2)] === 1;
+        if (leftRack || rightRack) {
+          rackFlankCount++;
+        }
+      }
+    }
+
+    // If substantial portion of column is an aisle flanked by racks
+    if (rackFlankCount >= Math.floor(rows * 0.25)) {
+      // Alternate direction based on column index: even columns South (2), odd columns North (1)
+      const direction: 1 | 2 = (Math.floor(c / 2) % 2 === 0) ? 2 : 1;
+      for (let r = 2; r < rows - 2; r++) {
+        const idx = r * cols + c;
+        if (cells[idx] === 0) {
+          flowMap[idx] = direction;
+        }
+      }
+    }
+  }
+
+  // Scan rows to detect horizontal aisles flanked by racks
+  for (let r = 1; r < rows - 1; r++) {
+    let horizontalAisleCount = 0;
+    for (let c = 2; c < cols - 2; c++) {
+      const idx = r * cols + c;
+      if (cells[idx] === 0 && flowMap[idx] === 0) {
+        const topRack = cells[(r - 1) * cols + c] === 1;
+        const bottomRack = cells[(r + 1) * cols + c] === 1;
+        if (topRack || bottomRack) {
+          horizontalAisleCount++;
+        }
+      }
+    }
+
+    if (horizontalAisleCount >= Math.floor(cols * 0.25)) {
+      // Alternate direction: even rows East (3), odd rows West (4)
+      const direction: 3 | 4 = (Math.floor(r / 2) % 2 === 0) ? 3 : 4;
+      for (let c = 2; c < cols - 2; c++) {
+        const idx = r * cols + c;
+        if (cells[idx] === 0 && flowMap[idx] === 0) {
+          flowMap[idx] = direction;
+        }
+      }
+    }
+  }
+
+  return flowMap;
 }
