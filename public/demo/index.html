@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NexusTwin · Operator View</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="calm.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M7 4.5v15l13-7.5z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path fill="currentColor" d="M6 4h4v16H6zM14 4h4v16h-4z"/></symbol>
+    <symbol id="i-heat" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" d="M3 3h5v5H3zM10 3h5v5h-5zM17 3h4v5h-4zM3 10h5v5H3zM10 10h5v5h-5zM3 17h5v4H3z"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path fill="currentColor" d="M13 2 4 14h6l-1 8 9-12h-6z"/></symbol>
+    <symbol id="i-cone" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 3 6 19h12zM8.5 12h7M4 21h16"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-.5-.5-2.5z"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path fill="currentColor" d="m12 2 3 7 7 .6-5.3 4.7 1.6 7.2L12 17.8 5.7 21.5l1.6-7.2L2 9.6 9 9z"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></symbol>
+    <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" d="M9 9h4.5a2 2 0 0 1 0 4H9h5a2 2 0 0 1 0 4H9M12 6v2M12 17v2"/></symbol>
+    <symbol id="i-flask" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M9 3h6M10 3v6L4 20h16L14 9V3M7 15h10"/></symbol>
+    <symbol id="i-cube" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="m12 2 9 5v10l-9 5-9-5V7zM12 12l9-5M12 12v10M12 12 3 7"/></symbol>
+    <symbol id="i-plan" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" d="M3 3h18v18H3zM3 9h8V3M11 21v-7h10"/></symbol>
+    <symbol id="i-cursor" viewBox="0 0 24 24"><path fill="currentColor" d="m4 3 16 7-7 2-2 7z"/></symbol>
+    <symbol id="i-hand" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M8 12V5a1.5 1.5 0 0 1 3 0v6V4a1.5 1.5 0 0 1 3 0v7V6a1.5 1.5 0 0 1 3 0v8c0 4-2.5 7-6.5 7S5 18 4 15l-1-3a1.5 1.5 0 0 1 2.8-1L8 14"/></symbol>
+    <symbol id="i-ruler" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" d="m3 17 14-14 4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2"/></symbol>
+    <symbol id="i-cam" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" d="M3 7h4l2-3h6l2 3h4v13H3z"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="i-path" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3" d="M4 20c4-8 12-2 16-16"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.5" fill="currentColor"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-bot" viewBox="0 0 40 40"><rect x="6" y="12" width="28" height="18" rx="4" fill="#FF5A1F"/><rect x="10" y="8" width="20" height="6" rx="2" fill="#fff" opacity=".9"/><circle cx="12" cy="31" r="3" fill="#fff"/><circle cx="28" cy="31" r="3" fill="#fff"/><rect x="12" y="17" width="16" height="4" rx="2" fill="#121826"/><circle cx="16" cy="19" r="1.3" fill="#3FD0B9"/><circle cx="24" cy="19" r="1.3" fill="#3FD0B9"/></symbol>
+  </defs>
+</svg>
+
+<div class="app calm">
+  <!-- ═════════ HEADER: identity · engine · time · actions ═════════ -->
+  <header class="hdr">
+    <div class="brand">
+      <div class="logo"><svg viewBox="0 0 24 24"><path fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round" d="m12 2 9 5v10l-9 5-9-5V7z"/><path fill="none" stroke="#FF5A1F" stroke-width="2" d="M7.5 9.5v6l4.5 2.5 4.5-2.5v-6"/></svg></div>
+      <div><div class="wordmark">Nexus<b>Twin</b></div><div class="tag">Operator view</div></div>
+    </div>
+
+    <div class="engine">
+      <span class="live" id="liveBadge"><i></i>LIVE</span>
+      <span class="clock" id="clock">14:22:08</span>
+      <span class="sep"></span>
+      <span class="m" title="10 Hz discrete clock · render FPS · simulation tick"><b id="fps">60</b> FPS · tick <b id="tick">184,220</b></span>
+    </div>
+
+    <div></div>
+
+    <div class="right">
+      <div class="transport" id="transport">
+        <button class="play on" id="playBtn" title="Play / Pause (Space)"><svg><use href="#i-pause"/></svg></button>
+        <button data-speed="1" class="on">1×</button><button data-speed="2">2×</button><button data-speed="5">5×</button><button data-speed="10">10×</button>
+      </div>
+      <span class="vsep"></span>
+      <a class="hbtn ghost" href="story.html">Story Mode</a>
+      <button class="hbtn ghost" data-open="studio">Studio</button>
+      <button class="hbtn ghost" data-open="sandbox">ROI Sandbox</button>
+      <button class="hbtn primary" data-open="whatif"><svg><use href="#i-flask"/></svg><span>What‑If</span><kbd>W</kbd></button>
+    </div>
+  </header>
+
+  <main class="body">
+    <!-- ═════════ LEFT: fleet · KPIs · health · incidents ═════════ -->
+    <aside class="col l">
+      <section class="card">
+        <div class="card-h"><span class="t">Fleet</span><span class="sp"></span><span class="pill-s">Standard Hub</span></div>
+        <div class="card-b">
+          <div class="hero"><div class="big num" id="fleetN">48<small>AMRs</small></div><div class="scale"><span class="sub"><b id="clear">38.6</b> m² / bot</span></div></div>
+          <div class="statebar" id="stateBar"></div>
+          <div class="split">
+            <div><div class="n num" id="fActive">36</div><div class="k"><i style="background:var(--signal)"></i>Moving</div></div>
+            <div><div class="n num" id="fCharge">7</div><div class="k"><i style="background:var(--blue)"></i>Charging</div></div>
+            <div><div class="n num" id="fIdle">4</div><div class="k"><i style="background:#C9C2AF"></i>Idle/fault</div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><span class="t">Performance</span><span class="sp"></span><span class="lnk">shift A</span></div>
+        <div class="card-b">
+          <div class="k-sm">Throughput pace</div>
+          <div class="pace-v"><span class="num" id="pace">1,284</span><small>/ 1,200 units·h target</small></div>
+          <div class="pacebar"><div class="f" id="paceBar" style="width:86%"></div><div class="tgt" style="left:80%"></div></div>
+          <div class="kgrid">
+            <div><div class="k-sm">On‑time SLA</div><div class="v num"><span id="sla">97.4</span><small>%</small></div></div>
+            <div><div class="k-sm">Cycle time</div><div class="v num"><span id="cycle">142</span><small>s</small></div></div>
+            <div><div class="k-sm">Completed</div><div class="v num" id="done">3,418</div></div>
+            <div><div class="k-sm">In flight</div><div class="v num" id="inflight">62</div></div>
+          </div>
+          <span id="util" hidden></span><span id="slaD" hidden></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><span class="t">Systems</span><span class="sp"></span><span class="lnk" id="hSum">5 / 5 nominal</span></div>
+        <div class="card-b"><div class="health" id="health"></div></div>
+      </section>
+
+      <section class="card grow">
+        <div class="card-h"><span class="t">Incidents</span><span class="sp"></span><button class="lnk" id="ackAll">Ack all</button></div>
+        <div class="card-b fill"><div class="alerts" id="alerts"></div></div>
+      </section>
+    </aside>
+
+    <!-- ═════════ CENTER ═════════ -->
+    <section class="center">
+      <div class="vp" id="vp">
+        <canvas id="scene"></canvas>
+        <div class="ph"><div class="k">WEBGL VIEWPORT</div><div class="t">Live 3D twin mounts here</div><div class="s">&lt;TwinCanvas /&gt; · preview shown</div></div>
+        <div class="surge-banner" id="surgeBanner"><svg width="14" height="14"><use href="#i-bolt"/></svg>DIWALI SURGE <b>×3.2</b></div>
+
+        <!-- top-left: view + floors -->
+        <div class="float f-view" id="viewSw">
+          <button class="on" data-v="3d"><svg><use href="#i-cube"/></svg>3D</button>
+          <button data-v="2d"><svg><use href="#i-plan"/></svg>2D CAD</button>
+        </div>
+        <div class="float f-floor" id="floorSw">
+          <button class="on">G</button><button>M1</button><button>L2</button>
+        </div>
+
+        <!-- top-right: camera menu + layers -->
+        <div class="f-tr">
+          <div class="float"><button id="camBtn"><svg><use href="#i-cam"/></svg><span id="camLbl">Full facility</span> ▾</button></div>
+          <div class="float cam-menu" id="camSw">
+            <button class="on">Full facility</button><button>Isometric</button><button>Top‑down</button><button>Robot POV</button><button>Packing zoom</button>
+          </div>
+          <div class="float icons" id="tools">
+            <button class="on" data-tool="sel" title="Inspect"><svg><use href="#i-cursor"/></svg></button>
+            <button data-tool="pan" title="Pan"><svg><use href="#i-hand"/></svg></button>
+            <button data-tool="ruler" title="Measure"><svg><use href="#i-ruler"/></svg></button>
+            <span class="div"></span>
+            <button class="layer on" data-layer="paths" title="Motion paths"><svg><use href="#i-path"/></svg></button>
+            <button class="layer on" data-layer="labels" title="Sensor labels &amp; LiDAR cones"><svg><use href="#i-tag"/></svg></button>
+          </div>
+        </div>
+
+        <!-- bottom-center: scenario injection -->
+        <div class="inject" id="chaos">
+          <span class="ttl">TEST</span>
+          <button data-mode="surge"><svg><use href="#i-bolt"/></svg>Surge</button>
+          <button data-mode="obstacle"><svg><use href="#i-cone"/></svg>Obstacle</button>
+          <button data-mode="fault"><svg><use href="#i-wrench"/></svg>Breakdown</button>
+          <button data-mode="vip"><svg><use href="#i-star"/></svg>VIP</button>
+          <span class="div"></span>
+          <button data-mode="heat"><svg><use href="#i-heat"/></svg>Heatmap <span class="x" id="heatLbl">LONG</span></button>
+          <button data-mode="slot"><svg><use href="#i-grid"/></svg>Re‑slot</button>
+        </div>
+
+        <!-- bottom-right: legend + engine -->
+        <div class="f-legend2">
+          <span><i style="background:var(--signal)"></i>Moving</span><span><i style="background:var(--blue)"></i>Charging</span><span><i style="background:var(--amber)"></i>Yielding</span><span><i style="background:var(--red)"></i>Fault</span>
+          <span class="mono dim"><b id="ftime">16.6ms</b> · A* <b id="astar">0.42ms</b> · <b id="agents">48</b> agents</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═════════ BOTTOM: queue · pace · lifecycle ═════════ -->
+    <section class="bottom">
+      <div class="card">
+        <div class="card-h"><span class="t">Dispatch queue</span><span class="sp"></span><span class="lnk" id="qCount">62 live tasks</span></div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Task</th><th>Type</th><th>Priority</th><th>Rack → Station</th><th>AMR</th><th>Progress</th></tr></thead>
+          <tbody id="queue"></tbody>
+        </table></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span class="t">Throughput</span><span class="sp"></span>
+          <span class="legend"><span><i style="background:var(--signal)"></i>Actual</span><span><i style="background:var(--ink);height:1px"></i>Target</span></span></div>
+        <div class="chart-wrap"><canvas id="paceChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span class="t">Order lifecycle</span><span class="sp"></span><span class="lnk">60 min</span></div>
+        <div class="life-v" id="life"></div>
+      </div>
+    </section>
+
+    <!-- ═════════ RIGHT: one tabbed panel ═════════ -->
+    <aside class="col r">
+      <section class="card grow">
+        <div class="ptabs" id="pTabs">
+          <button class="on" data-p="insp">Inspector</button><button data-p="ledger">Ledger</button><button data-p="road">Roadmap</button>
+        </div>
+        <div class="pane on" data-pane="insp">
+          <div class="tabs" id="inspTabs"><button class="on" data-i="bot">Robot</button><button data-i="rack">Rack</button><button data-i="station">Station</button></div>
+          <div class="card-b" id="insp"></div>
+        </div>
+        <div class="pane" data-pane="ledger">
+          <div class="tabs" id="ledTabs"><button class="on" data-l="disp">Dispatch reasoning</button><button data-l="safe">Safety events</button></div>
+          <div class="card-b fill"><div class="ledger" id="ledger"></div></div>
+        </div>
+        <div class="pane" data-pane="road">
+          <div class="card-b"><div class="road">
+            <div class="rm"><div class="k">PREDICTIVE MAINT.</div><div class="t">Motor temp · AMR‑17</div><div class="v">68°C</div><div class="m">wheel service in 6 days</div></div>
+            <div class="rm"><div class="k">AGV + CONVEYOR</div><div class="t">Cross‑dock sorter</div><div class="v">2.4 m/s</div><div class="m">2 tow‑tractors online</div></div>
+            <div class="rm"><div class="k">CARBON</div><div class="t">Solar roof today</div><div class="v">412 kWh</div><div class="m">net offset 0.31 t CO₂</div></div>
+            <div class="rm"><div class="k">OFF‑PEAK CHARGING</div><div class="t">Charge shifted</div><div class="v">−18%</div><div class="m">energy cost vs peak</div></div>
+            <div class="rm"><div class="k">MULTI‑FLOOR</div><div class="t">Freight lift L‑1</div><div class="v">G → M1</div><div class="m">3 bots queued</div></div>
+          </div></div>
+        </div>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="toast" id="toast"><i></i><span></span></div>
+<div id="overlays"></div>
+
+<script src="chart.umd.min.js"></script>
+<script src="app.js"></script>
+<script src="modals.js"></script>
+<script src="calm.js"></script>
+</body>
+</html>

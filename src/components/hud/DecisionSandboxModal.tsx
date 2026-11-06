@@ -54,6 +54,9 @@ export function DecisionSandboxModal() {
       : (BOT_PROFILES[selectedFleetProfileId]?.capexCostINR || 450000) / 100000
   );
   const [localSlaPenalty, setLocalSlaPenalty] = useState(financialParams.slaPenaltyPerMissedOrderINR);
+  const [localAgencyMargin, setLocalAgencyMargin] = useState(financialParams.contractStaffingMarginPct ?? 22);
+  const [localFestiveAttrition, setLocalFestiveAttrition] = useState(financialParams.festiveLaborAttritionPct ?? 35);
+  const [localPowerTariff, setLocalPowerTariff] = useState(financialParams.dgGensetPowerCostINR ?? 28);
 
   // Close on Escape key
   useEffect(() => {
@@ -720,6 +723,97 @@ export function DecisionSandboxModal() {
           {/* ═════════════════════════════════════════════════════════ */}
           {activeTab === "payback" && (
             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              {/* Anti-Overselling Firewall Banner */}
+              <div
+                style={{
+                  padding: "16px 20px",
+                  borderRadius: "14px",
+                  background: "linear-gradient(135deg, #0F172A 0%, #1E293B 100%)",
+                  border: "1.5px solid #334155",
+                  boxShadow: "0 4px 16px rgba(15, 23, 42, 0.2)",
+                  color: "#FFFFFF",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid #334155", paddingBottom: "10px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "20px" }}>🛡️</span>
+                    <div>
+                      <div style={{ fontSize: "14px", fontWeight: 900, color: "#F8CB46", letterSpacing: "-0.01em" }}>
+                        Independent Buyer Audit: Vendor Quote vs. NexusTwin Spatial Sizing
+                      </div>
+                      <div style={{ fontSize: "11px", color: "#94A3B8" }}>
+                        Anti-Overselling Firewall · De-risking OEM Sales Engineering Proposals
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      background: "#0C831F",
+                      color: "#FFFFFF",
+                      padding: "6px 14px",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                      fontWeight: 900,
+                      boxShadow: "0 2px 8px rgba(12, 131, 31, 0.3)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <span>₹</span>
+                    <span>{(decisionMetrics.capexSavedByNexusTwinINR / 100000).toFixed(1)} Lakhs CapEx Saved</span>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                  {/* Left: Vendor Pitch */}
+                  <div
+                    style={{
+                      background: "rgba(239, 68, 68, 0.08)",
+                      border: "1px solid rgba(239, 68, 68, 0.3)",
+                      borderRadius: "10px",
+                      padding: "12px 14px",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                      <span style={{ fontSize: "11px", fontWeight: 800, color: "#FCA5A5" }}>
+                        TYPICAL OEM VENDOR PITCH (LINEAR SPREADSHEET)
+                      </span>
+                      <span style={{ fontSize: "10px", fontWeight: 800, color: "#EF4444" }}>OVERBUY RISK</span>
+                    </div>
+                    <div style={{ fontSize: "18px", fontWeight: 900, color: "#F87171" }}>
+                      {decisionMetrics.vendorQuotedBots} AMRs • ₹{(decisionMetrics.vendorQuotedCapexINR / 100000).toFixed(1)} Lakhs CapEx
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#CBD5E1", marginTop: "4px", lineHeight: 1.4 }}>
+                      Vendor assumes unconstrained free-flow. Deploying {decisionMetrics.vendorQuotedBots} robots in 2m aisles causes <b>+{decisionMetrics.overbuyCongestionPenaltyPct}% gridlock</b>, choking packing nodes.
+                    </div>
+                  </div>
+
+                  {/* Right: NexusTwin Optimum */}
+                  <div
+                    style={{
+                      background: "rgba(12, 131, 31, 0.12)",
+                      border: "1px solid rgba(16, 185, 129, 0.4)",
+                      borderRadius: "10px",
+                      padding: "12px 14px",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                      <span style={{ fontSize: "11px", fontWeight: 800, color: "#86EFAC" }}>
+                        NEXUSTWIN VERIFIED OPTIMUM (3D SPATIAL PHYSICS)
+                      </span>
+                      <span style={{ fontSize: "10px", fontWeight: 800, color: "#4ADE80" }}>OPTIMAL FLEET</span>
+                    </div>
+                    <div style={{ fontSize: "18px", fontWeight: 900, color: "#4ADE80" }}>
+                      {botCount} AMRs + Level-1 Slotting • ₹{(decisionMetrics.totalFleetCapexINR / 100000).toFixed(1)} Lakhs CapEx
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#E2E8F0", marginTop: "4px", lineHeight: 1.4 }}>
+                      Spatial physics proves {botCount} AMRs achieves <b>{kpi.slaCompliancePct.toFixed(1)}% SLA Compliance</b> ({decisionMetrics.automatedThroughputPerHour} orders/hr) with zero aisle deadlock.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Simulation Verdict Banner */}
               <div
                 style={{
@@ -887,10 +981,10 @@ export function DecisionSandboxModal() {
                     </button>
                   </div>
 
-                  {/* Input 2: Manual Worker Wage (₹18,000/mo) */}
+                  {/* Input 2: Manual Worker Base Wage (₹18,000/mo) */}
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: 700, marginBottom: "6px" }}>
-                      <span style={{ color: "#475569" }}>Manual Picker Salary (₹/month)</span>
+                      <span style={{ color: "#475569" }}>Base Manual Picker Wage (₹/mo)</span>
                       <span style={{ color: "#0F172A" }}>₹{localWage.toLocaleString("en-IN")}</span>
                     </div>
                     <input
@@ -915,9 +1009,78 @@ export function DecisionSandboxModal() {
                         boxSizing: "border-box",
                       }}
                     />
+                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "4px" }}>
+                      Effective: ₹{decisionMetrics.effectiveManualPickerCostINR?.toLocaleString("en-IN")}/mo (with staffing margin & churn)
+                    </div>
                   </div>
 
-                  {/* Input 3: Robot Unit CapEx (₹ Lakhs) */}
+                  {/* Input 3: Staffing Agency Margin */}
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: 700, marginBottom: "6px" }}>
+                      <span style={{ color: "#475569" }}>Contract Agency Margin (%)</span>
+                      <span style={{ color: "#0F172A" }}>+{localAgencyMargin}%</span>
+                    </div>
+                    <input
+                      type="number"
+                      step={1}
+                      min={10}
+                      max={40}
+                      value={localAgencyMargin}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setLocalAgencyMargin(val);
+                        updateFinancialParams({ contractStaffingMarginPct: val });
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "8px 10px",
+                        borderRadius: "8px",
+                        border: "1px solid #CBD5E1",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        color: "#0F172A",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "4px" }}>
+                      TeamLease / Quess third-party contract agency overhead
+                    </div>
+                  </div>
+
+                  {/* Input 4: Festive Absenteeism & Churn Bonus */}
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: 700, marginBottom: "6px" }}>
+                      <span style={{ color: "#475569" }}>Diwali Attrition / Spot Wage Spike</span>
+                      <span style={{ color: "#0F172A" }}>+{localFestiveAttrition}%</span>
+                    </div>
+                    <input
+                      type="number"
+                      step={5}
+                      min={0}
+                      max={60}
+                      value={localFestiveAttrition}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setLocalFestiveAttrition(val);
+                        updateFinancialParams({ festiveLaborAttritionPct: val });
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "8px 10px",
+                        borderRadius: "8px",
+                        border: "1px solid #CBD5E1",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        color: "#0F172A",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "4px" }}>
+                      Diwali peak seasonal turnover & emergency contractor rates
+                    </div>
+                  </div>
+
+                  {/* Input 5: Robot Unit CapEx (₹ Lakhs) */}
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: 700, marginBottom: "6px" }}>
                       <span style={{ color: "#475569" }}>Robot Unit Cost (₹ Lakhs)</span>
@@ -947,8 +1110,41 @@ export function DecisionSandboxModal() {
                     />
                   </div>
 
-                  {/* Input 4: SLA Penalty Cost */}
+                  {/* Input 6: Blended Grid + DG Genset Tariff */}
                   <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: 700, marginBottom: "6px" }}>
+                      <span style={{ color: "#475569" }}>Blended Grid + DG Tariff (₹/kWh)</span>
+                      <span style={{ color: "#0F172A" }}>₹{localPowerTariff}/kWh</span>
+                    </div>
+                    <input
+                      type="number"
+                      step={1}
+                      min={8}
+                      max={45}
+                      value={localPowerTariff}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setLocalPowerTariff(val);
+                        updateFinancialParams({ dgGensetPowerCostINR: val });
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "8px 10px",
+                        borderRadius: "8px",
+                        border: "1px solid #CBD5E1",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        color: "#0F172A",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "4px" }}>
+                      Commercial grid (₹8.5) + Diesel generator backup risk (₹28)
+                    </div>
+                  </div>
+
+                  {/* Input 7: SLA Penalty Cost */}
+                  <div style={{ gridColumn: "span 2" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: 700, marginBottom: "6px" }}>
                       <span style={{ color: "#475569" }}>SLA Penalty Cost (₹/delayed order)</span>
                       <span style={{ color: "#0F172A" }}>₹{localSlaPenalty}</span>
@@ -979,6 +1175,52 @@ export function DecisionSandboxModal() {
                 </div>
               </div>
 
+              {/* 2D Spreadsheet vs 3D Spatial Reality Callout */}
+              <div
+                style={{
+                  background: "#F8FAFC",
+                  border: "1.5px solid #CBD5E1",
+                  borderRadius: "14px",
+                  padding: "16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "16px" }}>📐</span>
+                  <div style={{ fontSize: "13px", fontWeight: 800, color: "#0F172A" }}>
+                    2D Spreadsheet vs. 3D Spatial Reality: What Static Excel Misses
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", fontSize: "11px" }}>
+                  <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "10px", padding: "10px" }}>
+                    <div style={{ fontWeight: 800, color: "#D97706", marginBottom: "4px" }}>
+                      1. Vertical Z-Axis Lift Latency
+                    </div>
+                    <div style={{ color: "#64748B", lineHeight: 1.4 }}>
+                      Level 4 top-tier picking takes <b>11.0s & 2.6x battery draw</b> vs. 2.0s on Level 1. Excel assumes uniform pick duration, missing battery exhaustion.
+                    </div>
+                  </div>
+                  <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "10px", padding: "10px" }}>
+                    <div style={{ fontWeight: 800, color: "#DC2626", marginBottom: "4px" }}>
+                      2. Narrow-Aisle Yields & Deceleration
+                    </div>
+                    <div style={{ color: "#64748B", lineHeight: 1.4 }}>
+                      In 2m corridors, AMRs yield and slow down on head-on conflict. Excel calculates linear velocity (N × V), creating <b>phantom throughput</b>.
+                    </div>
+                  </div>
+                  <div style={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "10px", padding: "10px" }}>
+                    <div style={{ fontWeight: 800, color: "#2563EB", marginBottom: "4px" }}>
+                      3. Conveyor Accumulation Backpressure
+                    </div>
+                    <div style={{ color: "#64748B", lineHeight: 1.4 }}>
+                      Outbound carton jams create physical accumulation back into packing stations and aisles. Static formulas cannot model cascading queue stalls.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Financial Breakdown Table */}
               <div
                 style={{
@@ -1005,6 +1247,12 @@ export function DecisionSandboxModal() {
                     </span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #E2E8F0" }}>
+                    <span style={{ color: "#64748B" }}>Effective Picker Wage (incl. Agency & Churn):</span>
+                    <span style={{ fontWeight: 800, color: "#0F172A" }}>
+                      ₹{decisionMetrics.effectiveManualPickerCostINR?.toLocaleString("en-IN")}/mo
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #E2E8F0" }}>
                     <span style={{ color: "#64748B" }}>Monthly Labor Cost Replaced:</span>
                     <span style={{ fontWeight: 800, color: "#16A34A" }}>
                       +₹{decisionMetrics.monthlyManualLaborCostINR.toLocaleString("en-IN")}/mo
@@ -1017,7 +1265,7 @@ export function DecisionSandboxModal() {
                     </span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
-                    <span style={{ color: "#64748B" }}>Robot Opex (Maint + Power):</span>
+                    <span style={{ color: "#64748B" }}>Robot Opex (Maint + Blended Power):</span>
                     <span style={{ fontWeight: 800, color: "#DC2626" }}>
                       -₹{decisionMetrics.monthlyRobotOpexINR.toLocaleString("en-IN")}/mo
                     </span>

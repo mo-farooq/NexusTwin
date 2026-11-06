@@ -60,6 +60,66 @@ export function WarehouseBuilderModal() {
   const [flowType, setFlowType] = useState<FlowType>("I_FLOW");
   const [tierCount, setTierCount] = useState<2 | 3 | 4>(4);
 
+  // ── Indian Facility Archetypes & Operational Priors ───────────
+  type IndianArchetype = "ZEPTO_DARKSTORE" | "BHIWANDI_3PL" | "PEENYA_MSME";
+  const [selectedArchetype, setSelectedArchetype] = useState<IndianArchetype | null>("BHIWANDI_3PL");
+  const [avgBasketSize, setAvgBasketSize] = useState<number>(6.5);
+  const [targetSlaText, setTargetSlaText] = useState<string>("Same-Day Dispatch");
+  const [skuParetoPct, setSkuParetoPct] = useState<number>(70);
+  const [gridPowerLimitKw, setGridPowerLimitKw] = useState<number>(45);
+
+  const applyArchetype = (arch: IndianArchetype) => {
+    setSelectedArchetype(arch);
+    let nextW = 60;
+    let nextD = 40;
+    let nextFlow: FlowType = "I_FLOW";
+    let nextTiers: 2 | 3 | 4 = 4;
+
+    if (arch === "ZEPTO_DARKSTORE") {
+      nextW = 20;
+      nextD = 16;
+      nextFlow = "U_FLOW";
+      nextTiers = 3;
+      setAvgBasketSize(2.2);
+      setTargetSlaText("12 mins (Instant Delivery)");
+      setSkuParetoPct(75);
+      setGridPowerLimitKw(18);
+    } else if (arch === "BHIWANDI_3PL") {
+      nextW = 60;
+      nextD = 40;
+      nextFlow = "I_FLOW";
+      nextTiers = 4;
+      setAvgBasketSize(6.5);
+      setTargetSlaText("Same-Day Dispatch");
+      setSkuParetoPct(70);
+      setGridPowerLimitKw(45);
+    } else if (arch === "PEENYA_MSME") {
+      nextW = 35;
+      nextD = 25;
+      nextFlow = "I_FLOW";
+      nextTiers = 2;
+      setAvgBasketSize(1.4);
+      setTargetSlaText("Next-Day Dispatch (24h)");
+      setSkuParetoPct(60);
+      setGridPowerLimitKw(28);
+    }
+
+    setWidthM(nextW);
+    setDepthM(nextD);
+    setFlowType(nextFlow);
+    setTierCount(nextTiers);
+
+    const layout = generateAutoZonedWarehouse({
+      widthMeters: nextW,
+      depthMeters: nextD,
+      flowType: nextFlow,
+      tierCount: nextTiers,
+      pillarCells: detectedPillars,
+      uploadedImageUrl: blueprintUrl || undefined,
+    });
+    setActiveLayout(layout);
+  };
+
   // Blueprint & canvas state
   const [blueprintUrl, setBlueprintUrl] = useState<string | null>(null);
   const [blueprintName, setBlueprintName] = useState<string | null>(null);
@@ -376,134 +436,133 @@ export function WarehouseBuilderModal() {
                 2. Facility Sizing & Material Flow
               </label>
 
-              {/* 1-Click Scale Presets */}
-              <div style={{ marginBottom: "12px" }}>
-                <span style={{ display: "block", fontSize: "10px", fontWeight: 700, color: "#64748B", marginBottom: "6px" }}>
-                  1-Click Facility Scale Presets:
+              {/* 1-Click Indian Facility Archetypes */}
+              <div style={{ marginBottom: "14px" }}>
+                <span style={{ display: "block", fontSize: "10px", fontWeight: 800, color: "#475569", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.03em" }}>
+                  1-Click Indian Facility Archetypes:
                 </span>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {/* Archetype 1: Urban Quick-Commerce */}
                   <button
-                    onClick={() => {
-                      setWidthM(20);
-                      setDepthM(20);
-                      const layout = generateAutoZonedWarehouse({
-                        widthMeters: 20,
-                        depthMeters: 20,
-                        flowType,
-                        tierCount,
-                        pillarCells: detectedPillars,
-                        uploadedImageUrl: blueprintUrl || undefined,
-                      });
-                      setActiveLayout(layout);
-                    }}
+                    onClick={() => applyArchetype("ZEPTO_DARKSTORE")}
                     style={{
-                      padding: "8px 10px",
-                      background: widthM === 20 && depthM === 20 ? "#EFF6FF" : "#F8FAFC",
-                      border: widthM === 20 && depthM === 20 ? "2px solid #3B82F6" : "1px solid #E2E8F0",
-                      borderRadius: "8px",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: widthM === 20 && depthM === 20 ? "#1D4ED8" : "#334155",
+                      padding: "10px 12px",
+                      background: selectedArchetype === "ZEPTO_DARKSTORE" ? "#FFFBEB" : "#F8FAFC",
+                      border: selectedArchetype === "ZEPTO_DARKSTORE" ? "2px solid #F59E0B" : "1px solid #E2E8F0",
+                      borderRadius: "10px",
                       cursor: "pointer",
                       textAlign: "left",
                       transition: "all 0.15s ease",
                     }}
                   >
-                    <div style={{ fontWeight: 800 }}>⚡ Micro Dark Store</div>
-                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "1px" }}>20m × 20m · 3 AMRs</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 800, color: "#0F172A" }}>
+                        ⚡ Urban Quick-Commerce Dark Store
+                      </span>
+                      <span style={{ fontSize: "9px", fontWeight: 800, color: "#B45309", background: "#FEF3C7", padding: "1px 6px", borderRadius: "4px" }}>
+                        ZEPTO / BLINKIT
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "2px" }}>
+                      3,500 sq ft (20m × 16m) · 3–4 AMRs · 1.4m Narrow Aisles
+                    </div>
+                    <div
+                      style={{
+                        marginTop: "5px",
+                        fontSize: "9px",
+                        fontWeight: 700,
+                        color: "#92400E",
+                        background: "#FEF3C7",
+                        padding: "3px 6px",
+                        borderRadius: "5px",
+                        lineHeight: 1.3,
+                        border: "1px solid #FDE68A",
+                      }}
+                    >
+                      Priors: Avg Basket: 2.2 items | Target SLA: 12 mins | SKU Pareto: Top 12% = 75% picks | Grid Load: 18 kW
+                    </div>
                   </button>
 
+                  {/* Archetype 2: Bhiwandi 3PL Hub */}
                   <button
-                    onClick={() => {
-                      setWidthM(40);
-                      setDepthM(30);
-                      const layout = generateAutoZonedWarehouse({
-                        widthMeters: 40,
-                        depthMeters: 30,
-                        flowType,
-                        tierCount,
-                        pillarCells: detectedPillars,
-                        uploadedImageUrl: blueprintUrl || undefined,
-                      });
-                      setActiveLayout(layout);
-                    }}
+                    onClick={() => applyArchetype("BHIWANDI_3PL")}
                     style={{
-                      padding: "8px 10px",
-                      background: widthM === 40 && depthM === 30 ? "#EFF6FF" : "#F8FAFC",
-                      border: widthM === 40 && depthM === 30 ? "2px solid #3B82F6" : "1px solid #E2E8F0",
-                      borderRadius: "8px",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: widthM === 40 && depthM === 30 ? "#1D4ED8" : "#334155",
+                      padding: "10px 12px",
+                      background: selectedArchetype === "BHIWANDI_3PL" ? "#EFF6FF" : "#F8FAFC",
+                      border: selectedArchetype === "BHIWANDI_3PL" ? "2px solid #3B82F6" : "1px solid #E2E8F0",
+                      borderRadius: "10px",
                       cursor: "pointer",
                       textAlign: "left",
                       transition: "all 0.15s ease",
                     }}
                   >
-                    <div style={{ fontWeight: 800 }}>📦 MSME Depot</div>
-                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "1px" }}>40m × 30m · 8 AMRs</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 800, color: "#0F172A" }}>
+                        📦 Bhiwandi Regional E-Commerce 3PL Hub
+                      </span>
+                      <span style={{ fontSize: "9px", fontWeight: 800, color: "#1D4ED8", background: "#DBEAFE", padding: "1px 6px", borderRadius: "4px" }}>
+                        TIER-1 3PL
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "2px" }}>
+                      25,000 sq ft (60m × 40m) · 12–16 AMRs · 4-Tier High Rack
+                    </div>
+                    <div
+                      style={{
+                        marginTop: "5px",
+                        fontSize: "9px",
+                        fontWeight: 700,
+                        color: "#1E40AF",
+                        background: "#DBEAFE",
+                        padding: "3px 6px",
+                        borderRadius: "5px",
+                        lineHeight: 1.3,
+                        border: "1px solid #BFDBFE",
+                      }}
+                    >
+                      Priors: Avg Basket: 6.5 items | Target SLA: Same-Day | SKU Pareto: Top 15% = 70% picks | Grid Load: 45 kW
+                    </div>
                   </button>
 
+                  {/* Archetype 3: Peenya MSME Depot */}
                   <button
-                    onClick={() => {
-                      setWidthM(60);
-                      setDepthM(40);
-                      const layout = generateAutoZonedWarehouse({
-                        widthMeters: 60,
-                        depthMeters: 40,
-                        flowType,
-                        tierCount,
-                        pillarCells: detectedPillars,
-                        uploadedImageUrl: blueprintUrl || undefined,
-                      });
-                      setActiveLayout(layout);
-                    }}
+                    onClick={() => applyArchetype("PEENYA_MSME")}
                     style={{
-                      padding: "8px 10px",
-                      background: widthM === 60 && depthM === 40 ? "#EFF6FF" : "#F8FAFC",
-                      border: widthM === 60 && depthM === 40 ? "2px solid #3B82F6" : "1px solid #E2E8F0",
-                      borderRadius: "8px",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: widthM === 60 && depthM === 40 ? "#1D4ED8" : "#334155",
+                      padding: "10px 12px",
+                      background: selectedArchetype === "PEENYA_MSME" ? "#F0FDF4" : "#F8FAFC",
+                      border: selectedArchetype === "PEENYA_MSME" ? "2px solid #16A34A" : "1px solid #E2E8F0",
+                      borderRadius: "10px",
                       cursor: "pointer",
                       textAlign: "left",
                       transition: "all 0.15s ease",
                     }}
                   >
-                    <div style={{ fontWeight: 800 }}>🏭 Standard Hub</div>
-                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "1px" }}>60m × 40m · 12 AMRs</div>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setWidthM(80);
-                      setDepthM(50);
-                      const layout = generateAutoZonedWarehouse({
-                        widthMeters: 80,
-                        depthMeters: 50,
-                        flowType,
-                        tierCount,
-                        pillarCells: detectedPillars,
-                        uploadedImageUrl: blueprintUrl || undefined,
-                      });
-                      setActiveLayout(layout);
-                    }}
-                    style={{
-                      padding: "8px 10px",
-                      background: widthM === 80 && depthM === 50 ? "#EFF6FF" : "#F8FAFC",
-                      border: widthM === 80 && depthM === 50 ? "2px solid #3B82F6" : "1px solid #E2E8F0",
-                      borderRadius: "8px",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: widthM === 80 && depthM === 50 ? "#1D4ED8" : "#334155",
-                      cursor: "pointer",
-                      textAlign: "left",
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    <div style={{ fontWeight: 800 }}>🚀 Regional Mega DC</div>
-                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "1px" }}>80m × 50m · 22 AMRs</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 800, color: "#0F172A" }}>
+                        ⚙️ Peenya MSME Auto-Components Depot
+                      </span>
+                      <span style={{ fontSize: "9px", fontWeight: 800, color: "#166534", background: "#DCFCE7", padding: "1px 6px", borderRadius: "4px" }}>
+                        MSME SHED
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "2px" }}>
+                      10,000 sq ft (35m × 25m) · 6 Heavy AMRs · Hybrid Aisles
+                    </div>
+                    <div
+                      style={{
+                        marginTop: "5px",
+                        fontSize: "9px",
+                        fontWeight: 700,
+                        color: "#166534",
+                        background: "#DCFCE7",
+                        padding: "3px 6px",
+                        borderRadius: "5px",
+                        lineHeight: 1.3,
+                        border: "1px solid #BBF7D0",
+                      }}
+                    >
+                      Priors: Avg Basket: 1.4 heavy cartons (35kg) | Hybrid Forklift + AMR | Grid Load: 28 kW
+                    </div>
                   </button>
                 </div>
               </div>
@@ -603,6 +662,80 @@ export function WarehouseBuilderModal() {
                   ))}
                 </div>
               </div>
+
+              {/* Operational & Order Profile Priors Strip */}
+              <div
+                style={{
+                  background: "#F8FAFC",
+                  border: "1.5px solid #CBD5E1",
+                  borderRadius: "10px",
+                  padding: "12px",
+                  marginTop: "12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: "11px", fontWeight: 800, color: "#0F172A" }}>
+                    🎯 Operational & Order Profile Priors
+                  </span>
+                  <span style={{ fontSize: "9px", fontWeight: 800, color: "#64748B", background: "#E2E8F0", padding: "2px 6px", borderRadius: "4px" }}>
+                    {targetSlaText}
+                  </span>
+                </div>
+
+                {/* Prior 1: Basket Size */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", fontWeight: 700, color: "#475569", marginBottom: "2px" }}>
+                    <span>Avg Basket Size (Items/Order)</span>
+                    <span style={{ color: "#0F172A", fontWeight: 800 }}>{avgBasketSize.toFixed(1)} items</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="15"
+                    step="0.5"
+                    value={avgBasketSize}
+                    onChange={(e) => setAvgBasketSize(Number(e.target.value))}
+                    style={{ width: "100%", accentColor: "#F59E0B" }}
+                  />
+                </div>
+
+                {/* Prior 2: SKU Pareto Concentration */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", fontWeight: 700, color: "#475569", marginBottom: "2px" }}>
+                    <span>SKU Velocity Pareto Skew</span>
+                    <span style={{ color: "#0F172A", fontWeight: 800 }}>Top 15% = {skuParetoPct}% volume</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="50"
+                    max="90"
+                    step="5"
+                    value={skuParetoPct}
+                    onChange={(e) => setSkuParetoPct(Number(e.target.value))}
+                    style={{ width: "100%", accentColor: "#3B82F6" }}
+                  />
+                </div>
+
+                {/* Prior 3: Max Transformer Power Limit */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", fontWeight: 700, color: "#475569", marginBottom: "2px" }}>
+                    <span>Max Transformer Power Limit (kW)</span>
+                    <span style={{ color: "#0F172A", fontWeight: 800 }}>{gridPowerLimitKw} kW limit</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max="100"
+                    step="2"
+                    value={gridPowerLimitKw}
+                    onChange={(e) => setGridPowerLimitKw(Number(e.target.value))}
+                    style={{ width: "100%", accentColor: "#10B981" }}
+                  />
+                </div>
+              </div>
             </div>
 
             {/* 3. AI Auto-Zoner Action Button */}
@@ -680,6 +813,18 @@ export function WarehouseBuilderModal() {
                     <span style={{ color: "#64748B", display: "block" }}>Floor Density:</span>
                     <b style={{ color: "#0F172A", fontSize: "12px" }}>
                       {Math.round((widthM * depthM) / (activeLayout.summary.recommendedFleetSize || 1))} m²/AMR
+                    </b>
+                  </div>
+                  <div>
+                    <span style={{ color: "#64748B", display: "block" }}>Order Profile:</span>
+                    <b style={{ color: "#0F172A", fontSize: "11px" }}>
+                      {avgBasketSize.toFixed(1)} items · {skuParetoPct}% Pareto
+                    </b>
+                  </div>
+                  <div>
+                    <span style={{ color: "#64748B", display: "block" }}>Grid Power Draw:</span>
+                    <b style={{ color: (activeLayout.summary.recommendedFleetSize * 2.2) > gridPowerLimitKw ? "#DC2626" : "#0C831F", fontSize: "11px" }}>
+                      {(activeLayout.summary.recommendedFleetSize * 2.2).toFixed(1)} kW / {gridPowerLimitKw} kW
                     </b>
                   </div>
                 </div>

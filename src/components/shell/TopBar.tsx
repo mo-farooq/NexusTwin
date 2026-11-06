@@ -28,6 +28,7 @@ export function TopBar() {
   const breakdownBot = useTwinStore((s) => s.breakdownBot);
   const injectVipOrder = useTwinStore((s) => s.injectVipOrder);
   const defragmentRacks = useTwinStore((s) => s.defragmentRacks);
+  const defragMessage = useTwinStore((s) => s.defragMessage);
   const isObstaclePlacementActive = useTwinStore((s) => s.isObstaclePlacementActive);
   const toggleObstaclePlacementMode = useTwinStore((s) => s.toggleObstaclePlacementMode);
 
@@ -141,10 +142,10 @@ export function TopBar() {
       <button
         className="tb-btn"
         onClick={() => defragmentRacks()}
-        title="AI Defrag: Move fast-moving SKUs to Level 1"
+        title="Weekly Slotting Rebalancer (Pre-Diwali): Move fast-moving festive SKUs from Level 4 to Level 1 Golden Zone to cut lift latency & battery draw"
       >
-        <span>✨</span>
-        <span>AI Defrag</span>
+        <span>🔄</span>
+        <span>Weekly Slotting</span>
       </button>
 
       {/* 6. Navigation Drawers & Modals (Right Aligned) */}
@@ -199,6 +200,34 @@ export function TopBar() {
           <span>Copilot</span>
         </button>
       </div>
+
+      {defragMessage && (
+        <div
+          style={{
+            position: "absolute",
+            top: "50px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "linear-gradient(135deg, #0C831F 0%, #065F14 100%)",
+            color: "#FFFFFF",
+            padding: "8px 18px",
+            borderRadius: "10px",
+            fontSize: "12px",
+            fontWeight: 800,
+            boxShadow: "0 8px 24px rgba(12, 131, 31, 0.4)",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            zIndex: 9999,
+            maxWidth: "750px",
+            border: "1.5px solid #34D399",
+            lineHeight: 1.4,
+          }}
+        >
+          <span style={{ fontSize: "16px" }}>🔄</span>
+          <span>{defragMessage}</span>
+        </div>
+      )}
     </header>
   );
 }

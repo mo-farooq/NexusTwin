@@ -393,10 +393,10 @@ export function TopControlBar() {
           <span>VIP Order</span>
         </button>
 
-        {/* Quick Trigger 5: AI Rack Defragmentation */}
+        {/* Quick Trigger 5: Weekly Slotting Rebalancer */}
         <button
           onClick={() => defragmentRacks()}
-          title="Relocate high-velocity SKUs from Level 4 to Level 1, cutting pick latency by 36%"
+          title="Weekly Slotting Rebalancer (Pre-Diwali): Relocate high-velocity SKUs from Level 4 to Level 1 Golden Zone, cutting pick latency by 36% & saving battery"
           style={{
             padding: "5px 10px",
             borderRadius: "8px",
@@ -412,8 +412,8 @@ export function TopControlBar() {
             transition: "all 0.18s ease",
           }}
         >
-          <span>✨</span>
-          <span>AI Defrag</span>
+          <span>🔄</span>
+          <span>Weekly Slotting</span>
         </button>
 
         {/* Warehouse Layout Builder & Blueprint Studio */}
