@@ -1,3 +1,7 @@
+@import "./styles/scada.css";
+@import "./styles/calm.css";
+@import "./styles/story.css";
+
 :root {
   --bg: #F8FAFC;
   --panel: #FFFFFF;

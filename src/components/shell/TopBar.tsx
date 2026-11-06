@@ -2,11 +2,11 @@
  * NexusTwin SCADA Top Command Bar
  *
  * Mission-critical top perimeter control bar featuring:
- * - Brand logo & LIVE status indicator
- * - Simulation clock & tick counter
- * - Real-time deterministic playback controls (Pause, 1x, 2x, 5x)
- * - Quick chaos triggers (Festive Surge, Block Path, Breakdown, VIP Order, AI Defrag)
- * - Navigation drawers & modals (Studio Builder, Decision Sandbox, What-If, Audit Log, AI Copilot)
+ * - Brand identity with pulsing live beacon & tag
+ * - Simulation engine telemetry: LIVE badge, digital clock, 60 FPS · tick #
+ * - Playback transport (Pause, 1x, 2x, 5x, 10x)
+ * - Mode switch between Operator View and Story Mode
+ * - Action buttons (Studio Builder, ROI Sandbox, What-If, Copilot)
  */
 
 import React, { useEffect, useState } from "react";
@@ -16,185 +16,142 @@ export function TopBar() {
   const isRunning = useTwinStore((s) => s.isRunning);
   const simulationSpeed = useTwinStore((s) => s.simulationSpeed);
   const tick = useTwinStore((s) => s.tick);
-  const heatmapMode = useTwinStore((s) => s.heatmapMode);
+  const appMode = useTwinStore((s) => s.appMode);
+  const setAppMode = useTwinStore((s) => s.setAppMode);
 
   const startSimulation = useTwinStore((s) => s.startSimulation);
   const pauseSimulation = useTwinStore((s) => s.pauseSimulation);
   const setSimulationSpeed = useTwinStore((s) => s.setSimulationSpeed);
-  const toggleHeatmapMode = useTwinStore((s) => s.toggleHeatmapMode);
-
-  const isFestiveSurgeActive = useTwinStore((s) => s.isFestiveSurgeActive);
-  const injectFestiveSurge = useTwinStore((s) => s.injectFestiveSurge);
-  const breakdownBot = useTwinStore((s) => s.breakdownBot);
-  const injectVipOrder = useTwinStore((s) => s.injectVipOrder);
-  const defragmentRacks = useTwinStore((s) => s.defragmentRacks);
-  const defragMessage = useTwinStore((s) => s.defragMessage);
-  const isObstaclePlacementActive = useTwinStore((s) => s.isObstaclePlacementActive);
-  const toggleObstaclePlacementMode = useTwinStore((s) => s.toggleObstaclePlacementMode);
 
   const openBuilderModal = useTwinStore((s) => s.openBuilderModal);
   const openSandboxModal = useTwinStore((s) => s.openSandboxModal);
   const setDrawer = useTwinStore((s) => s.setDrawer);
-  const setModal = useTwinStore((s) => s.setModal);
   const activeDrawer = useTwinStore((s) => s.drawer);
+  const defragMessage = useTwinStore((s) => s.defragMessage);
 
-  const [clockStr, setClockStr] = useState("09:00:00");
+  const [clockStr, setClockStr] = useState("14:22:08");
 
   useEffect(() => {
     const totalSec = Math.floor(tick * 0.1);
-    const hrs = String(9 + Math.floor(totalSec / 3600)).padStart(2, "0");
-    const mins = String(Math.floor((totalSec % 3600) / 60)).padStart(2, "0");
+    const hrs = String(14 + Math.floor(totalSec / 3600)).padStart(2, "0");
+    const mins = String(22 + Math.floor((totalSec % 3600) / 60)).padStart(2, "0");
     const secs = String(totalSec % 60).padStart(2, "0");
     setClockStr(`${hrs}:${mins}:${secs}`);
   }, [tick]);
 
   return (
-    <header className="topbar">
-      {/* 1. Brand Logo & Live Badge */}
+    <header className="hdr">
+      {/* 1. Brand Identity */}
       <div className="brand">
-        <span>
-          NEXUS<span className="highlight">TWIN</span>
+        <div className="logo">
+          <svg viewBox="0 0 24 24">
+            <path fill="none" stroke="#fff" strokeWidth="2" strokeLinejoin="round" d="m12 2 9 5v10l-9 5-9-5V7z" />
+            <path fill="none" stroke="#FF5A1F" strokeWidth="2" d="M7.5 9.5v6l4.5 2.5 4.5-2.5v-6" />
+          </svg>
+        </div>
+        <div>
+          <div className="wordmark">
+            Nexus<b>Twin</b>
+          </div>
+          <div className="tag">
+            {appMode === "STORY" ? "Story Mode · Decision Engine" : "Operator view"}
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Simulation Engine Telemetry */}
+      <div className="engine">
+        <span className={`live ${isRunning ? "" : "paused"}`} id="liveBadge">
+          <i></i>
+          {isRunning ? "LIVE" : "PAUSED"}
         </span>
-        <span className="brand-badge">SCADA 3D</span>
+        <span className="clock" id="clock">
+          {clockStr}
+        </span>
+        <span className="sep"></span>
+        <span className="m" title="10 Hz discrete clock · render FPS · simulation tick">
+          <b id="fps">60</b> FPS · tick <b id="tick">{tick.toLocaleString("en-IN")}</b>
+        </span>
       </div>
 
-      <div className={`badge-live ${isRunning ? "live" : "paused"}`}>
-        <span>●</span>
-        <span>{isRunning ? "LIVE 10 Hz" : "SIM PAUSED"}</span>
-      </div>
+      <div style={{ flex: 1 }} />
 
-      {/* 2. Simulation Clock */}
-      <div className="clock" style={{ marginLeft: "6px" }}>
-        <div className="t">{clockStr}</div>
-        <div className="d">TICK #{tick}</div>
-      </div>
+      {/* 3. Right Transport & Action Hub */}
+      <div className="right">
+        {/* Playback Controls */}
+        <div className="transport">
+          <button
+            className={`play ${isRunning ? "on" : ""}`}
+            onClick={() => (isRunning ? pauseSimulation() : startSimulation())}
+            title={isRunning ? "Pause Simulation" : "Resume Simulation"}
+          >
+            <svg>
+              <use href={isRunning ? "#i-pause" : "#i-play"} />
+            </svg>
+          </button>
+          {([1, 2, 5, 10] as const).map((spd) => (
+            <button
+              key={spd}
+              className={`spd ${simulationSpeed === spd ? "on" : ""}`}
+              onClick={() => setSimulationSpeed(spd as 1 | 2 | 5 | 10)}
+            >
+              {spd}×
+            </button>
+          ))}
+        </div>
 
-      <div className="vsep" />
-
-      {/* 3. Playback Controls */}
-      <div className="sim-controls">
+        {/* Story Mode / Operator View Switcher */}
         <button
-          onClick={() => (isRunning ? pauseSimulation() : startSimulation())}
-          title={isRunning ? "Pause Simulation" : "Resume Simulation"}
-          style={{ color: isRunning ? "#EF4444" : "#10B981" }}
+          className="hbtn ghost"
+          onClick={() => setAppMode(appMode === "OPERATOR" ? "STORY" : "OPERATOR")}
+          style={{ cursor: "pointer", fontWeight: 700 }}
+          title={appMode === "OPERATOR" ? "Switch to Story Mode executive walkthrough" : "Switch to Operator View SCADA console"}
         >
-          {isRunning ? "⏸ Pause" : "▶ Simulate"}
+          {appMode === "OPERATOR" ? "Story Mode →" : "← Operator View"}
         </button>
 
-        {([1, 2, 5] as const).map((spd) => (
-          <button
-            key={spd}
-            className={simulationSpeed === spd ? "on" : ""}
-            onClick={() => setSimulationSpeed(spd)}
-          >
-            {spd}x
-          </button>
-        ))}
-      </div>
-
-      {/* 4. Visual Layer Toggles */}
-      <button
-        className={`tb-btn ${heatmapMode ? "yellow" : ""}`}
-        onClick={toggleHeatmapMode}
-        title="Toggle Volumetric Congestion Heatmap"
-      >
-        <span>🔥</span>
-        <span>Heatmap</span>
-      </button>
-
-      {/* 5. Quick Chaos Injections */}
-      <button
-        className={`tb-btn ${isFestiveSurgeActive ? "yellow" : ""}`}
-        onClick={() => injectFestiveSurge(30, 3)}
-        title="Inject 3x Festive Order Surge"
-      >
-        <span>🔥</span>
-        <span>{isFestiveSurgeActive ? "Surge (3x Active)" : "Festive Surge"}</span>
-      </button>
-
-      <button
-        className={`tb-btn ${isObstaclePlacementActive ? "yellow" : ""}`}
-        onClick={() => toggleObstaclePlacementMode()}
-        title="Click floor tiles in 3D to drop barricades & force A* rerouting"
-      >
-        <span>🚧</span>
-        <span>{isObstaclePlacementActive ? "Click Floor" : "Block Path"}</span>
-      </button>
-
-      <button
-        className="tb-btn"
-        onClick={() => breakdownBot()}
-        title="Force random AMR mechanical breakdown"
-      >
-        <span>🔋</span>
-        <span>Breakdown</span>
-      </button>
-
-      <button
-        className="tb-btn"
-        onClick={() => injectVipOrder()}
-        title="Dispatch 4-item VIP basket swarm"
-      >
-        <span>⚡</span>
-        <span>VIP Swarm</span>
-      </button>
-
-      <button
-        className="tb-btn"
-        onClick={() => defragmentRacks()}
-        title="Weekly Slotting Rebalancer (Pre-Diwali): Move fast-moving festive SKUs from Level 4 to Level 1 Golden Zone to cut lift latency & battery draw"
-      >
-        <span>🔄</span>
-        <span>Weekly Slotting</span>
-      </button>
-
-      {/* 6. Navigation Drawers & Modals (Right Aligned) */}
-      <div className="topbar-right">
         {/* Studio Builder */}
         <button
-          className="tb-btn purple"
+          className="hbtn"
           onClick={() => openBuilderModal()}
           title="Open Warehouse Layout Builder & Auto-Zoner Studio"
         >
-          <span>🏗️</span>
-          <span>Studio Builder</span>
+          <svg>
+            <use href="#i-grid" />
+          </svg>
+          <span>Studio</span>
         </button>
 
-        {/* Decision Sandbox */}
+        {/* ROI Sandbox */}
         <button
-          className="tb-btn yellow"
+          className="hbtn"
           onClick={() => openSandboxModal()}
           title="Vendor AMR Comparison & INR Capex Payback"
         >
-          <span>⚡</span>
-          <span>Decision Sandbox</span>
+          <svg>
+            <use href="#i-coin" />
+          </svg>
+          <span>ROI Sandbox</span>
         </button>
 
         {/* What-If Simulation Drawer */}
         <button
-          className={`tb-btn ${activeDrawer === "whatif" ? "primary" : ""}`}
+          className={`hbtn primary ${activeDrawer === "whatif" ? "on" : ""}`}
           onClick={() => setDrawer(activeDrawer === "whatif" ? null : "whatif")}
-          title="Clone Twin & Fast-Forward 5 Minutes Under Failure"
+          title="Clone Twin & Fast-Forward Under Failure Scenarios"
         >
-          <span>🧪</span>
+          <svg>
+            <use href="#i-flask" />
+          </svg>
           <span>What-If</span>
-        </button>
-
-        {/* Audit Log Modal */}
-        <button
-          className="tb-btn"
-          onClick={() => setModal("audit")}
-          title="500-Event Audit Ledger with CSV/JSON Export"
-        >
-          <span>📋</span>
-          <span>Audit Log</span>
+          <kbd>W</kbd>
         </button>
 
         {/* AI Copilot Drawer */}
         <button
-          className={`tb-btn ${activeDrawer === "copilot" ? "primary" : ""}`}
+          className={`hbtn ink ${activeDrawer === "copilot" ? "on" : ""}`}
           onClick={() => setDrawer(activeDrawer === "copilot" ? null : "copilot")}
-          title="Ask Grounded AI Operations Copilot with 3D Citations"
+          title="Ask Grounded AI Operations Copilot"
         >
           <span>🤖</span>
           <span>Copilot</span>

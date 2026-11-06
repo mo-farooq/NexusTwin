@@ -1,12 +1,13 @@
 /**
  * NexusTwin Application Entry
  *
- * SCADA Industrial Operations Digital Twin Console:
- * - TopBar: Perimeter controls, simulation clock, chaos triggers, drawer toggles
- * - LeftPanels: Fleet Overview, Task Overview, System Status, Alerts
- * - Center: Viewport (3D FacilityCanvas / 2D MapView)
- * - RightPanels: Selected Robot Telemetry, Live FPV Vision, Audit Event Stream
- * - BottomPanels: Task Queue, Throughput Sparkline, Robot Status Donut
+ * Light Industrial SCADA Operations Twin & Story Mode Presentation:
+ * - AppMode Switcher: "OPERATOR" (SCADA Real-time Console) <-> "STORY" (4-Step Executive ROI Flow)
+ * - Header: Transport speed, digital clock, LIVE engine pulse, Story Mode / Operator toggle
+ * - Left Column: Fleet Overview, Throughput Pace, Systems Subsystem Health, Incidents / Alerts
+ * - Center: High-Performance 3D WebGL FacilityCanvas / 2D CAD Viewport with floating overlays
+ * - Bottom Row: Dispatch Queue, Throughput SVG Chart, Order Lifecycle Pipeline
+ * - Right Column: Tabbed Inspector (Robot + LiDAR Radar, Rack 4-tier slotting, Station queue), Ledger, Roadmap
  * - Drawers & Modals: CopilotDrawer, WhatIfDrawer, AuditLedgerModal, WarehouseBuilderModal, DecisionSandboxModal
  */
 
@@ -20,16 +21,9 @@ import {
   SystemStatusPanel,
   AlertsPanel,
 } from "./components/panels/LeftPanels";
-import {
-  SelectedRobotPanel,
-  LiveCameraPanel,
-  EventLogPanel,
-} from "./components/panels/RightPanels";
-import {
-  TaskQueuePanel,
-  ThroughputPanel,
-  RobotStatusPanel,
-} from "./components/panels/BottomPanels";
+import { RightPanels } from "./components/panels/RightPanels";
+import { BottomPanels } from "./components/panels/BottomPanels";
+import { StoryMode } from "./components/story/StoryMode";
 import { CopilotDrawer } from "./components/ops/CopilotDrawer";
 import { WhatIfDrawer } from "./components/ops/WhatIfDrawer";
 import { AuditLedgerModal } from "./components/ops/AuditLedgerModal";
@@ -55,6 +49,7 @@ function useFitScale() {
 export function App() {
   useFitScale();
 
+  const appMode = useTwinStore((s) => s.appMode);
   const isRunning = useTwinStore((s) => s.isRunning);
   const simulationSpeed = useTwinStore((s) => s.simulationSpeed);
   const stepSimulation = useTwinStore((s) => s.stepSimulation);
@@ -97,13 +92,37 @@ export function App() {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
+  // Keyboard shortcut listener: Space to toggle play/pause, 'w' for What-If
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.code === "Space") {
+        e.preventDefault();
+        const state = useTwinStore.getState();
+        if (state.isRunning) {
+          state.pauseSimulation();
+        } else {
+          state.startSimulation();
+        }
+      } else if (e.key === "w" || e.key === "W") {
+        useTwinStore.getState().setDrawer("whatif");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  if (appMode === "STORY") {
+    return <StoryMode />;
+  }
+
   return (
-    <div className="shell">
+    <div className="app calm">
       <TopBar />
 
-      <div className="shell-body">
+      <main className="body">
         {/* Left Operations Column */}
-        <aside className="col-left">
+        <aside className="col l">
           <FleetOverviewPanel />
           <TaskOverviewPanel />
           <SystemStatusPanel />
@@ -111,24 +130,16 @@ export function App() {
         </aside>
 
         {/* Center 3D/2D Viewport */}
-        <main className="center">
+        <section className="center">
           <Viewport />
-        </main>
+        </section>
 
-        {/* Right Asset Inspection Column */}
-        <aside className="col-right">
-          <SelectedRobotPanel />
-          <LiveCameraPanel />
-          <EventLogPanel />
-        </aside>
+        {/* Bottom Dispatch & Analytics Dock */}
+        <BottomPanels />
 
-        {/* Bottom Dispatch & Analytics Row */}
-        <footer className="bottom">
-          <TaskQueuePanel />
-          <ThroughputPanel />
-          <RobotStatusPanel />
-        </footer>
-      </div>
+        {/* Right Asset Inspection & Ledger Column */}
+        <RightPanels />
+      </main>
 
       {/* Drawers & Operational Intelligence */}
       <CopilotDrawer />

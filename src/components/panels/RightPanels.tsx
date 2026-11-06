@@ -1,248 +1,476 @@
 /**
- * NexusTwin Right Panels
+ * NexusTwin Right Panels (Industrial SCADA Design System)
  *
- * Detailed asset inspection & streaming telemetry:
- * - Selected Robot Panel (Battery bar, Velocity, FSM state, Cargo weight, LiDAR sensor readout, Path preview)
- * - Live Camera / FPV Viewport (Simulated robot FPV / dock CCTV perspective)
- * - Real-time Streaming Audit Event Log
+ * Tabbed Inspector & Intelligence Column:
+ * - Inspector Tab:
+ *   - Robot Subtab: FSM state machine track, segmented battery gauge, position/velocity grid, and animated LiDAR Radar Scanner
+ *   - Rack Subtab: 4-tier slotting matrix (L1-L4 velocity, SKU details, crane pick latency)
+ *   - Station Subtab: Queue depth, throughput pace, incoming AMR ETA queue
+ * - Ledger Tab: Live explainable dispatch logs & ACS near-miss event feed
+ * - Roadmap Tab: 2026 predictive maintenance, multi-floor AMR, and solar energy milestones
  */
 
-import React, { useState } from "react";
-import { useTwinStore } from "../../store/useTwinStore";
-import { Panel, Dot } from "../ui/primitives";
+import React, { useState, useMemo } from "react";
+import { useTwinStore, type BotUnit } from "../../store/useTwinStore";
 
-export function SelectedRobotPanel() {
+const FSM_STATES = [
+  "NAVIGATING_TO_PICKUP",
+  "PICKING",
+  "NAVIGATING_TO_DELIVERY",
+  "DELIVERING",
+  "CHARGING",
+];
+
+export function RightPanels() {
   const selectedBotId = useTwinStore((s) => s.selectedBotId);
-  const botUnits = useTwinStore((s) => s.botUnits);
-  const tasks = useTwinStore((s) => s.tasks);
-  const setModal = useTwinStore((s) => s.setModal);
-  const setFocusTarget = useTwinStore((s) => s.setFocusTarget);
-
-  const bot = selectedBotId ? botUnits[selectedBotId] : null;
-  const currentTask = bot?.currentTaskId ? tasks[bot.currentTaskId] : null;
-
-  if (!bot) {
-    return (
-      <Panel title="Asset Telemetry">
-        <div style={{ color: "var(--muted)", padding: "16px 0", textAlign: "center", fontSize: "11.5px" }}>
-          Click any autonomous bot, rack, or station to inspect live telemetry.
-        </div>
-      </Panel>
-    );
-  }
-
-  const statusColor =
-    bot.status === "ACTIVE"
-      ? "#10B981"
-      : bot.status === "CHARGING"
-      ? "#3B82F6"
-      : bot.status === "ERROR"
-      ? "#EF4444"
-      : "#F59E0B";
-
-  const estHours = ((bot.batteryPct / 100) * 4.2).toFixed(1);
-
-  return (
-    <Panel
-      title="Asset Telemetry"
-      action={
-        <button
-          className="link"
-          onClick={() => setFocusTarget([bot.position[0], 0, bot.position[2]])}
-        >
-          Track Camera ➔
-        </button>
-      }
-    >
-      <div className="robot-head">
-        <span className="id">{bot.id}</span>
-        <span className="status-text" style={{ color: statusColor }}>
-          <Dot color={statusColor} />
-          {bot.status}
-        </span>
-      </div>
-
-      {/* Battery Gauge */}
-      <div className="battery">
-        <span className="bar">
-          <span
-            className="fill"
-            style={{
-              width: `${bot.batteryPct}%`,
-              background:
-                bot.batteryPct < 20
-                  ? "#EF4444"
-                  : bot.batteryPct < 40
-                  ? "#F59E0B"
-                  : "#10B981",
-            }}
-          />
-        </span>
-        <span className="pct">{Math.round(bot.batteryPct)}%</span>
-        <span className="est">Est. {estHours}h remaining</span>
-      </div>
-
-      <div className="kv">
-        <span className="k">FSM State</span>
-        <span className="v" style={{ fontFamily: "var(--mono)", fontSize: "11px" }}>
-          {bot.fsmState} {bot.velocity > 0.05 ? `· ${bot.velocity.toFixed(2)} m/s` : ""}
-        </span>
-      </div>
-
-      <div className="kv">
-        <span className="k">LiDAR ACS</span>
-        <span
-          className="v"
-          style={{
-            fontFamily: "var(--mono)",
-            fontSize: "11px",
-            color:
-              bot.perception?.state === "HOLDING"
-                ? "#EF4444"
-                : bot.perception?.state === "SLOWING"
-                ? "#F59E0B"
-                : "#38BDF8",
-          }}
-        >
-          {bot.perception?.state || "CLEAR"}
-          {bot.perception?.frontDistM ? ` · ${bot.perception.frontDistM.toFixed(1)}m` : ""}
-        </span>
-      </div>
-
-      <div className="kv">
-        <span className="k">Current Task</span>
-        <span className="v">{currentTask ? `#${currentTask.id}` : "Idle Standby"}</span>
-      </div>
-
-      <div className="kv">
-        <span className="k">Payload</span>
-        <span className="v">
-          {bot.currentPayloadKg > 0 ? `${bot.currentPayloadKg} kg (Inbound/Pick)` : "Empty Tray"}
-        </span>
-      </div>
-
-      <div className="kv">
-        <span className="k">Tasks Completed</span>
-        <span className="v">{bot.stats.tasksCompleted}</span>
-      </div>
-
-      <button
-        className="btn primary"
-        style={{ marginTop: "10px", width: "100%", justifyContent: "center" }}
-        onClick={() => setModal("tasks")}
-      >
-        View Task Queue & Logs
-      </button>
-    </Panel>
-  );
-}
-
-export function LiveCameraPanel() {
-  const selectedBotId = useTwinStore((s) => s.selectedBotId);
-  const [camIndex, setCamIndex] = useState(0);
-
-  const cameras = [
-    { id: selectedBotId ? `${selectedBotId}-FPV` : "CCTV-DOCK-01", label: "Front Dock Bay Cam" },
-    { id: "CCTV-AISLE-B", label: "Aisle B Multi-Tier Cam" },
-    { id: "CCTV-PACK-01", label: "Packing Line 1 Overhead" },
-  ];
-
-  const currentCam = cameras[camIndex];
-
-  return (
-    <Panel
-      title="Live Sensor Vision"
-      action={
-        <div style={{ display: "flex", gap: "4px" }}>
-          {cameras.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setCamIndex(i)}
-              style={{
-                width: "8px",
-                height: "8px",
-                borderRadius: "50%",
-                background: camIndex === i ? "#38BDF8" : "var(--border-strong)",
-              }}
-            />
-          ))}
-        </div>
-      }
-    >
-      <div className="cam-view">
-        <span className="live">● LIVE REC</span>
-        <span className="tag">{currentCam.id} · 1080p 30fps</span>
-
-        {/* Simulated CCTV Camera Viewport Graphic */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexDirection: "column",
-            gap: "4px",
-            background: "radial-gradient(ellipse at 50% 50%, #F8FAFC 0%, #E2E8F0 100%)",
-          }}
-        >
-          <div style={{ fontSize: "24px" }}>📹</div>
-          <span style={{ fontSize: "10.5px", color: "var(--text)", fontWeight: 700 }}>
-            {currentCam.label}
-          </span>
-          <span style={{ fontSize: "9px", color: "var(--muted)", fontFamily: "var(--mono)" }}>
-            STREAM OK · 18 ms LATENCY
-          </span>
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
-export function EventLogPanel() {
-  const recentEvents = useTwinStore((s) => s.recentEvents);
-  const setModal = useTwinStore((s) => s.setModal);
   const selectBot = useTwinStore((s) => s.selectBot);
+  const botUnits = useTwinStore((s) => s.botUnits);
+  const locations = useTwinStore((s) => s.locations);
+  const selectedRackId = useTwinStore((s) => s.selectedRackId);
+  const selectedStationId = useTwinStore((s) => s.selectedStationId);
+  const explainableLogs = useTwinStore((s) => s.explainableLogs);
+  const recentEvents = useTwinStore((s) => s.recentEvents);
+  const kpi = useTwinStore((s) => s.kpi);
+
+  const [mainTab, setMainTab] = useState<"insp" | "ledger" | "road">("insp");
+  const [inspSubTab, setInspSubTab] = useState<"bot" | "rack" | "station">("bot");
+  const [ledgerSubTab, setLedgerSubTab] = useState<"disp" | "safe">("disp");
+
+  const bots = Object.values(botUnits);
+  const currentBot: BotUnit | undefined = (selectedBotId && botUnits[selectedBotId]) || bots[0];
+
+  // Calculate nearest robot for LiDAR radar sweep
+  const nearestObstacle = useMemo(() => {
+    if (!currentBot || bots.length <= 1) return null;
+    let closestBot: BotUnit | null = null;
+    let minDist = Infinity;
+
+    for (const b of bots) {
+      if (b.id === currentBot.id) continue;
+      const d = Math.hypot(b.position[0] - currentBot.position[0], b.position[2] - currentBot.position[2]);
+      if (d < minDist) {
+        minDist = d;
+        closestBot = b;
+      }
+    }
+
+    return { bot: closestBot, dist: minDist };
+  }, [currentBot, bots]);
+
+  // Selected Rack details
+  const shelfKeys = Object.keys(locations).filter((k) => locations[k].type === "SHELF");
+  const currentRack = (selectedRackId && locations[selectedRackId]) || locations[shelfKeys[0]];
+
+  // Selected Station details
+  const stationKeys = Object.keys(locations).filter((k) => locations[k].type === "PACK_STATION");
+  const currentStation = (selectedStationId && locations[selectedStationId]) || locations[stationKeys[0]];
+
+  // Safety events (ACS near-misses and yields)
+  const safetyEvents = useMemo(() => {
+    return explainableLogs
+      .filter((l) => l.reason.includes("ACS") || l.reason.includes("Yield") || l.reason.includes("Anti-Collision"))
+      .slice(0, 15);
+  }, [explainableLogs]);
 
   return (
-    <Panel
-      title="Audit Event Stream"
-      grow
-      action={
-        <button className="link" onClick={() => setModal("audit")}>
-          Full Ledger →
-        </button>
-      }
-    >
-      <div style={{ display: "flex", flexDirection: "column", gap: "2px", overflow: "auto" }}>
-        {recentEvents.slice(0, 15).map((ev) => (
-          <div
-            key={ev.id}
-            className="ev-row"
-            onClick={() => ev.robotId && selectBot(ev.robotId)}
-          >
-            <span className="t">{ev.time}</span>
-            <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              <span
-                style={{
-                  fontWeight: 700,
-                  fontSize: "10.5px",
-                  color:
-                    ev.severity === "CRITICAL"
-                      ? "#EF4444"
-                      : ev.severity === "HIGH"
-                      ? "#F59E0B"
-                      : "#38BDF8",
-                  marginRight: "4px",
-                }}
-              >
-                [{ev.type}]
-              </span>
-              <span>{ev.message}</span>
+    <aside className="col r">
+      <section className="card grow">
+        {/* Primary Panel Tabs */}
+        <div className="ptabs" id="pTabs">
+          <button className={mainTab === "insp" ? "on" : ""} onClick={() => setMainTab("insp")}>
+            Inspector
+          </button>
+          <button className={mainTab === "ledger" ? "on" : ""} onClick={() => setMainTab("ledger")}>
+            Ledger
+          </button>
+          <button className={mainTab === "road" ? "on" : ""} onClick={() => setMainTab("road")}>
+            Roadmap
+          </button>
+        </div>
+
+        {/* 1. INSPECTOR PANE */}
+        {mainTab === "insp" && (
+          <div className="pane on">
+            <div className="tabs" id="inspTabs">
+              <button className={inspSubTab === "bot" ? "on" : ""} onClick={() => setInspSubTab("bot")}>
+                Robot
+              </button>
+              <button className={inspSubTab === "rack" ? "on" : ""} onClick={() => setInspSubTab("rack")}>
+                Rack
+              </button>
+              <button className={inspSubTab === "station" ? "on" : ""} onClick={() => setInspSubTab("station")}>
+                Station
+              </button>
+            </div>
+
+            <div className="card-b" id="insp">
+              {/* ROBOT INSPECTOR */}
+              {inspSubTab === "bot" && currentBot && (
+                <>
+                  <div className="insp-head">
+                    <div className="botpic">
+                      <svg viewBox="0 0 24 24">
+                        <use href="#i-bot" />
+                      </svg>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div className="id">{currentBot.id}</div>
+                      <div className="prof">
+                        {currentBot.profileId === "HEAVY_CARRIER" ? "Heavy Carrier" : "Light Picker"} · payload{" "}
+                        {currentBot.currentPayloadKg > 0 ? `${currentBot.currentPayloadKg} kg` : "0 kg (Empty)"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* FSM State Pill */}
+                  <span
+                    className="fsm"
+                    style={{
+                      background:
+                        currentBot.status === "ERROR"
+                          ? "var(--red-soft)"
+                          : currentBot.perception?.state === "YIELDING"
+                          ? "var(--amber-soft)"
+                          : "var(--paper-2)",
+                      color:
+                        currentBot.status === "ERROR"
+                          ? "var(--red)"
+                          : currentBot.perception?.state === "YIELDING"
+                          ? "#94640A"
+                          : "var(--ink)",
+                    }}
+                  >
+                    ● {currentBot.fsmState.replace(/_/g, " ")}
+                  </span>
+
+                  {/* FSM Workflow Track */}
+                  <div className="fsm-track">
+                    {FSM_STATES.map((f) => (
+                      <span key={f} className={f === currentBot.fsmState ? "on" : ""}>
+                        {f.replace(/_/g, " ").replace("NAVIGATING TO", "NAV")}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* 10-Cell Battery Gauge */}
+                  <div className="batt">
+                    <span className="cell">
+                      {Array.from({ length: 10 }, (_, i) => {
+                        const cellPct = (i + 1) * 10;
+                        const isFilled = currentBot.batteryPct >= cellPct - 5;
+                        const isLow = currentBot.batteryPct < 25;
+                        return (
+                          <span
+                            key={i}
+                            className={isFilled ? "on" : ""}
+                            style={{
+                              background: isFilled ? (isLow ? "var(--red)" : "var(--teal)") : undefined,
+                            }}
+                          />
+                        );
+                      })}
+                    </span>
+                    <span className="pct">{Math.round(currentBot.batteryPct)}%</span>
+                    <span className="eta">
+                      fast‑charge
+                      <br />
+                      <b>{Math.round((100 - currentBot.batteryPct) * 0.32)} min</b> to full
+                    </span>
+                  </div>
+
+                  {/* Kinematics & Energy Telemetry */}
+                  <div className="tele">
+                    <div>
+                      <div className="k">Position (x, z)</div>
+                      <div className="v">
+                        {currentBot.position[0].toFixed(1)}, {currentBot.position[2].toFixed(1)}
+                        <small> m</small>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="k">Velocity</div>
+                      <div className="v">
+                        {currentBot.velocity.toFixed(2)}
+                        <small> m/s</small>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="k">Distance</div>
+                      <div className="v">
+                        {Math.round(currentBot.stats.distanceTraveledM)}
+                        <small> m</small>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="k">Energy</div>
+                      <div className="v">
+                        {Math.round(currentBot.stats.energyConsumedWh)}
+                        <small> Wh</small>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Animated LiDAR Radar Scanner Widget */}
+                  {nearestObstacle && nearestObstacle.bot && (
+                    <div className="radar">
+                      <svg viewBox="0 0 96 96">
+                        <circle cx="48" cy="48" r="44" fill="none" stroke="#2C3448" />
+                        <circle cx="48" cy="48" r="29" fill="none" stroke="#2C3448" />
+                        <circle cx="48" cy="48" r="14" fill="none" stroke="#2C3448" />
+
+                        {/* Animated Rotating Radar Beam */}
+                        <path d="M48 48 L48 4 A44 44 0 0 1 86 26 Z" fill="rgba(63,208,185,.22)">
+                          <animateTransform
+                            attributeName="transform"
+                            type="rotate"
+                            from="0 48 48"
+                            to="360 48 48"
+                            dur="2.4s"
+                            repeatCount="indefinite"
+                          />
+                        </path>
+
+                        {/* Blip for Nearest Obstacle AMR */}
+                        <circle
+                          cx={48 + Math.min(40, nearestObstacle.dist * 9) * 0.7}
+                          cy={48 - Math.min(40, nearestObstacle.dist * 9) * 0.7}
+                          r="3.5"
+                          fill={nearestObstacle.dist < 1.6 ? "#FF8A5C" : "#3FD0B9"}
+                        />
+                        <circle cx="48" cy="48" r="3" fill="#FFFFFF" />
+                      </svg>
+
+                      <div>
+                        <div className="k">LiDAR · nearest</div>
+                        <div className="v">
+                          <b>{nearestObstacle.bot.id}</b>
+                        </div>
+                        <div className="k">Distance</div>
+                        <div className="v">{nearestObstacle.dist.toFixed(2)} m</div>
+                        <div className="k">Safe margin</div>
+                        <div
+                          className="v"
+                          style={{ color: nearestObstacle.dist < 1.6 ? "#FF8A5C" : "#3FD0B9" }}
+                        >
+                          {(nearestObstacle.dist - 1.05).toFixed(2)} m{" "}
+                          {nearestObstacle.dist < 1.6 ? "· YIELD" : "· CLEAR"}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* RACK INSPECTOR */}
+              {inspSubTab === "rack" && currentRack && (
+                <>
+                  <div className="insp-head">
+                    <div className="botpic" style={{ background: "var(--paper-2)" }}>
+                      <svg viewBox="0 0 24 24" style={{ width: "26px", height: "26px" }}>
+                        <path
+                          fill="none"
+                          stroke="#121826"
+                          strokeWidth="2"
+                          d="M4 3v18M20 3v18M4 7h16M4 12h16M4 17h16"
+                        />
+                      </svg>
+                    </div>
+                    <div>
+                      <div className="id">{currentRack.id}</div>
+                      <div className="prof">
+                        {currentRack.name} · 4‑tier selective pallet rack
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4-Tier SKU Breakdown */}
+                  <div className="tiers">
+                    {(currentRack.tiers || []).map((t) => (
+                      <div key={t.level} className="tier">
+                        <span className="l">L{t.level}</span>
+                        <div>
+                          <div className="s">{t.skuName}</div>
+                          <div className="m">
+                            pick {t.pickDurationSec.toFixed(1)}s · {t.velocity} velocity
+                          </div>
+                        </div>
+                        <span className="vel">
+                          {[1, 2, 3, 4, 5].map((i) => (
+                            <span
+                              key={i}
+                              className={
+                                (t.level === 1 && i <= 5) ||
+                                (t.level === 2 && i <= 3) ||
+                                (t.level === 3 && i <= 2) ||
+                                (t.level === 4 && i <= 1)
+                                  ? "on"
+                                  : ""
+                              }
+                            />
+                          ))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="life-tele">
+                    <span>
+                      Fill <b>84%</b>
+                    </span>
+                    <span>
+                      Picks / h <b>142</b>
+                    </span>
+                    <span>
+                      Re‑slot score <b style={{ color: "var(--teal)" }}>A</b>
+                    </span>
+                  </div>
+                </>
+              )}
+
+              {/* STATION INSPECTOR */}
+              {inspSubTab === "station" && currentStation && (
+                <>
+                  <div className="insp-head">
+                    <div className="botpic">
+                      <svg viewBox="0 0 24 24" style={{ width: "26px", height: "26px" }}>
+                        <path fill="none" stroke="#fff" strokeWidth="2" d="M3 9h18v11H3zM7 9V5h10v4M9 14h6" />
+                      </svg>
+                    </div>
+                    <div>
+                      <div className="id">{currentStation.id}</div>
+                      <div className="prof">{currentStation.name} · 2 Packing Operators</div>
+                    </div>
+                  </div>
+
+                  <div className="tele">
+                    <div>
+                      <div className="k">Queue depth</div>
+                      <div className="v">
+                        {Math.max(1, bots.filter((b) => b.targetLocationId === currentStation.id).length)}
+                        <small> bots</small>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="k">Output</div>
+                      <div className="v">
+                        {Math.round(kpi.throughputPerHour / 3)}
+                        <small> /h</small>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="sec" style={{ marginTop: "12px" }}>
+                    Incoming robots
+                  </div>
+                  {bots
+                    .filter((b) => b.targetLocationId === currentStation.id)
+                    .slice(0, 4)
+                    .map((b, i) => (
+                      <div key={b.id} className="ledger-row" style={{ fontSize: "11px" }}>
+                        <span className="mono">{b.id}</span>
+                        <span className="mono" style={{ color: "var(--mute)" }}>
+                          ETA {8 + i * 11}s
+                        </span>
+                      </div>
+                    ))}
+                  {bots.filter((b) => b.targetLocationId === currentStation.id).length === 0 && (
+                    <div style={{ color: "var(--mute)", fontSize: "11px", padding: "8px 0" }}>
+                      Queue clear. Ready for next incoming picker.
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
-        ))}
-      </div>
-    </Panel>
+        )}
+
+        {/* 2. LEDGER PANE */}
+        {mainTab === "ledger" && (
+          <div className="pane on">
+            <div className="tabs" id="ledTabs">
+              <button className={ledgerSubTab === "disp" ? "on" : ""} onClick={() => setLedgerSubTab("disp")}>
+                Dispatch reasoning
+              </button>
+              <button className={ledgerSubTab === "safe" ? "on" : ""} onClick={() => setLedgerSubTab("safe")}>
+                Safety events
+              </button>
+            </div>
+            <div className="card-b fill">
+              <div className="ledger">
+                {ledgerSubTab === "disp" &&
+                  explainableLogs.map((log) => (
+                    <div key={log.id} className="item">
+                      <div className="w">
+                        <b>{log.taskId}</b> → <b>{log.botId}</b> · {log.targetRack} (Tier {log.tier})
+                        <div className="why">
+                          <span>{log.reason}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                {ledgerSubTab === "safe" &&
+                  safetyEvents.map((log) => (
+                    <div key={log.id} className="item">
+                      <div className="w">
+                        <span className="ev r">ACS RESOLVED</span>
+                        <b>{log.botId}</b> · {log.reason}
+                      </div>
+                    </div>
+                  ))}
+
+                {explainableLogs.length === 0 && (
+                  <div style={{ color: "var(--mute)", padding: "16px 0", fontSize: "11.5px" }}>
+                    No dispatch entries recorded yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 3. ROADMAP PANE */}
+        {mainTab === "road" && (
+          <div className="pane on">
+            <div className="card-b">
+              <div className="road">
+                <div className="rm">
+                  <div className="k">PREDICTIVE MAINT.</div>
+                  <div className="t">Motor temp · AMR‑17</div>
+                  <div className="v">68°C</div>
+                  <div className="m">wheel service in 6 days</div>
+                </div>
+                <div className="rm">
+                  <div className="k">AGV + CONVEYOR</div>
+                  <div className="t">Cross‑dock sorter</div>
+                  <div className="v">2.4 m/s</div>
+                  <div className="m">2 tow‑tractors online</div>
+                </div>
+                <div className="rm">
+                  <div className="k">CARBON</div>
+                  <div className="t">Solar roof today</div>
+                  <div className="v">412 kWh</div>
+                  <div className="m">net offset 0.31 t CO₂</div>
+                </div>
+                <div className="rm">
+                  <div className="k">OFF‑PEAK CHARGING</div>
+                  <div className="t">Charge shifted</div>
+                  <div className="v">−18%</div>
+                  <div className="m">energy cost vs peak</div>
+                </div>
+                <div className="rm">
+                  <div className="k">MULTI‑FLOOR</div>
+                  <div className="t">Freight lift L‑1</div>
+                  <div className="v">G → M1</div>
+                  <div className="m">3 bots queued</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+    </aside>
   );
 }
+
+export default RightPanels;

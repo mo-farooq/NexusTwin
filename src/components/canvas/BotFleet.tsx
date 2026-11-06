@@ -201,7 +201,7 @@ function PerceptionGizmo({ bot }: { bot: BotUnit }) {
       <Line
         points={[
           [0, 0.05, 0],
-          [Math.sin(bot.headingRad) * range, 0.05, Math.cos(bot.headingRad) * range],
+          [range, 0.05, 0],
         ]}
         color={color}
         lineWidth={2.2}
@@ -236,7 +236,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
   if (!initRef.current) {
     initRef.current = {
       pos: [bot.position[0], 0.2, bot.position[2]],
-      heading: bot.headingRad,
+      heading: -bot.headingRad,
     };
   }
 
@@ -279,8 +279,8 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
     }
     grp.position.y = 0.2; // Keep fixed ground clearance
 
-    // Shortest angular turn interpolation
-    let dHeading = bot.headingRad - grp.rotation.y;
+    // Shortest angular turn interpolation (Three.js Euler Y rotation requires -headingRad for +X forward)
+    let dHeading = -bot.headingRad - grp.rotation.y;
     while (dHeading > Math.PI) dHeading -= Math.PI * 2;
     while (dHeading < -Math.PI) dHeading += Math.PI * 2;
     grp.rotation.y += dHeading * (simulationSpeed >= 5 ? Math.max(k, 0.85) : k);
@@ -471,7 +471,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
 
         {/* 5. Directional Forward Path Guidance Ray (Compact & Clean) */}
         {isSelected && (
-          <mesh position={[0, -0.186, 0.35]} rotation-x={-Math.PI / 2}>
+          <mesh position={[0.35, -0.186, 0]} rotation-x={-Math.PI / 2}>
             <circleGeometry args={[0.9, 24, -Math.PI / 6, Math.PI / 3]} />
             <meshBasicMaterial
               color={

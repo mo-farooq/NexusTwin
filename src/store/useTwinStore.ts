@@ -768,6 +768,8 @@ export interface NexusTwinState {
   applyCustomLayout: (layout: AutoZonedLayout, blueprintUrl?: string | null) => void;
 
   // View & UI Navigation
+  appMode: "OPERATOR" | "STORY";
+  setAppMode: (mode: "OPERATOR" | "STORY") => void;
   viewTab: "3D" | "MAP" | "TRAFFIC" | "HEATMAP";
   showLabels: boolean;
   showPaths: boolean;
@@ -1090,6 +1092,8 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     simulationSpeed: 1,
 
     // View & UI Navigation
+    appMode: "OPERATOR",
+    setAppMode: (mode) => set({ appMode: mode }),
     viewTab: "3D",
     showLabels: false,
     showPaths: true,
@@ -1868,7 +1872,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               0,
               p.position[2] + (dz / dist) * moveStep,
             ];
-            p.headingRad = Math.atan2(dz, dx);
+            p.headingRad = Math.atan2(dx, dz);
           }
           nextPeople[pid] = p;
         });
@@ -2016,6 +2020,10 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             findPathAStar(navGrid, startCell, goalCell, {
               blockedCells: reservedCells,
               congestionCostMap: activeCongestionMap,
+              flowDirectionMap: state.aisleFlowMap,
+            }) ??
+            findPathAStar(navGrid, startCell, goalCell, {
+              flowDirectionMap: state.aisleFlowMap,
             }) ??
             findPathAStar(navGrid, startCell, goalCell) ??
             [];
@@ -2114,9 +2122,17 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
 
             const startCell = worldToCell(currentPos[0], currentPos[2], navGrid.cellSize);
             const goalCell = worldToCell(freeDock.accessPoint[0], freeDock.accessPoint[1], navGrid.cellSize);
-            const path = findPathAStar(navGrid, startCell, goalCell, {
-              blockedCells: reservedCells,
-            });
+            const path =
+              findPathAStar(navGrid, startCell, goalCell, {
+                blockedCells: reservedCells,
+                congestionCostMap: activeCongestionMap,
+                flowDirectionMap: state.aisleFlowMap,
+              }) ??
+              findPathAStar(navGrid, startCell, goalCell, {
+                flowDirectionMap: state.aisleFlowMap,
+              }) ??
+              findPathAStar(navGrid, startCell, goalCell) ??
+              [];
 
             nextBots[bot.id] = {
               ...bot,
@@ -2193,6 +2209,10 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               findPathAStar(navGrid, startCell, goalCell, {
                 blockedCells: reservedCells,
                 congestionCostMap: activeCongestionMap,
+                flowDirectionMap: state.aisleFlowMap,
+              }) ??
+              findPathAStar(navGrid, startCell, goalCell, {
+                flowDirectionMap: state.aisleFlowMap,
               }) ??
               findPathAStar(navGrid, startCell, goalCell) ??
               [];
@@ -2284,11 +2304,11 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             const isOnPath = upcomingPathCells.has(cellKey(oCell[0], oCell[1]));
             
             // Forward lane conflict: directly ahead (distAhead > 0.15m && distAhead < 2.5m) and laterally in our lane (distLateral < 0.58m)
-            const inSameLaneAhead = distAhead > 0.15 && distAhead < 2.5 && distLateral < 0.58;
+            const inSameLaneAhead = distAhead > 0.10 && distAhead < 2.5 && distLateral < 0.58;
             // Proximity hazard ahead within forward cone
-            const isHazardAhead = odist < 1.05 && distAhead > 0.05 && distLateral < 0.65;
+            const isHazardAhead = odist < 1.15 && distAhead > 0.02 && distLateral < 0.68;
 
-            if ((isOnPath || inSameLaneAhead || isHazardAhead) && odist < frontDistM) {
+            if ((isOnPath || inSameLaneAhead || isHazardAhead || odist < 1.1) && odist < frontDistM) {
               frontDistM = odist;
               frontObstacleId = other.id;
               nearestOtherBot = other;
@@ -2320,7 +2340,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             const isOnPath = upcomingPathCells.has(cellKey(pCell[0], pCell[1]));
 
             // Only react to human if in front on path, in lane, or emergency proximity
-            if ((isOnPath || (pDistAhead > 0.1 && pDistAhead < 1.8 && pDistLateral < 0.65) || (pdist < 1.15 && pDistAhead > 0.05)) && pdist < frontDistM) {
+            if ((isOnPath || (pDistAhead > 0.1 && pDistAhead < 2.0 && pDistLateral < 0.7) || (pdist < 1.35 && pDistAhead > 0.02)) && pdist < frontDistM) {
               frontDistM = pdist;
               frontObstacleId = person.name;
               humanInPerimeter = true;
@@ -2352,10 +2372,9 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             }
           }
 
-          // Station Arrival Buffer: If within 2 cells of destination and entrance is blocked,
-          // conclude navigation directly to prevent station bottleneck queues!
+          // Station Arrival Buffer: If within 1 cell of destination and arrived near waypoint
           const remainingPathSteps = bot.path.length - bot.pathIndex;
-          if (remainingPathSteps <= SIM_PARAMS.STATION_ARRIVE_CELLS && blockedBy && !bot.backingOff) {
+          if (remainingPathSteps <= 1 && distToWaypoint < 0.6 && !bot.backingOff) {
             if (bot.fsmState === "NAVIGATING_TO_PICKUP") {
               const activeTask = bot.currentTaskId ? nextTasks[bot.currentTaskId] : null;
               if (activeTask) activeTask.status = "IN_PROGRESS";
@@ -2390,9 +2409,9 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             const yieldsTo = humanInPerimeter || (otherBot ? checkRobotYieldsTo(bot, otherBot) : false);
 
             // Priority Glide-Past:
-            // If this robot has right-of-way (!yieldsTo) against otherBot (and no human hazard ahead):
-            // Continue advancing at glide speed (0.55x) unless otherBot is physically touching (< 0.95m)
-            const canPriorityGlide = !yieldsTo && !humanInPerimeter && otherBot && frontDistM >= 0.95 && (
+            // Only glide if NOT head-on in a single-file corridor and at least 1.4m separation exists
+            const isAisleConflict = otherBot && frontDistM < 1.8;
+            const canPriorityGlide = !yieldsTo && !humanInPerimeter && otherBot && frontDistM >= 1.4 && !isAisleConflict && (
               !occId || occId === otherBot.id
             );
 
@@ -2411,22 +2430,34 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                 nZ += (dz / distToWaypoint) * maxStep;
               }
 
-              nextBots[bot.id] = {
-                ...bot,
-                position: [nX, currentPos[1], nZ],
-                headingRad: desiredHeading,
-                velocity: profile.maxSpeedMps * passSpeedFactor,
-                pathIndex: nIdx,
-                waitTicks: 0,
-                perception: {
-                  state: "SLOWING",
-                  frontObstacleId: blockedBy,
-                  frontDistM: frontDistM < Infinity ? Math.round(frontDistM * 10) / 10 : null,
-                  warningProximity: true,
-                  yieldsToId: null,
-                },
-              };
-              return;
+              // Test candidate step against all other bots to prevent clipping
+              let candidateHit = false;
+              for (const o of Object.values(nextBots)) {
+                if (o.id === bot.id || o.status === "OFFLINE" || o.status === "ERROR") continue;
+                if (Math.hypot(nX - o.position[0], nZ - o.position[2]) < 1.05) {
+                  candidateHit = true;
+                  break;
+                }
+              }
+
+              if (!candidateHit) {
+                nextBots[bot.id] = {
+                  ...bot,
+                  position: [nX, currentPos[1], nZ],
+                  headingRad: desiredHeading,
+                  velocity: profile.maxSpeedMps * passSpeedFactor,
+                  pathIndex: nIdx,
+                  waitTicks: 0,
+                  perception: {
+                    state: "SLOWING",
+                    frontObstacleId: blockedBy,
+                    frontDistM: frontDistM < Infinity ? Math.round(frontDistM * 10) / 10 : null,
+                    warningProximity: true,
+                    yieldsToId: null,
+                  },
+                };
+                return;
+              }
             }
 
             // 1. Proactive Dynamic A* Replanning (Reroute around traffic via parallel aisle/bypass immediately)
@@ -2724,16 +2755,15 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             newZ += (dz / distToWaypoint) * maxStepDistance;
           }
 
-          // ── Physical Hard-Stop Barrier Check (Separating Axis Theorem & MIN_SEP 0.9m) ──
+          // ── Physical Hard-Stop Barrier Check (Separating Axis Theorem & MIN_SEP 1.05m) ──
           let physicalHit = false;
           for (const other of Object.values(nextBots)) {
             if (other.id === bot.id || other.status === "OFFLINE" || other.status === "ERROR") continue;
             const dn = Math.hypot(newX - other.position[0], newZ - other.position[2]);
             const dcur = Math.hypot(currentPos[0] - other.position[0], currentPos[2] - other.position[2]);
-            // Only stop if the step moves closer to the other robot AND violates physical boundary
-            const isCloser = dn < dcur;
-            const isTooClose = dn < SIM_PARAMS.MIN_SEP || (dn < 1.5 && obbOverlap(newX, newZ, newHeading, other.position[0], other.position[2], other.headingRad, 0.05, SIM_PARAMS.ROBOT_HALF_LEN, SIM_PARAMS.ROBOT_HALF_W));
-            if (isCloser && isTooClose) {
+            // Strictly prevent moving within MIN_SEP (1.05m) or overlapping bounding box
+            const violatesBoundary = dn < SIM_PARAMS.MIN_SEP || (dn < 1.4 && obbOverlap(newX, newZ, newHeading, other.position[0], other.position[2], other.headingRad, 0.05, SIM_PARAMS.ROBOT_HALF_LEN, SIM_PARAMS.ROBOT_HALF_W));
+            if (dn < 1.05 || (violatesBoundary && (dn < dcur || dn < 1.15))) {
               physicalHit = true;
               break;
             }
