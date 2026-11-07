@@ -1,8 +1,26 @@
 {
   "name": "nexustwin",
-  "private": true,
   "version": "1.0.0",
+  "description": "Institutional 3D Digital Twin, Anti-Overselling Firewall & Warehouse Automation Decision Engine",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mo-farooq/NexusTwin.git"
+  },
+  "keywords": [
+    "digital-twin",
+    "warehouse-automation",
+    "threejs",
+    "amr",
+    "robotics",
+    "supply-chain",
+    "logistics",
+    "spatial-ai",
+    "monte-carlo",
+    "novex-2026"
+  ],
+  "author": "NexusTwin Team",
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
