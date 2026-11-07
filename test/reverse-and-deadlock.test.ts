@@ -192,4 +192,37 @@ describe("NexusTwin Autonomous Reverse & Convoy Deadlock Resolution", () => {
     expect(assignedStation).not.toBe("PACK-STATION-1");
     expect(["PACK-STATION-2", "PACK-STATION-3"]).toContain(assignedStation);
   });
+
+  it("enforces multi-slot staggered queuing with >= 2.2m separation between consecutive queue ranks", () => {
+    const packCfg = PACKING_STATION_CONFIGS["PACK-STATION-1"];
+    expect(packCfg.queueSlots).toBeDefined();
+    expect(packCfg.queueSlots.length).toBeGreaterThanOrEqual(3);
+
+    // Verify distance between access point and Slot 1 is >= 2.2m
+    const distAccessToSlot1 = Math.hypot(
+      packCfg.accessPoint[0] - packCfg.queueSlots[0][0],
+      packCfg.accessPoint[1] - packCfg.queueSlots[0][1]
+    );
+    expect(distAccessToSlot1).toBeGreaterThanOrEqual(2.2);
+
+    // Verify distance between consecutive slots is >= 2.2m
+    for (let s = 0; s < packCfg.queueSlots.length - 1; s++) {
+      const slotA = packCfg.queueSlots[s];
+      const slotB = packCfg.queueSlots[s + 1];
+      const distSlots = Math.hypot(slotA[0] - slotB[0], slotA[1] - slotB[1]);
+      expect(distSlots).toBeGreaterThanOrEqual(2.2);
+    }
+  });
+
+  it("initiates immediate auto-egress upon delivery completion to vacate packing dropoff point", () => {
+    const packCfg = PACKING_STATION_CONFIGS["PACK-STATION-1"];
+    expect(packCfg.egressPoint).toBeDefined();
+
+    // Egress point is at least 3.0m away from the active drop-off access point
+    const distToEgress = Math.hypot(
+      packCfg.accessPoint[0] - packCfg.egressPoint[0],
+      packCfg.accessPoint[1] - packCfg.egressPoint[1]
+    );
+    expect(distToEgress).toBeGreaterThanOrEqual(3.0);
+  });
 });

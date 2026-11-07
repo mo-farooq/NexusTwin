@@ -166,6 +166,7 @@ export type BotUnitFsmState =
   | "PICKING"
   | "NAVIGATING_TO_DELIVERY"
   | "DELIVERING"
+  | "STATION_EGRESS"
   | "RETURNING_TO_CHARGE"
   | "CHARGING"
   | "OFFLINE"
@@ -295,12 +296,47 @@ export interface PackingStationConfig {
   name: string;
   accessPoint: [number, number];
   stagingPoint: [number, number];
+  egressPoint: [number, number];
+  queueSlots: [number, number][];
 }
 
 export const PACKING_STATION_CONFIGS: Record<string, PackingStationConfig> = {
-  "PACK-STATION-1": { id: "PACK-STATION-1", name: "Packing Station 01", accessPoint: [37.5, 31.0], stagingPoint: [37.5, 28.5] },
-  "PACK-STATION-2": { id: "PACK-STATION-2", name: "Packing Station 02", accessPoint: [44.5, 31.0], stagingPoint: [44.5, 28.5] },
-  "PACK-STATION-3": { id: "PACK-STATION-3", name: "Packing Station 03", accessPoint: [51.5, 31.0], stagingPoint: [51.5, 28.5] },
+  "PACK-STATION-1": {
+    id: "PACK-STATION-1",
+    name: "Packing Station 01",
+    accessPoint: [37.5, 31.0],
+    stagingPoint: [37.5, 28.5],
+    egressPoint: [37.5, 25.5],
+    queueSlots: [
+      [37.5, 28.5],
+      [37.5, 26.0],
+      [37.5, 23.5],
+    ],
+  },
+  "PACK-STATION-2": {
+    id: "PACK-STATION-2",
+    name: "Packing Station 02",
+    accessPoint: [44.5, 31.0],
+    stagingPoint: [44.5, 28.5],
+    egressPoint: [44.5, 25.5],
+    queueSlots: [
+      [44.5, 28.5],
+      [44.5, 26.0],
+      [44.5, 23.5],
+    ],
+  },
+  "PACK-STATION-3": {
+    id: "PACK-STATION-3",
+    name: "Packing Station 03",
+    accessPoint: [51.5, 31.0],
+    stagingPoint: [51.5, 28.5],
+    egressPoint: [51.5, 25.5],
+    queueSlots: [
+      [51.5, 28.5],
+      [51.5, 26.0],
+      [51.5, 23.5],
+    ],
+  },
 };
 
 export function getAisleIdForLocation(locId: string | null): string | null {
@@ -2333,8 +2369,11 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         }
       });
 
-      // 2C. Packing Station Mutex Manager: Map each packing station to its active occupant bot
-      const stationOccupancy = new Map<string, string>(); // stationId -> botId
+      // 2C. Packing Station Mutex & Queue Manager: Map each packing station to its active occupant and queue list
+      const stationOccupancy = new Map<string, string>(); // stationId -> botId (active at access point)
+      const stationQueues = new Map<string, string[]>(); // stationId -> ordered botIds in queue
+      Object.keys(PACKING_STATION_CONFIGS).forEach((k) => stationQueues.set(k, []));
+
       Object.values(nextBots).forEach((b) => {
         if (b.status === "OFFLINE" || b.status === "ERROR") return;
         for (const cfg of Object.values(PACKING_STATION_CONFIGS)) {
@@ -2346,10 +2385,36 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         }
       });
 
+      // Register and rank queued delivery bots for each station
+      Object.values(nextBots).forEach((b) => {
+        if (b.status === "OFFLINE" || b.status === "ERROR") return;
+        if (b.fsmState === "NAVIGATING_TO_DELIVERY" && b.targetLocationId && PACKING_STATION_CONFIGS[b.targetLocationId]) {
+          const stId = b.targetLocationId;
+          const occupant = stationOccupancy.get(stId);
+          if (occupant !== b.id) {
+            const q = stationQueues.get(stId) || [];
+            q.push(b.id);
+            stationQueues.set(stId, q);
+          }
+        }
+      });
+
+      // Sort queues by distance to station access point (closest gets Slot 1, next gets Slot 2, etc.)
+      stationQueues.forEach((botIds, stId) => {
+        const cfg = PACKING_STATION_CONFIGS[stId];
+        botIds.sort((idA, idB) => {
+          const bA = nextBots[idA];
+          const bB = nextBots[idB];
+          const dA = Math.hypot(bA.position[0] - cfg.accessPoint[0], bA.position[2] - cfg.accessPoint[1]);
+          const dB = Math.hypot(bB.position[0] - cfg.accessPoint[0], bB.position[2] - cfg.accessPoint[1]);
+          return dA - dB;
+        });
+      });
+
       // 3. Task Dispatching: Match Idle Bots with Pending Tasks
       const nextLogs = [...state.explainableLogs];
       const idleBots = Object.values(nextBots).filter(
-        (b) => b.status === "IDLE" && b.batteryPct > BATTERY_LOW_THRESHOLD
+        (b) => (b.status === "IDLE" || b.fsmState === "STATION_EGRESS") && b.batteryPct > BATTERY_LOW_THRESHOLD
       );
       // Prioritize pending tasks that target unoccupied aisles over occupied ones to balance traffic
       const pendingTasks = Object.values(nextTasks)
@@ -2542,9 +2607,22 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         if (
           (bot.fsmState === "NAVIGATING_TO_PICKUP" ||
            bot.fsmState === "NAVIGATING_TO_DELIVERY" ||
-           bot.fsmState === "RETURNING_TO_CHARGE") &&
+           bot.fsmState === "RETURNING_TO_CHARGE" ||
+           bot.fsmState === "STATION_EGRESS") &&
           (bot.path.length === 0 || bot.pathIndex >= bot.path.length)
         ) {
+          if (bot.fsmState === "STATION_EGRESS") {
+            nextBots[bot.id] = {
+              ...bot,
+              status: "IDLE",
+              fsmState: "IDLE",
+              path: [],
+              pathIndex: 0,
+              waitTicks: 0,
+              velocity: 0,
+            };
+            return;
+          }
           const targetCoords: [number, number] | null =
             bot.fsmState === "RETURNING_TO_CHARGE" && bot.targetLocationId && nextDocks[bot.targetLocationId]
               ? [nextDocks[bot.targetLocationId].accessPoint[0], nextDocks[bot.targetLocationId].accessPoint[1]]
@@ -2747,18 +2825,33 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         // ── Packing Station Mutex & Queue Staging ──
         if (bot.fsmState === "NAVIGATING_TO_DELIVERY" && bot.targetLocationId && bot.targetLocationId.startsWith("PACK-STATION-")) {
           const packCfg = PACKING_STATION_CONFIGS[bot.targetLocationId];
-          const currentOccupant = packCfg ? stationOccupancy.get(packCfg.id) : null;
-          const isStationLocked = Boolean(packCfg && currentOccupant && currentOccupant !== bot.id);
+          if (packCfg) {
+            const currentOccupant = stationOccupancy.get(packCfg.id);
+            const isStationOccupied = Boolean(currentOccupant && currentOccupant !== bot.id);
+            const qList = stationQueues.get(packCfg.id) || [];
+            const queueRank = qList.indexOf(bot.id); // 0 = first in queue, 1 = second, etc.
 
-          if (isStationLocked && packCfg) {
-            const distToAccess = Math.hypot(currentPos[0] - packCfg.accessPoint[0], currentPos[2] - packCfg.accessPoint[1]);
-            // If approaching within 2.8m of the occupied station access point
-            if (distToAccess < 2.8) {
-              // 1. Dynamic Load Balancing: Check if another packing station is free
-              const freeStation = Object.values(PACKING_STATION_CONFIGS).find((cfg) => !stationOccupancy.has(cfg.id));
-              if (freeStation) {
+            // If station is occupied or another bot has higher queue priority, determine assigned hold slot
+            if (isStationOccupied || queueRank > 0) {
+              // 1. Dynamic Load Balancing: Check if another packing station has a shorter queue
+              const otherStations = Object.values(PACKING_STATION_CONFIGS).filter((cfg) => cfg.id !== packCfg.id);
+              const myStationLoad = (currentOccupant ? 1 : 0) + qList.length;
+              let bestOther: PackingStationConfig | null = null;
+              let bestOtherLoad = myStationLoad;
+
+              for (const oCfg of otherStations) {
+                const oOcc = stationOccupancy.get(oCfg.id) ? 1 : 0;
+                const oQ = (stationQueues.get(oCfg.id) || []).length;
+                const oLoad = oOcc + oQ;
+                if (oLoad < bestOtherLoad - 1) { // Significantly less congested
+                  bestOtherLoad = oLoad;
+                  bestOther = oCfg;
+                }
+              }
+
+              if (bestOther) {
                 const sCell = worldToCell(currentPos[0], currentPos[2], navGrid.cellSize);
-                const gCell = worldToCell(freeStation.accessPoint[0], freeStation.accessPoint[1], navGrid.cellSize);
+                const gCell = worldToCell(bestOther.accessPoint[0], bestOther.accessPoint[1], navGrid.cellSize);
                 const reroutedPath = findPathAStar(navGrid, sCell, gCell, {
                   blockedCells: reservedCells,
                   congestionCostMap: activeCongestionMap,
@@ -2773,16 +2866,16 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                     timestamp: `00:${minutesStr}:${secondsStr}`,
                     botId: bot.id,
                     taskId: bot.currentTaskId || "DELIVERY",
-                    targetRack: freeStation.name,
+                    targetRack: bestOther.name,
                     tier: 1,
-                    reason: `📦 Dynamic Pack Load Balancing: ${packCfg.name} occupied by ${currentOccupant}; ${bot.id} dynamically diverted to ${freeStation.name}.`,
+                    reason: `📦 Dynamic Pack Load Balancing: ${packCfg.name} has queue (${myStationLoad} bots); ${bot.id} dynamically diverted to ${bestOther.name}.`,
                   };
                   nextLogs.unshift(logEntry);
                   if (nextLogs.length > 20) nextLogs.pop();
 
                   nextBots[bot.id] = {
                     ...bot,
-                    targetLocationId: freeStation.id,
+                    targetLocationId: bestOther.id,
                     path: reroutedPath,
                     pathIndex: 0,
                     waitTicks: 0,
@@ -2792,17 +2885,22 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                 }
               }
 
-              // 2. If all packing stations occupied, hold at staging buffer line (dist < 1.4m from stagingPoint or distToAccess < 2.0m)
-              const distToStaging = Math.hypot(currentPos[0] - packCfg.stagingPoint[0], currentPos[2] - packCfg.stagingPoint[1]);
-              if (distToStaging < 1.4 || distToAccess < 2.0) {
+              // 2. If holding in queue at this station, determine target slot coordinates
+              const slotIdx = Math.min(queueRank >= 0 ? queueRank : 0, packCfg.queueSlots.length - 1);
+              const targetSlot = packCfg.queueSlots[slotIdx];
+              const distToSlot = Math.hypot(currentPos[0] - targetSlot[0], currentPos[2] - targetSlot[1]);
+              const distToAccess = Math.hypot(currentPos[0] - packCfg.accessPoint[0], currentPos[2] - packCfg.accessPoint[1]);
+
+              // If arrived near assigned queue slot or within distance threshold, hold position
+              if (distToSlot < 1.3 || (queueRank > 0 && distToAccess < (queueRank + 1) * 2.2)) {
                 nextBots[bot.id] = {
                   ...bot,
                   velocity: 0,
                   waitTicks: bot.waitTicks + 1,
                   perception: {
                     state: "HOLDING",
-                    frontObstacleId: currentOccupant ?? null,
-                    frontDistM: distToAccess,
+                    frontObstacleId: currentOccupant ?? (queueRank > 0 ? qList[queueRank - 1] : null),
+                    frontDistM: distToSlot,
                     warningProximity: true,
                     yieldsToId: currentOccupant ?? null,
                   },
@@ -2816,72 +2914,122 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         // ── Active Reverse Drive Kinematics (Zero-Turn Chassis Back-off) ──
         if (bot.isReversing) {
           const revProfile = botProfiles[bot.profileId] ?? BOT_PROFILES.LIGHT_PICKER;
-          const revSpeed = revProfile.maxSpeedMps * 0.45;
+          const revSpeed = revProfile.maxSpeedMps * 0.50; // crisp reverse speed ~0.7 m/s
           const revStepDist = revSpeed * TICK_DURATION_S;
 
-          // Compute reverse vector (opposite to forward heading)
-          let revDx = -Math.cos(bot.headingRad) * revStepDist;
-          let revDz = -Math.sin(bot.headingRad) * revStepDist;
+          let stepX = currentPos[0];
+          let stepZ = currentPos[2];
+          let stepTaken = false;
 
-          // If recent breadcrumbs exist, step backward along breadcrumbs
+          // 1. Primary Strategy: Step backward along recently traversed breadcrumbs
           if (bot.recentBreadcrumbs && bot.recentBreadcrumbs.length > 0) {
-            const bc = bot.recentBreadcrumbs[0];
-            const [bcX, bcZ] = cellToWorld(bc[0], bc[1], navGrid.cellSize);
-            const toBcx = bcX - currentPos[0];
-            const toBcz = bcZ - currentPos[2];
-            const bcDist = Math.hypot(toBcx, toBcz);
-            if (bcDist > 0.08) {
-              revDx = (toBcx / bcDist) * Math.min(revStepDist, bcDist);
-              revDz = (toBcz / bcDist) * Math.min(revStepDist, bcDist);
-            }
-          }
-
-          const candX = currentPos[0] + revDx;
-          const candZ = currentPos[2] + revDz;
-          const candCell = worldToCell(candX, candZ, navGrid.cellSize);
-
-          // Check rear obstacle / robot collision
-          let rearBlocked = false;
-          let rearTrailingBot: BotUnit | null = null;
-          if (!isCellTraversable(navGrid, candCell[0], candCell[1])) {
-            rearBlocked = true;
-          } else {
-            for (const other of Object.values(nextBots)) {
-              if (other.id === bot.id || other.status === "OFFLINE" || other.status === "ERROR") continue;
-              const dRear = Math.hypot(candX - other.position[0], candZ - other.position[2]);
-              const dCur = Math.hypot(currentPos[0] - other.position[0], currentPos[2] - other.position[2]);
-              if (dRear < 1.15 && dRear < dCur) {
-                rearBlocked = true;
-                rearTrailingBot = other;
+            let targetBc: GridCell | null = null;
+            let targetIdx = -1;
+            for (let bi = 0; bi < bot.recentBreadcrumbs.length; bi++) {
+              const [bcWorldX, bcWorldZ] = cellToWorld(bot.recentBreadcrumbs[bi][0], bot.recentBreadcrumbs[bi][1], navGrid.cellSize);
+              const d = Math.hypot(bcWorldX - currentPos[0], bcWorldZ - currentPos[2]);
+              if (d >= 0.20) {
+                targetBc = bot.recentBreadcrumbs[bi];
+                targetIdx = bi;
                 break;
+              }
+            }
+
+            if (targetBc) {
+              const [bcX, bcZ] = cellToWorld(targetBc[0], targetBc[1], navGrid.cellSize);
+              const toBcx = bcX - currentPos[0];
+              const toBcz = bcZ - currentPos[2];
+              const bcDist = Math.hypot(toBcx, toBcz);
+              const step = Math.min(revStepDist, bcDist);
+              const testX = currentPos[0] + (toBcx / bcDist) * step;
+              const testZ = currentPos[2] + (toBcz / bcDist) * step;
+              const testCell = worldToCell(testX, testZ, navGrid.cellSize);
+
+              // Check rear collision with other bots
+              let rearHitOther = false;
+              let trailingBotToPush: BotUnit | null = null;
+              for (const o of Object.values(nextBots)) {
+                if (o.id === bot.id || o.status === "OFFLINE" || o.status === "ERROR") continue;
+                const dTest = Math.hypot(testX - o.position[0], testZ - o.position[2]);
+                const dCur = Math.hypot(currentPos[0] - o.position[0], currentPos[2] - o.position[2]);
+                if (dTest < 0.95 && dTest < dCur) {
+                  rearHitOther = true;
+                  trailingBotToPush = o;
+                  break;
+                }
+              }
+
+              if (trailingBotToPush && !trailingBotToPush.isReversing) {
+                trailingBotToPush.isReversing = true;
+                trailingBotToPush.reverseTicks = 1;
+                trailingBotToPush.waitTicks = 0;
+              }
+
+              if (!rearHitOther && isCellTraversable(navGrid, testCell[0], testCell[1])) {
+                stepX = testX;
+                stepZ = testZ;
+                stepTaken = true;
+                if (bcDist - step < 0.15 && targetIdx > 0) {
+                  bot.recentBreadcrumbs = bot.recentBreadcrumbs.slice(targetIdx);
+                }
               }
             }
           }
 
-          // If rear is blocked by a trailing robot, trigger cascading reverse on that trailing robot!
-          if (rearTrailingBot && !rearTrailingBot.isReversing) {
-            rearTrailingBot.isReversing = true;
-            rearTrailingBot.reverseTicks = 1;
-            rearTrailingBot.waitTicks = 0;
-            const cascadeLog: ExplainableDispatchLog = {
-              id: `CASCADE-REV-${currentTick}-${rearTrailingBot.id}`,
-              timestamp: `00:${String(Math.floor(simTimeSec / 60)).padStart(2, "0")}:${String(Math.floor(simTimeSec % 60)).padStart(2, "0")}`,
-              botId: rearTrailingBot.id,
-              taskId: rearTrailingBot.currentTaskId || "CONVOY",
-              targetRack: "Convoy Clearance",
-              tier: 1,
-              reason: `🔄 Convoy Cascade Reverse: ${rearTrailingBot.id} reversing rear headway to clear lane for leading ${bot.id}.`,
-            };
-            nextLogs.unshift(cascadeLog);
-            if (nextLogs.length > 20) nextLogs.pop();
+          // 2. Secondary Strategy: Omnidirectional retreat away from front obstacle
+          if (!stepTaken) {
+            const frontId = bot.perception.frontObstacleId || bot.perception.yieldsToId;
+            const frontUnit = frontId ? (nextBots[frontId] || nextPeople[frontId]) : null;
+            const obstaclePos = frontUnit ? frontUnit.position : null;
+
+            let bestEscapeDir: [number, number] | null = null;
+            let maxEscapeScore = -Infinity;
+
+            for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+              const testX = currentPos[0] + Math.cos(a) * revStepDist;
+              const testZ = currentPos[2] + Math.sin(a) * revStepDist;
+              const testCell = worldToCell(testX, testZ, navGrid.cellSize);
+
+              if (!isCellTraversable(navGrid, testCell[0], testCell[1])) continue;
+
+              let collides = false;
+              let minBotDist = Infinity;
+              for (const o of Object.values(nextBots)) {
+                if (o.id === bot.id || o.status === "OFFLINE" || o.status === "ERROR") continue;
+                const d = Math.hypot(testX - o.position[0], testZ - o.position[2]);
+                if (d < 0.95) { collides = true; break; }
+                if (d < minBotDist) minBotDist = d;
+              }
+              if (collides) continue;
+
+              let score = minBotDist;
+              if (obstaclePos) {
+                const distToObs = Math.hypot(testX - obstaclePos[0], testZ - obstaclePos[2]);
+                const curDistToObs = Math.hypot(currentPos[0] - obstaclePos[0], currentPos[2] - obstaclePos[2]);
+                if (distToObs <= curDistToObs) continue; // must increase separation!
+                score += (distToObs - curDistToObs) * 25.0;
+              }
+
+              if (score > maxEscapeScore) {
+                maxEscapeScore = score;
+                bestEscapeDir = [testX, testZ];
+              }
+            }
+
+            if (bestEscapeDir) {
+              stepX = bestEscapeDir[0];
+              stepZ = bestEscapeDir[1];
+              stepTaken = true;
+            }
           }
 
           const revTicks = (bot.reverseTicks || 0) + 1;
           const frontClearance = bot.perception.frontDistM ?? Infinity;
 
-          // Conclude reverse if reversed 12 ticks (~1.2s, 0.6m) or rear blocked or front clear > 2.0m
-          if (revTicks >= 12 || (rearBlocked && revTicks >= 4) || frontClearance >= 2.0) {
-            const startCell = worldToCell(currentPos[0], currentPos[2], navGrid.cellSize);
+          // Conclude reverse if reversed sufficient steps (>= 10 ticks, 0.7m) or front clear > 2.2m
+          // Or if completely hemmed in after 6 ticks, re-plan A*
+          if (revTicks >= 10 || frontClearance >= 2.2 || (!stepTaken && revTicks >= 6)) {
+            const startCell = worldToCell(stepX, stepZ, navGrid.cellSize);
             const goalCell = bot.path.length > 0 ? bot.path[bot.path.length - 1] : startCell;
             const resumedPath = findPathAStar(navGrid, startCell, goalCell, {
               blockedCells: reservedCells,
@@ -2891,6 +3039,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
 
             nextBots[bot.id] = {
               ...bot,
+              position: [stepX, currentPos[1], stepZ],
               isReversing: false,
               reverseTicks: 0,
               velocity: 0,
@@ -2907,12 +3056,10 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             return;
           }
 
-          // Step backwards smoothly without altering forward heading
-          const finalX = rearBlocked ? currentPos[0] : candX;
-          const finalZ = rearBlocked ? currentPos[2] : candZ;
+          // Step backwards smoothly with non-zero reverse velocity
           nextBots[bot.id] = {
             ...bot,
-            position: [finalX, currentPos[1], finalZ],
+            position: [stepX, currentPos[1], stepZ],
             velocity: -revSpeed, // negative indicates reverse
             isReversing: true,
             reverseTicks: revTicks,
@@ -2936,7 +3083,8 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         if (
           (bot.fsmState === "NAVIGATING_TO_PICKUP" ||
            bot.fsmState === "NAVIGATING_TO_DELIVERY" ||
-           bot.fsmState === "RETURNING_TO_CHARGE") &&
+           bot.fsmState === "RETURNING_TO_CHARGE" ||
+           bot.fsmState === "STATION_EGRESS") &&
           bot.path.length > 0 &&
           bot.pathIndex < bot.path.length
         ) {
@@ -3095,6 +3243,17 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               nextBots[bot.id] = {
                 ...bot,
                 fsmState: "DELIVERING",
+                path: [],
+                pathIndex: 0,
+                waitTicks: 0,
+                velocity: 0,
+              };
+              return;
+            } else if (bot.fsmState === "STATION_EGRESS") {
+              nextBots[bot.id] = {
+                ...bot,
+                status: "IDLE",
+                fsmState: "IDLE",
                 path: [],
                 pathIndex: 0,
                 waitTicks: 0,
@@ -3665,6 +3824,32 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                   yieldsToId: null,
                 },
               };
+            } else if (bot.fsmState === "STATION_EGRESS") {
+              nextBots[bot.id] = {
+                ...bot,
+                position: [newX, currentPos[1], newZ],
+                headingRad: newHeading,
+                path: [],
+                pathIndex: 0,
+                status: "IDLE",
+                fsmState: "IDLE",
+                batteryPct: newBatteryPct,
+                waitTicks: 0,
+                velocity: 0,
+                perception: {
+                  state: "CLEAR",
+                  frontObstacleId: null,
+                  frontDistM: null,
+                  warningProximity: false,
+                  yieldsToId: null,
+                },
+                stats: {
+                  ...bot.stats,
+                  distanceTraveledM: bot.stats.distanceTraveledM + distToWaypoint,
+                  energyConsumedWh: bot.stats.energyConsumedWh + whPerTick,
+                  idleTicks: bot.stats.idleTicks + 1,
+                },
+              };
             }
           } else {
             nextBots[bot.id] = {
@@ -3762,13 +3947,26 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             completedInThisTick++;
           }
 
+          // Immediate Station Auto-Egress: vacates the packing station drop-off point
+          const packCfg = bot.targetLocationId ? PACKING_STATION_CONFIGS[bot.targetLocationId] : null;
+          const egressTarget = packCfg ? packCfg.egressPoint : [currentPos[0], currentPos[2] - 4.5];
+          const startCell = worldToCell(currentPos[0], currentPos[2], navGrid.cellSize);
+          const egressCell = worldToCell(egressTarget[0], egressTarget[1], navGrid.cellSize);
+          const egressPath = findPathAStar(navGrid, startCell, egressCell) ?? [egressCell];
+
           nextBots[bot.id] = {
             ...bot,
-            status: "IDLE",
-            fsmState: "IDLE",
+            status: "ACTIVE",
+            fsmState: "STATION_EGRESS",
             currentTaskId: null,
             targetLocationId: null,
             currentPayloadKg: 0,
+            path: egressPath,
+            pathIndex: 0,
+            isReversing: false,
+            reverseTicks: 0,
+            waitTicks: 0,
+            velocity: 0,
             stats: {
               ...bot.stats,
               tasksCompleted: bot.stats.tasksCompleted + 1,
@@ -3790,6 +3988,72 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
           };
         }
       });
+
+      // 4B. Autonomous Fleet Supervisor (AFS): Anti-Deadlock & Cluster Dispersal Engine
+      const allActiveBots = Object.values(nextBots).filter(
+        (b) => b.status !== "OFFLINE" && b.status !== "ERROR"
+      );
+
+      for (let i = 0; i < allActiveBots.length; i++) {
+        for (let j = i + 1; j < allActiveBots.length; j++) {
+          const b1 = allActiveBots[i];
+          const b2 = allActiveBots[j];
+          const distBetween = Math.hypot(b1.position[0] - b2.position[0], b1.position[2] - b2.position[2]);
+          if (distBetween > 1.6) continue;
+
+          // Check if both are stopped (velocity === 0 or small) and waiting
+          const b1Waiting = Math.abs(b1.velocity) < 0.05 && (b1.waitTicks >= 4 || b1.isReversing);
+          const b2Waiting = Math.abs(b2.velocity) < 0.05 && (b2.waitTicks >= 4 || b2.isReversing);
+
+          if (b1Waiting && b2Waiting) {
+            // Mutual standoff detected!
+            const b1Yields = checkRobotYieldsTo(b1, b2);
+            const yieldingBot = b1Yields ? b1 : b2;
+            const priorityBot = b1Yields ? b2 : b1;
+
+            // Priority bot gets clearance to proceed
+            priorityBot.waitTicks = 0;
+            priorityBot.perception.state = "CLEAR";
+            priorityBot.perception.warningProximity = false;
+
+            // Yielding bot executes immediate forced reverse retreat or sidestep
+            if (!yieldingBot.isReversing) {
+              yieldingBot.isReversing = true;
+              yieldingBot.reverseTicks = 1;
+              yieldingBot.waitTicks = 0;
+            } else if (yieldingBot.reverseTicks && yieldingBot.reverseTicks >= 6) {
+              // Reversing in place didn't clear after 6 ticks: search open lateral cell and sidestep!
+              const yCell = worldToCell(yieldingBot.position[0], yieldingBot.position[2], navGrid.cellSize);
+              let bestBreakout: GridCell | null = null;
+              for (const [dc, dr] of [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+                const tc: GridCell = [yCell[0] + dc, yCell[1] + dr];
+                if (!isCellTraversable(navGrid, tc[0], tc[1])) continue;
+                const [tx, tz] = cellToWorld(tc[0], tc[1], navGrid.cellSize);
+                const dObs = Math.hypot(tx - priorityBot.position[0], tz - priorityBot.position[2]);
+                if (dObs > distBetween + 0.3) {
+                  let botHit = false;
+                  for (const o of allActiveBots) {
+                    if (o.id === yieldingBot.id) continue;
+                    if (Math.hypot(tx - o.position[0], tz - o.position[2]) < 0.95) { botHit = true; break; }
+                  }
+                  if (!botHit) {
+                    bestBreakout = tc;
+                    break;
+                  }
+                }
+              }
+              if (bestBreakout) {
+                const [bx, bz] = cellToWorld(bestBreakout[0], bestBreakout[1], navGrid.cellSize);
+                yieldingBot.position = [bx, yieldingBot.position[1], bz];
+                yieldingBot.isReversing = false;
+                yieldingBot.reverseTicks = 0;
+                yieldingBot.waitTicks = 0;
+                safeYieldsResolvedDelta++;
+              }
+            }
+          }
+        }
+      }
 
       // 5. Decay Active Congestion Map (Cool down over time)
       for (let i = 0; i < activeCongestionMap.length; i++) {
