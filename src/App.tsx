@@ -125,6 +125,33 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Deep-link URL hash synchronization for executive presentations and direct bookmarking
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash.toLowerCase();
+      if (hash.includes("story")) {
+        useTwinStore.getState().setAppMode("STORY");
+      } else if (hash.includes("operator") || hash.includes("scada")) {
+        useTwinStore.getState().setAppMode("OPERATOR");
+      } else if (hash.includes("studio") || hash.includes("builder")) {
+        useTwinStore.getState().setAppMode("OPERATOR");
+        useTwinStore.getState().openBuilderModal();
+      }
+    };
+    handleHash();
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, []);
+
+  // Sync current mode to URL hash seamlessly without page reload
+  useEffect(() => {
+    if (appMode === "STORY" && !window.location.hash.toLowerCase().startsWith("#story")) {
+      window.history.replaceState(null, "", "#story");
+    } else if (appMode === "OPERATOR" && window.location.hash.toLowerCase().startsWith("#story")) {
+      window.history.replaceState(null, "", "#operator");
+    }
+  }, [appMode]);
+
   if (appMode === "STORY") {
     return <StoryMode />;
   }

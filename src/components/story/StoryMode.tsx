@@ -10,6 +10,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useTwinStore, INSTITUTIONAL_BENCHMARK_CITATIONS } from "../../store/useTwinStore";
+import { FacilityCanvas } from "../canvas/FacilityCanvas";
 
 export function StoryMode() {
   const setAppMode = useTwinStore((s) => s.setAppMode);
@@ -24,12 +25,28 @@ export function StoryMode() {
   const injectBotFailure = useTwinStore((s) => s.injectBotFailure);
   const injectVipOrder = useTwinStore((s) => s.injectVipOrder);
   const clearInjections = useTwinStore((s) => s.clearInjections);
+  const isRunning = useTwinStore((s) => s.isRunning);
+  const startSimulation = useTwinStore((s) => s.startSimulation);
+  const setSimulationSpeed = useTwinStore((s) => s.setSimulationSpeed);
 
   const [activeStep, setActiveStep] = useState<0 | 1 | 2 | 3>(0);
   const [speed, setSpeed] = useState<number>(8);
   const [showCitationsModal, setShowCitationsModal] = useState<boolean>(false);
   const [showTourModal, setShowTourModal] = useState<boolean>(false);
   const [tourStep, setTourStep] = useState<number>(0);
+
+  // DIA /plan /goal /boost tabs for Step 2 (Stress) and Step 3 (Compare)
+  const [stressDiaTab, setStressDiaTab] = useState<"plan" | "goal" | "boost">("boost");
+  const [compareDiaTab, setCompareDiaTab] = useState<"plan" | "goal" | "boost">("plan");
+  const [compareFleetBoost, setCompareFleetBoost] = useState<number>(1.35);
+
+  // Auto-start simulation in Story Mode so 3D viewport animates
+  useEffect(() => {
+    if (!isRunning) {
+      startSimulation();
+    }
+    setSimulationSpeed(8 as 1 | 2 | 5 | 10);
+  }, []);
 
   // 01 / BUILD inputs
   const [widthM, setWidthM] = useState(gridDimensions.widthM || 84);
@@ -72,7 +89,98 @@ export function StoryMode() {
     }
   };
 
-  // Render 2D CAD Blueprint in step 0
+  // Camera vantage for Step 2 based on DIA /plan /goal /boost
+  const stressCameraConfig = useMemo(() => {
+    const W = gridDimensions.widthM;
+    const D = gridDimensions.depthM;
+    if (stressDiaTab === "plan") {
+      return {
+        pos: [W * 0.55, 26, D * 0.9] as [number, number, number],
+        target: [W * 0.5, 0.5, D * 0.5] as [number, number, number],
+      };
+    } else if (stressDiaTab === "goal") {
+      return {
+        pos: [W * 0.95, 38, D * 1.35] as [number, number, number],
+        target: [W / 2, 0.5, D / 2] as [number, number, number],
+      };
+    } else {
+      // "boost"
+      return {
+        pos: [W * 0.82, 30, D * 1.15] as [number, number, number],
+        target: [W * 0.5, 0.5, D * 0.45] as [number, number, number],
+      };
+    }
+  }, [stressDiaTab, gridDimensions]);
+
+  // Synchronize dynamic 3D effects when stressDiaTab changes
+  useEffect(() => {
+    if (activeStep !== 1) return;
+    if (stressDiaTab === "plan") {
+      if (!useTwinStore.getState().showPaths) {
+        useTwinStore.getState().togglePaths();
+      }
+      setSimulationSpeed(5 as 1 | 2 | 5 | 10);
+    } else if (stressDiaTab === "goal") {
+      setSimulationSpeed(10 as 1 | 2 | 5 | 10);
+    } else if (stressDiaTab === "boost") {
+      setSimulationSpeed(10 as 1 | 2 | 5 | 10);
+    }
+  }, [stressDiaTab, activeStep]);
+
+  // Camera vantage for Step 3 based on DIA /plan /goal /boost
+  const compareCameraConfig = useMemo(() => {
+    const W = gridDimensions.widthM;
+    const D = gridDimensions.depthM;
+    if (compareDiaTab === "plan") {
+      return {
+        pos: [W * 0.88, 32, D * 1.2] as [number, number, number],
+        target: [W * 0.45, 0.5, D * 0.5] as [number, number, number],
+      };
+    } else if (compareDiaTab === "goal") {
+      return {
+        pos: [W * 0.96, 36, D * 1.28] as [number, number, number],
+        target: [W / 2, 0.5, D / 2] as [number, number, number],
+      };
+    } else {
+      // "boost"
+      return {
+        pos: [W * 0.85, 30, D * 1.15] as [number, number, number],
+        target: [W / 2, 0.5, D / 2] as [number, number, number],
+      };
+    }
+  }, [compareDiaTab, gridDimensions]);
+
+  // Synchronize fleet sizing in 3D when compareFleetBoost is changed
+  const setFleetSize = useTwinStore((s) => s.setFleetSize);
+  const handleCompareBoost = (multiplier: number) => {
+    setCompareFleetBoost(multiplier);
+    const targetBots = Math.max(4, Math.round(fleetToday * multiplier));
+    setFleetSize(targetBots);
+  };
+
+  // Step URL Hash Synchronization for Presentation Deep Links
+  useEffect(() => {
+    const hash = window.location.hash.toLowerCase();
+    if (hash.includes("stress") || hash.includes("step2")) {
+      setActiveStep(1);
+    } else if (hash.includes("compare") || hash.includes("step3")) {
+      setActiveStep(2);
+    } else if (hash.includes("decide") || hash.includes("step4")) {
+      setActiveStep(3);
+    } else if (hash.includes("build") || hash.includes("step1")) {
+      setActiveStep(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    const stepNames = ["build", "stress", "compare", "decide"];
+    const targetHash = `#story/${stepNames[activeStep]}`;
+    if (window.location.hash !== targetHash) {
+      window.history.replaceState(null, "", targetHash);
+    }
+  }, [activeStep]);
+
+  // Render authentic DR DIA Architectural Cyan-Blue Blueprint in step 0
   useEffect(() => {
     const cv = cvBuildRef.current;
     if (!cv) return;
@@ -88,14 +196,18 @@ export function StoryMode() {
     const w = rect.width;
     const h = rect.height;
 
-    // Draw background
-    ctx.fillStyle = "#121826";
+    // 1. Blueprint paper background with radial vignette gradient
+    const grad = ctx.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, Math.max(w, h) * 0.8);
+    grad.addColorStop(0, "#0D3B66");
+    grad.addColorStop(0.65, "#0A2540");
+    grad.addColorStop(1, "#06182C");
+    ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
-    // Draw CAD grid
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
-    ctx.lineWidth = 1;
-    const gridSize = 24;
+    // 2. 1m Minor Architectural Blueprint Grid
+    ctx.strokeStyle = "rgba(30, 81, 128, 0.4)";
+    ctx.lineWidth = 0.5;
+    const gridSize = 16;
     for (let x = 0; x < w; x += gridSize) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
@@ -109,70 +221,170 @@ export function StoryMode() {
       ctx.stroke();
     }
 
-    // Draw rack clusters
-    const padX = 40;
-    const padY = 40;
+    // 3. 5m Major Cyan Blueprint Grid Lines
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
+    ctx.lineWidth = 1;
+    const majorGridSize = gridSize * 5;
+    for (let x = 0; x < w; x += majorGridSize) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    for (let y = 0; y < h; y += majorGridSize) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+
+    // 4. Perimeter margins for rulers & dimension witness lines
+    const padX = 42;
+    const padY = 42;
     const innerW = w - 2 * padX;
     const innerH = h - 2 * padY;
 
+    // Double concrete outer perimeter walls in architectural white ink
+    ctx.strokeStyle = "#38BDF8";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(padX - 4, padY - 4, innerW + 8, innerH + 8);
+    ctx.strokeStyle = "#FFFFFF";
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(padX, padY, innerW, innerH);
+
+    // Dimension lines
+    ctx.strokeStyle = "rgba(147, 197, 253, 0.75)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 2]);
+    // Top witness lines
+    ctx.beginPath();
+    ctx.moveTo(padX, padY);
+    ctx.lineTo(padX, padY - 18);
+    ctx.moveTo(padX + innerW, padY);
+    ctx.lineTo(padX + innerW, padY - 18);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Top dimension line
+    ctx.strokeStyle = "#38BDF8";
+    ctx.beginPath();
+    ctx.moveTo(padX, padY - 14);
+    ctx.lineTo(padX + innerW, padY - 14);
+    ctx.stroke();
+
+    // Top dimension meter callout
+    ctx.fillStyle = "#0A2540";
+    ctx.strokeStyle = "#38BDF8";
+    ctx.lineWidth = 0.8;
+    const topCalloutW = 120;
+    ctx.fillRect(padX + innerW / 2 - topCalloutW / 2, padY - 22, topCalloutW, 16);
+    ctx.strokeRect(padX + innerW / 2 - topCalloutW / 2, padY - 22, topCalloutW, 16);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "bold 9px 'JetBrains Mono', monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(`◄─ ${widthM}.00 m (WIDTH) ─►`, padX + innerW / 2, padY - 11);
+
+    // 5. Draw 4-Tier Rack Clusters in blueprint theme
     const colsCount = Math.max(2, Math.floor(rackClusters / 2));
     const rowsCount = 2;
     const bayW = innerW / (colsCount * 1.6);
     const bayH = innerH / (rowsCount * 2.2);
 
-    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-    ctx.strokeStyle = "#FF5A1F";
-    ctx.lineWidth = 1.5;
-
     for (let r = 0; r < rowsCount; r++) {
       for (let c = 0; c < colsCount; c++) {
-        const rx = padX + c * (bayW * 1.6);
-        const ry = padY + r * (bayH * 2.2);
+        const rx = padX + 16 + c * (bayW * 1.55);
+        const ry = padY + 16 + r * (bayH * 2.1);
 
         // Rack footprint
-        ctx.fillStyle = "#1E293B";
+        ctx.fillStyle = "#0F2B48";
         ctx.fillRect(rx, ry, bayW, bayH);
-        ctx.strokeStyle = "#F8CB46";
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 1.2;
         ctx.strokeRect(rx, ry, bayW, bayH);
 
-        // Rack shelf tiers lines
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+        // Rack shelf tiers lines in blueprint cyan
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.7)";
+        ctx.lineWidth = 0.8;
         ctx.beginPath();
-        ctx.moveTo(rx, ry + bayH * 0.33);
-        ctx.lineTo(rx + bayW, ry + bayH * 0.33);
-        ctx.moveTo(rx, ry + bayH * 0.66);
-        ctx.lineTo(rx + bayW, ry + bayH * 0.66);
+        ctx.moveTo(rx, ry + bayH * 0.25);
+        ctx.lineTo(rx + bayW, ry + bayH * 0.25);
+        ctx.moveTo(rx, ry + bayH * 0.50);
+        ctx.lineTo(rx + bayW, ry + bayH * 0.50);
+        ctx.moveTo(rx, ry + bayH * 0.75);
+        ctx.lineTo(rx + bayW, ry + bayH * 0.75);
         ctx.stroke();
+
+        // Structural upright indicator in center
+        ctx.strokeStyle = "#93C5FD";
+        ctx.setLineDash([2, 2]);
+        ctx.beginPath();
+        ctx.moveTo(rx + bayW / 2, ry);
+        ctx.lineTo(rx + bayW / 2, ry + bayH);
+        ctx.stroke();
+        ctx.setLineDash([]);
 
         // Directional aisle flow arrows
         const isEven = c % 2 === 0;
-        ctx.fillStyle = "#FFB08F";
+        ctx.fillStyle = "#F8CB46";
         ctx.beginPath();
-        const arrowX = rx + bayW + 12;
+        const arrowX = rx + bayW + 8;
         const arrowY = ry + bayH * 0.5;
         if (isEven) {
-          ctx.moveTo(arrowX, arrowY - 8);
-          ctx.lineTo(arrowX + 5, arrowY + 8);
-          ctx.lineTo(arrowX - 5, arrowY + 8);
+          ctx.moveTo(arrowX, arrowY - 6);
+          ctx.lineTo(arrowX + 4, arrowY + 6);
+          ctx.lineTo(arrowX - 4, arrowY + 6);
         } else {
-          ctx.moveTo(arrowX, arrowY + 8);
-          ctx.lineTo(arrowX + 5, arrowY - 8);
-          ctx.lineTo(arrowX - 5, arrowY - 8);
+          ctx.moveTo(arrowX, arrowY + 6);
+          ctx.lineTo(arrowX + 4, arrowY - 6);
+          ctx.lineTo(arrowX - 4, arrowY - 6);
         }
         ctx.fill();
       }
     }
 
-    // Packing stations on bottom perimeter
-    ctx.fillStyle = "#0E9F8E";
-    ctx.strokeStyle = "#FFFFFF";
-    ctx.lineWidth = 1;
+    // 6. Packing stations on bottom perimeter
     for (let p = 0; p < 3; p++) {
-      const px = padX + p * (innerW / 3) + 20;
-      const py = h - 35;
-      ctx.fillRect(px, py, 60, 20);
-      ctx.strokeRect(px, py, 60, 20);
+      const px = padX + p * (innerW / 3) + 24;
+      const py = padY + innerH - 30;
+      ctx.fillStyle = "#0F2742";
+      ctx.fillRect(px, py, 64, 20);
+      ctx.strokeStyle = "#F59E0B";
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(px, py, 64, 20);
+
+      ctx.fillStyle = "#38BDF8";
+      ctx.fillRect(px + 4, py + 4, 16, 12);
+
+      ctx.fillStyle = "#FFFFFF";
+      ctx.font = "bold 8px 'JetBrains Mono', monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(`PACK ${p + 1}`, px + 24, py + 13);
     }
+
+    // 7. Architectural Title Block Stamp (Bottom Right)
+    const stampW = 165;
+    const stampH = 34;
+    const stampX = padX + innerW - stampW - 6;
+    const stampY = padY + innerH - stampH - 6;
+
+    ctx.fillStyle = "#082138";
+    ctx.fillRect(stampX, stampY, stampW, stampH);
+    ctx.strokeStyle = "#38BDF8";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(stampX, stampY, stampW, stampH);
+
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "bold 8px 'Inter', sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("NEXUSTWIN · CAD BLUEPRINT", stampX + 6, stampY + 11);
+
+    ctx.fillStyle = "#38BDF8";
+    ctx.font = "bold 7px 'JetBrains Mono', monospace";
+    ctx.fillText("REV C · 1:100", stampX + 114, stampY + 11);
+
+    ctx.fillStyle = "#93C5FD";
+    ctx.font = "7px 'JetBrains Mono', monospace";
+    ctx.fillText(`FOOTPRINT: ${widthM}m × ${depthM}m (${(widthM * depthM).toLocaleString()} m²)`, stampX + 6, stampY + 21);
+    ctx.fillText(`FLEET: ${fleetToday} AMRs · ${rackClusters} RACKS`, stampX + 6, stampY + 29);
   }, [widthM, depthM, rackClusters, fleetToday, activeStep]);
 
   // Financial ROI Payback Calculation with Institutional CapEx/OpEx, GST ITC, & 30-Seed Monte Carlo Spreads
@@ -558,39 +770,313 @@ export function StoryMode() {
               </div>
             </div>
 
-            <div className="canvas-area">
-              <div className="tw" style={{ background: "#121826", display: "flex", flexDirection: "column", padding: "20px" }}>
-                <div className="tag-name">
-                  <i style={{ background: "var(--signal)" }}></i>Stress Simulator · Live A* Grid
+            <div className="canvas-area" style={{ position: "relative", minHeight: "560px" }}>
+              <div
+                className="tw"
+                style={{
+                  position: "relative",
+                  width: "100%",
+                  height: "100%",
+                  overflow: "hidden",
+                  borderRadius: "18px",
+                  background: "#0F172A",
+                  boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
+                }}
+              >
+                {/* Live Three.js 3D Facility Canvas: Fixed/panned camera, non-interactive OrbitControls */}
+                <FacilityCanvas
+                  interactive={false}
+                  cameraPosition={stressCameraConfig.pos}
+                  cameraTarget={stressCameraConfig.target}
+                  style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
+                />
+
+                {/* Top-Left Scene Header Tag */}
+                <div
+                  className="tag-name"
+                  style={{
+                    position: "absolute",
+                    top: "16px",
+                    left: "16px",
+                    zIndex: 10,
+                    background: "rgba(15, 23, 42, 0.9)",
+                    backdropFilter: "blur(8px)",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    color: "#FFFFFF",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "6px 14px",
+                    borderRadius: "999px",
+                    fontSize: "12px",
+                    fontWeight: 800,
+                  }}
+                >
+                  <i
+                    style={{
+                      background: isFestiveSurgeActive ? "#EF4444" : "var(--signal)",
+                      width: "8px",
+                      height: "8px",
+                      borderRadius: "50%",
+                      display: "inline-block",
+                    }}
+                  />
+                  <span>
+                    {isFestiveSurgeActive
+                      ? "Diwali Festive Surge (3.2x Load)"
+                      : "Stress Simulator · Live 3D Facility Viewport"}
+                  </span>
+                  <span style={{ fontSize: "10px", color: "#10B981", fontWeight: 700, marginLeft: "4px" }}>
+                    ● LIVE 60 FPS
+                  </span>
                 </div>
 
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div style={{ textAlign: "center", color: "var(--mute)" }}>
-                    <div style={{ fontSize: "48px", fontWeight: 900, color: "var(--signal)", fontFamily: "var(--mono)" }}>
-                      {kpi.throughputPerHour}
+                {/* Top-Right DIA /plan /goal /boost Controls */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "16px",
+                    right: "16px",
+                    zIndex: 10,
+                    display: "flex",
+                    gap: "4px",
+                    background: "rgba(15, 23, 42, 0.92)",
+                    backdropFilter: "blur(10px)",
+                    padding: "4px",
+                    borderRadius: "12px",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                  }}
+                >
+                  {(["plan", "goal", "boost"] as const).map((tab) => {
+                    const isActive = stressDiaTab === tab;
+                    return (
+                      <button
+                        key={tab}
+                        onClick={() => setStressDiaTab(tab)}
+                        style={{
+                          padding: "6px 14px",
+                          borderRadius: "8px",
+                          border: "none",
+                          background: isActive ? "var(--signal)" : "transparent",
+                          color: isActive ? "#FFFFFF" : "#94A3B8",
+                          fontWeight: 800,
+                          fontSize: "11px",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        <span>/{tab}</span>
+                        {tab === "boost" && isFestiveSurgeActive && <span style={{ color: "#FDE68A" }}>⚡</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Floating DIA Telemetry Card */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "58px",
+                    right: "16px",
+                    zIndex: 10,
+                    width: "320px",
+                    background: "rgba(15, 23, 42, 0.94)",
+                    backdropFilter: "blur(12px)",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    borderRadius: "14px",
+                    padding: "14px",
+                    color: "#F8FAFC",
+                    boxShadow: "0 12px 30px rgba(0,0,0,0.5)",
+                    fontSize: "11.5px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {stressDiaTab === "plan" && (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                        <span style={{ fontWeight: 800, color: "var(--signal)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                          /PLAN · DEADLOCK MITIGATION
+                        </span>
+                        <span style={{ fontSize: "10px", background: "rgba(14, 159, 142, 0.2)", color: "var(--teal)", padding: "2px 6px", borderRadius: "4px", fontWeight: 700 }}>
+                          ACTIVE
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", color: "#CBD5E1" }}>
+                        <div>• <b>A* Dynamic Replanning</b>: Real-time edge re-weighting (0.42ms).</div>
+                        <div>• <b>Aisle Mutex</b>: Single-robot crossing priority at intersection pinch-points.</div>
+                        <div>• <b>Convoy Buffering</b>: 1.5m automatic separation zone prevents tail-gaiting halts.</div>
+                        <div style={{ marginTop: "4px", color: "var(--teal)", fontWeight: 700 }}>
+                          ✓ {kpi.totalSafeYieldsResolved || 48} safe yields resolved without human manual intervention.
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: "4px" }}>
-                      Units / Hour Under Stress
+                  )}
+
+                  {stressDiaTab === "goal" && (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                        <span style={{ fontWeight: 800, color: "var(--signal)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                          /GOAL · RESILIENCE TARGETS
+                        </span>
+                        <span style={{ fontSize: "10px", background: "rgba(255, 90, 31, 0.2)", color: "var(--signal)", padding: "2px 6px", borderRadius: "4px", fontWeight: 700 }}>
+                          STRESS SLA
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <div>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px" }}>
+                            <span>Throughput Under Chaos</span>
+                            <b style={{ color: "var(--signal)" }}>{kpi.throughputPerHour} / 1,200 orders/h</b>
+                          </div>
+                          <div style={{ height: "4px", background: "rgba(255,255,255,0.1)", borderRadius: "2px", overflow: "hidden" }}>
+                            <div style={{ width: `${Math.min(100, (kpi.throughputPerHour / 1200) * 100)}%`, height: "100%", background: "var(--signal)" }} />
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px" }}>
+                            <span>On-Time SLA Guarantee</span>
+                            <b style={{ color: "var(--teal)" }}>{kpi.slaCompliancePct.toFixed(1)}% (Goal: &gt;98%)</b>
+                          </div>
+                          <div style={{ height: "4px", background: "rgba(255,255,255,0.1)", borderRadius: "2px", overflow: "hidden" }}>
+                            <div style={{ width: `${Math.min(100, kpi.slaCompliancePct)}%`, height: "100%", background: "var(--teal)" }} />
+                          </div>
+                        </div>
+
+                        <div style={{ fontSize: "10.5px", color: "#94A3B8", marginTop: "4px" }}>
+                          Near-misses intercepted by LiDAR: <b>{kpi.nearMissesPrevented || 14}</b>
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ marginTop: "24px", display: "flex", gap: "24px", justifyContent: "center" }}>
-                      <div>
-                        <div style={{ fontSize: "20px", fontWeight: 700, color: "#FFFFFF" }}>
-                          {kpi.slaCompliancePct.toFixed(1)}%
-                        </div>
-                        <div style={{ fontSize: "10px", color: "var(--mute)" }}>On-Time SLA</div>
+                  )}
+
+                  {stressDiaTab === "boost" && (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                        <span style={{ fontWeight: 800, color: "var(--signal)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                          /BOOST · KINETIC SURGE THROTTLE
+                        </span>
+                        <span style={{ fontSize: "10px", background: isFestiveSurgeActive ? "#EF4444" : "#334155", color: "#FFFFFF", padding: "2px 6px", borderRadius: "4px", fontWeight: 700 }}>
+                          {isFestiveSurgeActive ? "SURGING" : "BASELINE"}
+                        </span>
                       </div>
-                      <div>
-                        <div style={{ fontSize: "20px", fontWeight: 700, color: "var(--teal)" }}>
-                          {kpi.totalSafeYieldsResolved || 48}
-                        </div>
-                        <div style={{ fontSize: "10px", color: "var(--mute)" }}>ACS Yields Resolved</div>
+                      <p style={{ margin: "0 0 8px 0", fontSize: "11px", color: "#94A3B8" }}>
+                        Inject instantaneous demand shocks to verify that the live 3D fleet absorbs peak bursts without aisle blockades.
+                      </p>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                        <button
+                          onClick={() => clearInjections()}
+                          style={{
+                            padding: "6px 8px",
+                            background: !isFestiveSurgeActive ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.05)",
+                            border: "1px solid rgba(255,255,255,0.2)",
+                            borderRadius: "6px",
+                            color: "#FFFFFF",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          1.0x Baseline
+                        </button>
+                        <button
+                          onClick={() => injectFestiveSurge(20, 2.0)}
+                          style={{
+                            padding: "6px 8px",
+                            background: "rgba(255,255,255,0.05)",
+                            border: "1px solid rgba(255,255,255,0.2)",
+                            borderRadius: "6px",
+                            color: "#FDE68A",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          2.0x Peak Hour
+                        </button>
+                        <button
+                          onClick={() => injectFestiveSurge(25, 3.2)}
+                          style={{
+                            padding: "6px 8px",
+                            background: isFestiveSurgeActive ? "var(--signal)" : "rgba(255,255,255,0.05)",
+                            border: "1px solid rgba(255,255,255,0.2)",
+                            borderRadius: "6px",
+                            color: "#FFFFFF",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          3.2x Diwali Surge
+                        </button>
+                        <button
+                          onClick={() => injectFestiveSurge(30, 4.0)}
+                          style={{
+                            padding: "6px 8px",
+                            background: "rgba(239, 68, 68, 0.2)",
+                            border: "1px solid #EF4444",
+                            borderRadius: "6px",
+                            color: "#FCA5A5",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          4.0x Mega Shock
+                        </button>
                       </div>
-                      <div>
-                        <div style={{ fontSize: "20px", fontWeight: 700, color: "var(--amber)" }}>
-                          0.42ms
-                        </div>
-                        <div style={{ fontSize: "10px", color: "var(--mute)" }}>A* Replanning Speed</div>
-                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Floating Bottom KPI Pills on the 3D Viewport */}
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: "16px",
+                    left: "16px",
+                    zIndex: 10,
+                    display: "flex",
+                    gap: "12px",
+                  }}
+                >
+                  <div
+                    style={{
+                      background: "rgba(15, 23, 42, 0.92)",
+                      backdropFilter: "blur(10px)",
+                      border: "1px solid rgba(255,255,255,0.15)",
+                      borderRadius: "12px",
+                      padding: "8px 14px",
+                      color: "#FFFFFF",
+                    }}
+                  >
+                    <div style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.1em", color: "#94A3B8" }}>
+                      Throughput Under Stress
+                    </div>
+                    <div style={{ fontSize: "20px", fontWeight: 900, color: "var(--signal)", fontFamily: "var(--mono)" }}>
+                      {kpi.throughputPerHour} <small style={{ fontSize: "11px", color: "#CBD5E1" }}>orders/h</small>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: "rgba(15, 23, 42, 0.92)",
+                      backdropFilter: "blur(10px)",
+                      border: "1px solid rgba(255,255,255,0.15)",
+                      borderRadius: "12px",
+                      padding: "8px 14px",
+                      color: "#FFFFFF",
+                    }}
+                  >
+                    <div style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.1em", color: "#94A3B8" }}>
+                      ACS Deadlock Yields
+                    </div>
+                    <div style={{ fontSize: "20px", fontWeight: 900, color: "var(--teal)", fontFamily: "var(--mono)" }}>
+                      {kpi.totalSafeYieldsResolved || 48} <small style={{ fontSize: "11px", color: "#CBD5E1" }}>resolved</small>
                     </div>
                   </div>
                 </div>
@@ -620,7 +1106,7 @@ export function StoryMode() {
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", color: "var(--teal)" }}>
                     <span>Automated AMR Fleet</span>
-                    <b>{Math.round(fleetToday * 1.35)} AMRs (Replaces {financials.pickersSaved} Pickers)</b>
+                    <b>{Math.round(fleetToday * compareFleetBoost)} AMRs (Replaces {financials.pickersSaved} Pickers)</b>
                   </div>
                 </div>
               </div>
@@ -632,43 +1118,287 @@ export function StoryMode() {
               </div>
             </div>
 
-            <div className="canvas-area">
-              <div className="cmp">
-                <div className="tw" style={{ background: "#121826", padding: "20px", color: "#FFFFFF" }}>
-                  <div className="tag-name">
-                    <i style={{ background: "var(--ink)" }}></i>Baseline · Simulated Manual Pickers
-                  </div>
-                  <div style={{ marginTop: "30px", textAlign: "center" }}>
-                    <div style={{ fontSize: "36px", fontWeight: 800, color: "#94A3B8" }}>28</div>
-                    <div style={{ fontSize: "11px", color: "var(--mute)" }}>Picks / Person / Hour</div>
-                    <div style={{ marginTop: "12px", fontSize: "14px", color: "var(--amber)" }}>0.75 m/s Cart Speed</div>
-                    <div style={{ marginTop: "4px", fontSize: "12px", color: "#64748B" }}>1.5s Turn Delay · 18% Shift Fatigue</div>
-                    <div style={{ marginTop: "12px", fontSize: "16px", color: "var(--amber)" }}>91.2% SLA Compliance</div>
-                  </div>
+            <div className="canvas-area" style={{ position: "relative", minHeight: "560px" }}>
+              <div
+                className="tw"
+                style={{
+                  position: "relative",
+                  width: "100%",
+                  height: "100%",
+                  overflow: "hidden",
+                  borderRadius: "18px",
+                  background: "#0F172A",
+                  boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
+                }}
+              >
+                {/* Live Three.js 3D Facility Canvas: Fixed cinematic view comparing human workers & AMRs */}
+                <FacilityCanvas
+                  interactive={false}
+                  cameraPosition={compareCameraConfig.pos}
+                  cameraTarget={compareCameraConfig.target}
+                  style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
+                />
+
+                {/* Top-Left Scene Header Tag */}
+                <div
+                  className="tag-name"
+                  style={{
+                    position: "absolute",
+                    top: "16px",
+                    left: "16px",
+                    zIndex: 10,
+                    background: "rgba(15, 23, 42, 0.9)",
+                    backdropFilter: "blur(8px)",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    color: "#FFFFFF",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "6px 14px",
+                    borderRadius: "999px",
+                    fontSize: "12px",
+                    fontWeight: 800,
+                  }}
+                >
+                  <i
+                    style={{
+                      background: "var(--teal)",
+                      width: "8px",
+                      height: "8px",
+                      borderRadius: "50%",
+                      display: "inline-block",
+                    }}
+                  />
+                  <span>Dual Twin Comparison · Manual Pickers vs AMRs</span>
+                  <span style={{ fontSize: "10px", color: "var(--signal)", fontWeight: 700, marginLeft: "4px" }}>
+                    ● LIVE 60 FPS
+                  </span>
                 </div>
 
-                <div className="deltas" style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "10px" }}>
-                  <div style={{ background: "var(--teal-soft)", color: "var(--teal)", padding: "6px 10px", borderRadius: "6px", fontWeight: 700, fontSize: "11px" }}>
-                    +178% Picker Pace
-                  </div>
-                  <div style={{ background: "var(--teal-soft)", color: "var(--teal)", padding: "6px 10px", borderRadius: "6px", fontWeight: 700, fontSize: "11px" }}>
-                    +7.4% SLA Compliance
-                  </div>
-                  <div style={{ background: "var(--teal-soft)", color: "var(--teal)", padding: "6px 10px", borderRadius: "6px", fontWeight: 700, fontSize: "11px" }}>
-                    −68% Staff Overhead
-                  </div>
+                {/* Top-Right DIA /plan /goal /boost Controls */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "16px",
+                    right: "16px",
+                    zIndex: 10,
+                    display: "flex",
+                    gap: "4px",
+                    background: "rgba(15, 23, 42, 0.92)",
+                    backdropFilter: "blur(10px)",
+                    padding: "4px",
+                    borderRadius: "12px",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                  }}
+                >
+                  {(["plan", "goal", "boost"] as const).map((tab) => {
+                    const isActive = compareDiaTab === tab;
+                    return (
+                      <button
+                        key={tab}
+                        onClick={() => setCompareDiaTab(tab)}
+                        style={{
+                          padding: "6px 14px",
+                          borderRadius: "8px",
+                          border: "none",
+                          background: isActive ? "var(--teal)" : "transparent",
+                          color: isActive ? "#FFFFFF" : "#94A3B8",
+                          fontWeight: 800,
+                          fontSize: "11px",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        /{tab}
+                      </button>
+                    );
+                  })}
                 </div>
 
-                <div className="tw" style={{ background: "#121826", padding: "20px", color: "#FFFFFF", borderColor: "var(--signal)", boxShadow: "0 0 0 3px var(--signal-soft)" }}>
-                  <div className="tag-name">
-                    <i style={{ background: "var(--signal)" }}></i>Proposed · {Math.round(fleetToday * 1.35)} Addverb Dynamo AMRs
+                {/* Floating DIA Telemetry Card */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "58px",
+                    right: "16px",
+                    zIndex: 10,
+                    width: "320px",
+                    background: "rgba(15, 23, 42, 0.94)",
+                    backdropFilter: "blur(12px)",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    borderRadius: "14px",
+                    padding: "14px",
+                    color: "#F8FAFC",
+                    boxShadow: "0 12px 30px rgba(0,0,0,0.5)",
+                    fontSize: "11.5px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {compareDiaTab === "plan" && (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                        <span style={{ fontWeight: 800, color: "var(--teal)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                          /PLAN · CAPITAL DEPLOYMENT
+                        </span>
+                        <span style={{ fontSize: "10px", background: "rgba(14, 159, 142, 0.2)", color: "var(--teal)", padding: "2px 6px", borderRadius: "4px", fontWeight: 700 }}>
+                          PROPOSED
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", color: "#CBD5E1" }}>
+                        <div>• <b>Robotics Fleet</b>: {Math.round(fleetToday * compareFleetBoost)} Addverb Dynamo AMRs.</div>
+                        <div>• <b>Labor Avoidance</b>: Replaces {financials.pickersSaved} manual human picker shifts.</div>
+                        <div>• <b>Charging Bays</b>: {Math.ceil(Math.round(fleetToday * compareFleetBoost) / 4)} dual-port opportunity DC pads.</div>
+                        <div>• <b>WMS API Bridge</b>: Real-time ERP/WMS order dispatcher (₹18L).</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {compareDiaTab === "goal" && (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                        <span style={{ fontWeight: 800, color: "var(--teal)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                          /GOAL · PAYBACK & EFFICIENCY
+                        </span>
+                        <span style={{ fontSize: "10px", background: "rgba(255, 90, 31, 0.2)", color: "var(--signal)", padding: "2px 6px", borderRadius: "4px", fontWeight: 700 }}>
+                          BOARD TARGETS
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <div>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px" }}>
+                            <span>Payback Period</span>
+                            <b style={{ color: "var(--signal)" }}>{financials.paybackMonths} Months</b>
+                          </div>
+                          <div style={{ fontSize: "10px", color: "#94A3B8" }}>
+                            30-Seed Monte Carlo 95% Band: <b>{financials.mcPaybackLow} – {financials.mcPaybackHigh} mo</b>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px" }}>
+                            <span>Net Annual Savings</span>
+                            <b style={{ color: "var(--teal)" }}>{financials.netAnnualStr} / year</b>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px" }}>
+                            <span>5-Year Net Value</span>
+                            <b style={{ color: "var(--teal)" }}>{financials.fiveYearStr}</b>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {compareDiaTab === "boost" && (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                        <span style={{ fontWeight: 800, color: "var(--teal)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                          /BOOST · FLEET SCALING
+                        </span>
+                        <span style={{ fontSize: "10px", background: "rgba(14, 159, 142, 0.2)", color: "var(--teal)", padding: "2px 6px", borderRadius: "4px", fontWeight: 700 }}>
+                          {(compareFleetBoost * 100).toFixed(0)}% SCALE
+                        </span>
+                      </div>
+                      <p style={{ margin: "0 0 8px 0", fontSize: "11px", color: "#94A3B8" }}>
+                        Adjust automation deployment multiplier to see instant changes in robot density and wage avoidance:
+                      </p>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        {[1.0, 1.35, 1.75].map((multiplier) => (
+                          <button
+                            key={multiplier}
+                            onClick={() => handleCompareBoost(multiplier)}
+                            style={{
+                              flex: 1,
+                              padding: "6px",
+                              background: compareFleetBoost === multiplier ? "var(--teal)" : "rgba(255,255,255,0.06)",
+                              border: "1px solid rgba(255,255,255,0.15)",
+                              borderRadius: "6px",
+                              color: "#FFFFFF",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {multiplier}x Fleet
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Floating Bottom Comparison Cards on 3D Viewport */}
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: "16px",
+                    left: "16px",
+                    right: "16px",
+                    zIndex: 10,
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto 1fr",
+                    gap: "12px",
+                    alignItems: "center",
+                  }}
+                >
+                  {/* Left: Baseline Manual */}
+                  <div
+                    style={{
+                      background: "rgba(15, 23, 42, 0.92)",
+                      backdropFilter: "blur(10px)",
+                      border: "1px solid rgba(255,255,255,0.15)",
+                      borderRadius: "12px",
+                      padding: "10px 14px",
+                      color: "#FFFFFF",
+                    }}
+                  >
+                    <div style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.1em", color: "#94A3B8" }}>
+                      Baseline · Simulated Manual Pickers
+                    </div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginTop: "2px" }}>
+                      <span style={{ fontSize: "22px", fontWeight: 800, color: "#94A3B8" }}>28</span>
+                      <span style={{ fontSize: "11px", color: "#CBD5E1" }}>picks/person/hr</span>
+                    </div>
+                    <div style={{ fontSize: "10.5px", color: "var(--amber)", marginTop: "2px" }}>
+                      0.75 m/s Cart Speed · 1.5s Turn Delay · 18% Shift Fatigue
+                    </div>
                   </div>
-                  <div style={{ marginTop: "30px", textAlign: "center" }}>
-                    <div style={{ fontSize: "36px", fontWeight: 800, color: "var(--signal)" }}>78</div>
-                    <div style={{ fontSize: "11px", color: "var(--mute)" }}>Picks / AMR / Hour</div>
-                    <div style={{ marginTop: "12px", fontSize: "14px", color: "var(--teal)" }}>1.8 m/s Autonomous Velocity</div>
-                    <div style={{ marginTop: "4px", fontSize: "12px", color: "#64748B" }}>Zero Fatigue · 0.2s Dynamic Turn</div>
-                    <div style={{ marginTop: "12px", fontSize: "16px", color: "var(--teal)" }}>98.6% SLA Compliance</div>
+
+                  {/* Center: Delta Badges */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <span style={{ background: "var(--teal)", color: "#FFFFFF", padding: "4px 8px", borderRadius: "6px", fontWeight: 800, fontSize: "10px", textAlign: "center" }}>
+                      +178% Picker Pace
+                    </span>
+                    <span style={{ background: "rgba(14, 159, 142, 0.2)", color: "var(--teal)", border: "1px solid var(--teal)", padding: "3px 8px", borderRadius: "6px", fontWeight: 800, fontSize: "10px", textAlign: "center" }}>
+                      −68% Staff Overhead
+                    </span>
+                  </div>
+
+                  {/* Right: Proposed AMRs */}
+                  <div
+                    style={{
+                      background: "rgba(15, 23, 42, 0.92)",
+                      backdropFilter: "blur(10px)",
+                      border: "1px solid var(--signal)",
+                      borderRadius: "12px",
+                      padding: "10px 14px",
+                      color: "#FFFFFF",
+                      boxShadow: "0 0 16px rgba(255, 90, 31, 0.25)",
+                    }}
+                  >
+                    <div style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--signal)" }}>
+                      Proposed · {Math.round(fleetToday * compareFleetBoost)} Addverb Dynamo AMRs
+                    </div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginTop: "2px" }}>
+                      <span style={{ fontSize: "22px", fontWeight: 800, color: "var(--signal)" }}>78</span>
+                      <span style={{ fontSize: "11px", color: "#CBD5E1" }}>picks/AMR/hr</span>
+                    </div>
+                    <div style={{ fontSize: "10.5px", color: "var(--teal)", marginTop: "2px" }}>
+                      1.8 m/s Autonomous Velocity · Zero Fatigue · 98.6% SLA
+                    </div>
                   </div>
                 </div>
               </div>

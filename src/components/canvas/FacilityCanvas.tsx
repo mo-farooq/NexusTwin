@@ -49,9 +49,19 @@ interface CameraRigProps {
   controlsRef: React.RefObject<OrbitControlsImpl>;
   widthM: number;
   depthM: number;
+  interactive?: boolean;
+  fixedCameraPosition?: [number, number, number];
+  fixedCameraTarget?: [number, number, number];
 }
 
-function CameraRig({ controlsRef, widthM, depthM }: CameraRigProps) {
+function CameraRig({
+  controlsRef,
+  widthM,
+  depthM,
+  interactive = true,
+  fixedCameraPosition,
+  fixedCameraTarget,
+}: CameraRigProps) {
   const selectedBotId = useTwinStore((s) => s.selectedBotId);
   const focusTarget = useTwinStore((s) => s.focusTarget);
   const activeCamera = useTwinStore((s) => s.activeCamera);
@@ -59,8 +69,8 @@ function CameraRig({ controlsRef, widthM, depthM }: CameraRigProps) {
   const activeFloor = useTwinStore((s) => s.activeFloor);
 
   const defaultCenter = useMemo(
-    () => new THREE.Vector3(widthM / 2, 0.5, depthM / 2),
-    [widthM, depthM]
+    () => (fixedCameraTarget ? new THREE.Vector3(...fixedCameraTarget) : new THREE.Vector3(widthM / 2, 0.5, depthM / 2)),
+    [widthM, depthM, fixedCameraTarget]
   );
 
   const targetLerpGoal = useRef<THREE.Vector3 | null>(null);
@@ -69,15 +79,14 @@ function CameraRig({ controlsRef, widthM, depthM }: CameraRigProps) {
 
   // Track user input on OrbitControls so automated camera motions NEVER fight user cursor movement
   useEffect(() => {
+    if (!interactive) return;
     const controls = controlsRef.current;
     if (!controls) return;
 
     const onStart = () => {
       isUserInteracting.current = true;
-      // User grabbed the camera with mouse: cancel any automated motion immediately!
       cameraPositionGoal.current = null;
       targetLerpGoal.current = null;
-      // Switch activeCamera to "custom" so user has 100% full manual control
       if (useTwinStore.getState().activeCamera !== "custom") {
         setActiveCamera("custom");
       }
@@ -93,7 +102,7 @@ function CameraRig({ controlsRef, widthM, depthM }: CameraRigProps) {
       controls.removeEventListener("start", onStart);
       controls.removeEventListener("end", onEnd);
     };
-  }, [controlsRef, setActiveCamera]);
+  }, [controlsRef, setActiveCamera, interactive]);
 
   // One-shot camera preset transitions (ONLY triggers when user clicks a preset)
   const prevCamRef = useRef<string | null>(null);
@@ -178,6 +187,19 @@ function CameraRig({ controlsRef, widthM, depthM }: CameraRigProps) {
   useFrame(({ camera }, dt) => {
     const controls = controlsRef.current;
     if (!controls) return;
+
+    // In non-interactive mode, hold or smoothly pan to fixed camera position & target
+    if (!interactive) {
+      const targetVec = fixedCameraTarget
+        ? new THREE.Vector3(...fixedCameraTarget)
+        : defaultCenter;
+      controls.target.lerp(targetVec, Math.min(1.0, dt * 8.0));
+      if (fixedCameraPosition) {
+        camera.position.lerp(new THREE.Vector3(...fixedCameraPosition), Math.min(1.0, dt * 8.0));
+      }
+      controls.update();
+      return;
+    }
 
     // If the user is actively dragging the mouse or moving controls: do NOT lerp!
     if (isUserInteracting.current) {
@@ -636,7 +658,17 @@ function BlueprintGroundUnderlay({ widthM, depthM }: { widthM: number; depthM: n
 // 6. Main Scene Composite
 // ─────────────────────────────────────────────────────────────
 
-function FacilityScene({ controlsRef }: { controlsRef: React.RefObject<OrbitControlsImpl> }) {
+function FacilityScene({
+  controlsRef,
+  interactive = true,
+  fixedCameraPosition,
+  fixedCameraTarget,
+}: {
+  controlsRef: React.RefObject<OrbitControlsImpl>;
+  interactive?: boolean;
+  fixedCameraPosition?: [number, number, number];
+  fixedCameraTarget?: [number, number, number];
+}) {
   const gridDimensions = useTwinStore((s) => s.gridDimensions);
   const selectBot = useTwinStore((s) => s.selectBot);
 
@@ -644,11 +676,22 @@ function FacilityScene({ controlsRef }: { controlsRef: React.RefObject<OrbitCont
 
   return (
     <>
-      <CameraRig controlsRef={controlsRef} widthM={widthM} depthM={depthM} />
+      <CameraRig
+        controlsRef={controlsRef}
+        widthM={widthM}
+        depthM={depthM}
+        interactive={interactive}
+        fixedCameraPosition={fixedCameraPosition}
+        fixedCameraTarget={fixedCameraTarget}
+      />
       <ArchitecturalLighting widthM={widthM} depthM={depthM} />
 
       {/* Ground Click Deselects Active Bot */}
-      <group onPointerMissed={() => selectBot(null)}>
+      <group
+        onPointerMissed={() => {
+          if (interactive) selectBot(null);
+        }}
+      >
         <FloorAndTransitLanes widthM={widthM} depthM={depthM} />
         <BlueprintGroundUnderlay widthM={widthM} depthM={depthM} />
         <ZoneSections />
@@ -681,17 +724,26 @@ function FacilityScene({ controlsRef }: { controlsRef: React.RefObject<OrbitCont
 export interface FacilityCanvasProps {
   className?: string;
   style?: React.CSSProperties;
+  interactive?: boolean;
+  cameraPosition?: [number, number, number];
+  cameraTarget?: [number, number, number];
 }
 
-export function FacilityCanvas({ className, style }: FacilityCanvasProps) {
+export function FacilityCanvas({
+  className,
+  style,
+  interactive = true,
+  cameraPosition: customCameraPosition,
+  cameraTarget,
+}: FacilityCanvasProps) {
   const controlsRef = useRef<OrbitControlsImpl>(null!);
   const gridDimensions = useTwinStore((s) => s.gridDimensions);
   const activeTool = useTwinStore((s) => s.activeTool);
 
   // Initial Isometric Camera Position
   const cameraPosition: [number, number, number] = useMemo(
-    () => [gridDimensions.widthM * 0.95, 38, gridDimensions.depthM * 1.3],
-    [gridDimensions]
+    () => customCameraPosition || [gridDimensions.widthM * 0.95, 38, gridDimensions.depthM * 1.3],
+    [customCameraPosition, gridDimensions]
   );
 
   return (
@@ -703,7 +755,8 @@ export function FacilityCanvas({ className, style }: FacilityCanvasProps) {
         position: "relative",
         background: COLORS.BACKGROUND,
         overflow: "hidden",
-        cursor: activeTool === "pan" ? "grab" : "default",
+        cursor: interactive ? (activeTool === "pan" ? "grab" : "default") : "default",
+        pointerEvents: interactive ? "auto" : "none",
         ...style,
       }}
     >
@@ -724,7 +777,11 @@ export function FacilityCanvas({ className, style }: FacilityCanvasProps) {
         <OrbitControls
           ref={controlsRef}
           makeDefault
-          enableDamping
+          enabled={interactive}
+          enableRotate={interactive}
+          enablePan={interactive}
+          enableZoom={interactive}
+          enableDamping={interactive}
           dampingFactor={0.08}
           mouseButtons={{
             LEFT: activeTool === "pan" ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE,
@@ -735,7 +792,12 @@ export function FacilityCanvas({ className, style }: FacilityCanvasProps) {
           minDistance={6}
           maxDistance={140}
         />
-        <FacilityScene controlsRef={controlsRef} />
+        <FacilityScene
+          controlsRef={controlsRef}
+          interactive={interactive}
+          fixedCameraPosition={customCameraPosition}
+          fixedCameraTarget={cameraTarget}
+        />
       </Canvas>
     </div>
   );

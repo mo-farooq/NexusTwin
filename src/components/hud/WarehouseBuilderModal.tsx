@@ -50,8 +50,8 @@ const BRUSHES: BrushDef[] = [
 ];
 
 export function WarehouseBuilderModal() {
-  const isBuilderModalOpen = useTwinStore((s) => s.isBuilderModalOpen);
-  const closeBuilderModal = useTwinStore((s) => s.closeBuilderModal);
+  const isBuilderModalOpen = useTwinStore((s) => s.isBuilderModalOpen || s.modal === "builder");
+  const closeBuilderModal = () => useTwinStore.setState({ isBuilderModalOpen: false, modal: null });
   const applyCustomLayout = useTwinStore((s) => s.applyCustomLayout);
 
   // Layout parameters
@@ -190,32 +190,159 @@ export function WarehouseBuilderModal() {
     setCustomPaints({});
   };
 
+  // Zoom level for Studio canvas viewport (Fit, 75%, 100%)
+  const [zoomLevel, setZoomLevel] = useState<"fit" | "75" | "100">("100");
+
+  // Global mouseup listener so dragging never gets stuck outside canvas
+  useEffect(() => {
+    const handleGlobalMouseUp = () => setIsMouseDown(false);
+    window.addEventListener("mouseup", handleGlobalMouseUp);
+    return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
+  }, []);
+
+  // Clean out-of-bounds custom paints when widthM or depthM changes
+  useEffect(() => {
+    setCustomPaints((prev) => {
+      const next: Record<string, BrushType> = {};
+      let changed = false;
+      Object.entries(prev).forEach(([key, brush]) => {
+        const [c, r] = key.split(",").map(Number);
+        if (c < widthM && r < depthM) {
+          next[key] = brush;
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [widthM, depthM]);
+
   // Interactive 2D Canvas cell painting
   const paintCell = (col: number, row: number) => {
     if (col < 1 || col >= widthM - 1 || row < 1 || row >= depthM - 1) return;
     const key = `${col},${row}`;
-    setCustomPaints((prev) => {
-      if (activeBrush === "ERASER") {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      }
-      return { ...prev, [key]: activeBrush };
-    });
+    setCustomPaints((prev) => ({
+      ...prev,
+      [key]: activeBrush,
+    }));
   };
 
   // Commit layout & generate 3D Twin
   const handleGenerate3DTwin = () => {
     if (!activeLayout) return;
 
-    // Apply any manual custom paints into navgrid
+    // Apply any manual custom paints into navgrid and location objects
     const finalGrid = { ...activeLayout.navGrid, cells: new Uint8Array(activeLayout.navGrid.cells) };
+    const finalLocations = { ...activeLayout.locations };
+    const finalChargingDocks = { ...activeLayout.chargingDocks };
+    const finalConveyors = [...activeLayout.conveyors];
+    let finalRackCount = activeLayout.summary.rackCount;
+
+    // Custom obstacles collection (pillars, detected walls, custom barriers)
+    const customObstacles: Array<{ id: string; col: number; row: number; label: string }> = [];
+    detectedPillars.forEach(([c, r], pIdx) => {
+      customObstacles.push({
+        id: `obs-pillar-${pIdx}-${c}-${r}`,
+        col: c,
+        row: r,
+        label: "Wall Pillar",
+      });
+    });
+
     Object.entries(customPaints).forEach(([coord, brush]) => {
       const [c, r] = coord.split(",").map(Number);
-      if (brush === "PILLAR" || brush === "STORAGE" || brush === "CONVEYOR") {
-        finalGrid.cells[r * finalGrid.cols + c] = 1;
+      if (c < 0 || c >= widthM || r < 0 || r >= depthM) return;
+      const cellIdx = r * finalGrid.cols + c;
+      const wx = c + 0.5;
+      const wz = r + 0.5;
+
+      // 1. Remove any existing entity at this cell (prevents duplicate locations)
+      Object.keys(finalLocations).forEach((locKey) => {
+        const loc = finalLocations[locKey];
+        if (Math.abs(loc.coords[0] - wx) < 1.0 && Math.abs(loc.coords[1] - wz) < 1.0) {
+          delete finalLocations[locKey];
+          if (loc.type === "SHELF") finalRackCount = Math.max(0, finalRackCount - 1);
+        }
+      });
+      Object.keys(finalChargingDocks).forEach((dockKey) => {
+        const dock = finalChargingDocks[dockKey];
+        if (Math.abs(dock.coords[0] - wx) < 1.0 && Math.abs(dock.coords[1] - wz) < 1.0) {
+          delete finalChargingDocks[dockKey];
+        }
+      });
+
+      // 2. Apply painted brush
+      if (brush === "STORAGE") {
+        finalGrid.cells[cellIdx] = 1;
+        const locId = `SHELF-CUSTOM-${c}-${r}`;
+        finalLocations[locId] = {
+          id: locId,
+          name: `Custom Rack ${c}-${r}`,
+          type: "SHELF",
+          zoneId: "ZONE_A",
+          coords: [wx, wz],
+          accessPoint: [wx, Math.max(1, wz - 1.0)],
+          tiers: [
+            { level: 4, skuName: "Bulk SKU High", velocity: "HIGH", pickDurationSec: 9.0, batteryMultiplier: 2.2 },
+            { level: 3, skuName: "Fast SKU Mid", velocity: "MEDIUM", pickDurationSec: 6.0, batteryMultiplier: 1.6 },
+            { level: 2, skuName: "Medium SKU", velocity: "MEDIUM", pickDurationSec: 4.5, batteryMultiplier: 1.3 },
+            { level: 1, skuName: "Ground SKU", velocity: "HIGH", pickDurationSec: 2.0, batteryMultiplier: 1.0 },
+          ],
+        };
+        finalRackCount++;
+      } else if (brush === "CHARGER") {
+        finalGrid.cells[cellIdx] = 0; // Chargers are drivable pads
+        const dockId = `DOCK-CUSTOM-${c}-${r}`;
+        finalChargingDocks[dockId] = {
+          id: dockId,
+          coords: [wx, wz],
+          accessPoint: [wx, Math.max(1, wz - 1.0)],
+          isOccupied: false,
+          occupantBotId: null,
+          powerKw: 12,
+        };
+      } else if (brush === "PACKING") {
+        finalGrid.cells[cellIdx] = 1;
+        const packId = `PACK-CUSTOM-${c}-${r}`;
+        finalLocations[packId] = {
+          id: packId,
+          name: `Packing Station ${c}-${r}`,
+          type: "PACK_STATION",
+          zoneId: "ZONE_D",
+          coords: [wx, wz],
+          accessPoint: [wx, Math.max(1, wz - 1.0)],
+        };
+      } else if (brush === "INBOUND") {
+        finalGrid.cells[cellIdx] = 0;
+        const dockId = `INBOUND-CUSTOM-${c}-${r}`;
+        finalLocations[dockId] = {
+          id: dockId,
+          name: `Inbound Staging ${c}-${r}`,
+          type: "INBOUND_DOCK",
+          zoneId: "ZONE_C",
+          coords: [wx, wz],
+          accessPoint: [wx, Math.min(depthM - 2, wz + 1.0)],
+        };
+      } else if (brush === "PILLAR") {
+        finalGrid.cells[cellIdx] = 1;
+        customObstacles.push({
+          id: `obs-custom-${c}-${r}`,
+          col: c,
+          row: r,
+          label: "Custom Barrier",
+        });
+      } else if (brush === "CONVEYOR") {
+        finalGrid.cells[cellIdx] = 1;
+        finalConveyors.push({
+          id: `conv-custom-${c}-${r}`,
+          name: `Conveyor ${c}-${r}`,
+          startCoords: [wx - 0.5, wz],
+          endCoords: [wx + 0.5, wz],
+          lengthM: 1.0,
+          speedMps: 1.5,
+        });
       } else if (brush === "ERASER") {
-        finalGrid.cells[r * finalGrid.cols + c] = 0;
+        finalGrid.cells[cellIdx] = 0;
       }
     });
 
@@ -223,15 +350,31 @@ export function WarehouseBuilderModal() {
       {
         ...activeLayout,
         navGrid: finalGrid,
+        locations: finalLocations,
+        chargingDocks: finalChargingDocks,
+        conveyors: finalConveyors,
+        summary: {
+          ...activeLayout.summary,
+          rackCount: finalRackCount,
+          totalStorageCapacityBins: finalRackCount * tierCount * 24,
+          autoPlacedChargingDocks: Object.keys(finalChargingDocks).length,
+        },
       },
       blueprintUrl
     );
+
+    // Populate custom obstacles in store so pillars render in 3D
+    useTwinStore.setState({ customObstacles });
+
+    // Close studio modal and return to live facility view
+    closeBuilderModal();
   };
 
   if (!isBuilderModalOpen) return null;
 
   return (
     <div
+      onClick={closeBuilderModal}
       style={{
         position: "fixed",
         inset: 0,
@@ -247,6 +390,7 @@ export function WarehouseBuilderModal() {
     >
       {/* Main Studio Frame */}
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
           maxWidth: "1380px",
@@ -925,22 +1069,48 @@ export function WarehouseBuilderModal() {
                 })}
               </div>
 
-              {/* Reset / Clear Button */}
-              <button
-                onClick={() => setCustomPaints({})}
-                style={{
-                  padding: "5px 10px",
-                  borderRadius: "8px",
-                  border: "1px solid #CBD5E1",
-                  background: "#F8FAFC",
-                  color: "#64748B",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                Reset Custom Edits
-              </button>
+              {/* Zoom & Reset Toolbar Controls */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                {/* Canvas Zoom Controls */}
+                <div style={{ display: "flex", alignItems: "center", gap: "4px", background: "#F1F5F9", padding: "2px 6px", borderRadius: "8px", border: "1px solid #CBD5E1" }}>
+                  <span style={{ fontSize: "10px", fontWeight: 700, color: "#64748B" }}>Zoom:</span>
+                  {(["100", "75", "fit"] as const).map((z) => (
+                    <button
+                      key={z}
+                      onClick={() => setZoomLevel(z)}
+                      style={{
+                        padding: "3px 8px",
+                        borderRadius: "5px",
+                        border: zoomLevel === z ? "1px solid #0F172A" : "none",
+                        background: zoomLevel === z ? "#0F172A" : "transparent",
+                        color: zoomLevel === z ? "#FFFFFF" : "#64748B",
+                        fontSize: "10px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {z === "fit" ? "Fit" : `${z}%`}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Reset / Clear Button */}
+                <button
+                  onClick={() => setCustomPaints({})}
+                  style={{
+                    padding: "5px 10px",
+                    borderRadius: "8px",
+                    border: "1px solid #CBD5E1",
+                    background: "#F8FAFC",
+                    color: "#64748B",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Reset Custom Edits
+                </button>
+              </div>
             </div>
 
             {/* Interactive 2D Blueprint Canvas Viewport */}
@@ -966,6 +1136,9 @@ export function WarehouseBuilderModal() {
                   boxShadow: "0 12px 30px rgba(0, 0, 0, 0.12)",
                   overflow: "hidden",
                   cursor: "crosshair",
+                  transform: `scale(${zoomLevel === "fit" ? Math.min(1, 680 / (widthM * 16), 460 / (depthM * 16)).toFixed(2) : zoomLevel === "75" ? "0.75" : "1"})`,
+                  transformOrigin: "center center",
+                  transition: "transform 0.15s ease",
                 }}
                 onMouseDown={() => setIsMouseDown(true)}
               >
@@ -990,16 +1163,48 @@ export function WarehouseBuilderModal() {
                 <svg
                   width={widthM * 16}
                   height={depthM * 16}
-                  style={{ position: "absolute", inset: 0 }}
+                  style={{ position: "absolute", inset: 0, background: "#0A2540" }}
                   onMouseLeave={() => setHoverCoord(null)}
                 >
-                  {/* Subtle Grid Lines */}
+                  {/* Subtle Blueprint Grid Lines */}
                   <defs>
                     <pattern id="gridPattern" width="16" height="16" patternUnits="userSpaceOnUse">
-                      <path d="M 16 0 L 0 0 0 16" fill="none" stroke="rgba(148, 163, 184, 0.25)" strokeWidth="0.5" />
+                      <path d="M 16 0 L 0 0 0 16" fill="none" stroke="rgba(56, 189, 248, 0.22)" strokeWidth="0.5" />
+                    </pattern>
+                    <pattern id="majorGridPattern" width="80" height="80" patternUnits="userSpaceOnUse">
+                      <path d="M 80 0 L 0 0 0 80" fill="none" stroke="rgba(56, 189, 248, 0.55)" strokeWidth="1" />
                     </pattern>
                   </defs>
                   <rect width="100%" height="100%" fill="url(#gridPattern)" />
+                  <rect width="100%" height="100%" fill="url(#majorGridPattern)" />
+
+                  {/* Outer Perimeter Walls */}
+                  <rect
+                    x="2"
+                    y="2"
+                    width={widthM * 16 - 4}
+                    height={depthM * 16 - 4}
+                    fill="none"
+                    stroke="#FFFFFF"
+                    strokeWidth="3"
+                  />
+
+                  {/* Render Detected Pillars from Blueprint Wall Detector */}
+                  {detectedPillars.map(([c, r], pIdx) => (
+                    <g key={"pillar-" + pIdx}>
+                      <rect
+                        x={c * 16}
+                        y={r * 16}
+                        width="16"
+                        height="16"
+                        fill="#334155"
+                        stroke="#60A5FA"
+                        strokeWidth="1"
+                      />
+                      <line x1={c * 16} y1={r * 16} x2={c * 16 + 16} y2={r * 16 + 16} stroke="#60A5FA" strokeWidth="0.75" />
+                      <line x1={c * 16 + 16} y1={r * 16} x2={c * 16} y2={r * 16 + 16} stroke="#60A5FA" strokeWidth="0.75" />
+                    </g>
+                  ))}
 
                   {/* Render 5 Functional Operational Zones */}
                   {activeLayout &&
@@ -1013,8 +1218,8 @@ export function WarehouseBuilderModal() {
                             width={(x1 - x0 + 1) * 16}
                             height={(z1 - z0 + 1) * 16}
                             fill={z.color}
-                            fillOpacity="0.12"
-                            stroke={z.color}
+                            fillOpacity="0.1"
+                            stroke="#38BDF8"
                             strokeWidth="2"
                             strokeDasharray="4 2"
                             rx="4"
@@ -1022,13 +1227,13 @@ export function WarehouseBuilderModal() {
                           <text
                             x={x0 * 16 + 8}
                             y={z0 * 16 + 18}
-                            fill={z.color}
+                            fill="#38BDF8"
                             fontSize="11"
                             fontWeight="800"
-                            fontFamily="'Inter', sans-serif"
-                            opacity="0.9"
+                            fontFamily="'JetBrains Mono', monospace"
+                            opacity="0.95"
                           >
-                            {z.name.toUpperCase()}
+                            [ {z.name.toUpperCase()} ]
                           </text>
                         </g>
                       );
@@ -1039,24 +1244,51 @@ export function WarehouseBuilderModal() {
                     <>
                       {/* Racks */}
                       {Object.values(activeLayout.locations)
-                        .filter((l) => l.type === "SHELF")
+                        .filter((l) => {
+                          if (l.type !== "SHELF") return false;
+                          const c = Math.floor(l.coords[0]);
+                          const r = Math.floor(l.coords[1]);
+                          return !customPaints[`${c},${r}`] && !customPaints[`${c - 1},${r}`];
+                        })
                         .map((shelf) => (
-                          <rect
-                            key={shelf.id}
-                            x={(shelf.coords[0] - 1.0) * 16}
-                            y={(shelf.coords[1] - 1.0) * 16}
-                            width="32"
-                            height="16"
-                            fill="#F8CB46"
-                            stroke="#D97706"
-                            strokeWidth="1"
-                            rx="2"
-                          />
+                          <g key={shelf.id}>
+                            <rect
+                              x={(shelf.coords[0] - 1.0) * 16}
+                              y={(shelf.coords[1] - 1.0) * 16}
+                              width="32"
+                              height="16"
+                              fill="#0F2B48"
+                              stroke="#FFFFFF"
+                              strokeWidth="1.2"
+                              rx="2"
+                            />
+                            <line
+                              x1={(shelf.coords[0] - 1.0) * 16}
+                              y1={(shelf.coords[1] - 0.5) * 16}
+                              x2={(shelf.coords[0] + 1.0) * 16}
+                              y2={(shelf.coords[1] - 0.5) * 16}
+                              stroke="#F8CB46"
+                              strokeWidth="0.8"
+                            />
+                            <line
+                              x1={(shelf.coords[0] - 1.0) * 16}
+                              y1={(shelf.coords[1] + 0.5) * 16}
+                              x2={(shelf.coords[0] + 1.0) * 16}
+                              y2={(shelf.coords[1] + 0.5) * 16}
+                              stroke="#F8CB46"
+                              strokeWidth="0.8"
+                            />
+                          </g>
                         ))}
 
                       {/* Inbound Docks */}
                       {Object.values(activeLayout.locations)
-                        .filter((l) => l.type === "INBOUND_DOCK")
+                        .filter((l) => {
+                          if (l.type !== "INBOUND_DOCK") return false;
+                          const c = Math.floor(l.coords[0]);
+                          const r = Math.floor(l.coords[1]);
+                          return !customPaints[`${c},${r}`];
+                        })
                         .map((dock) => (
                           <rect
                             key={dock.id}
@@ -1065,7 +1297,7 @@ export function WarehouseBuilderModal() {
                             width="28"
                             height="28"
                             fill="#8B5CF6"
-                            stroke="#6D28D9"
+                            stroke="#FFFFFF"
                             strokeWidth="1.5"
                             rx="4"
                           />
@@ -1073,7 +1305,12 @@ export function WarehouseBuilderModal() {
 
                       {/* Packing Stations */}
                       {Object.values(activeLayout.locations)
-                        .filter((l) => l.type === "PACK_STATION")
+                        .filter((l) => {
+                          if (l.type !== "PACK_STATION") return false;
+                          const c = Math.floor(l.coords[0]);
+                          const r = Math.floor(l.coords[1]);
+                          return !customPaints[`${c},${r}`];
+                        })
                         .map((pack) => (
                           <rect
                             key={pack.id}
@@ -1082,24 +1319,41 @@ export function WarehouseBuilderModal() {
                             width="36"
                             height="24"
                             fill="#F59E0B"
-                            stroke="#B45309"
+                            stroke="#FFFFFF"
                             strokeWidth="1.5"
                             rx="3"
                           />
                         ))}
 
                       {/* EV Chargers */}
-                      {Object.values(activeLayout.chargingDocks).map((chg) => (
-                        <circle
-                          key={chg.id}
-                          cx={chg.coords[0] * 16}
-                          cy={chg.coords[1] * 16}
-                          r="7"
-                          fill="#0C831F"
-                          stroke="#FFFFFF"
-                          strokeWidth="1"
-                        />
-                      ))}
+                      {Object.values(activeLayout.chargingDocks)
+                        .filter((chg) => {
+                          const c = Math.floor(chg.coords[0]);
+                          const r = Math.floor(chg.coords[1]);
+                          return !customPaints[`${c},${r}`];
+                        })
+                        .map((chg) => (
+                          <g key={chg.id}>
+                            <circle
+                              cx={chg.coords[0] * 16}
+                              cy={chg.coords[1] * 16}
+                              r="9"
+                              fill="#064E3B"
+                              stroke="#34D399"
+                              strokeWidth="1.5"
+                            />
+                            <text
+                              x={chg.coords[0] * 16}
+                              y={chg.coords[1] * 16 + 4}
+                              fill="#34D399"
+                              fontSize="9"
+                              fontWeight="900"
+                              textAnchor="middle"
+                            >
+                              ⚡
+                            </text>
+                          </g>
+                        ))}
 
                       {/* Conveyors */}
                       {activeLayout.conveyors.map((conv) => (
@@ -1109,7 +1363,7 @@ export function WarehouseBuilderModal() {
                           y1={conv.startCoords[1] * 16}
                           x2={conv.endCoords[0] * 16}
                           y2={conv.endCoords[1] * 16}
-                          stroke="#1C1C1C"
+                          stroke="#38BDF8"
                           strokeWidth="6"
                           strokeDasharray="4 2"
                         />
@@ -1120,20 +1374,46 @@ export function WarehouseBuilderModal() {
                   {/* Render Manual Custom Paints */}
                   {Object.entries(customPaints).map(([coord, brush]) => {
                     const [c, r] = coord.split(",").map(Number);
+                    if (brush === "ERASER") {
+                      return (
+                        <g key={coord}>
+                          <rect
+                            x={c * 16}
+                            y={r * 16}
+                            width="16"
+                            height="16"
+                            fill="#0A2540"
+                            stroke="#38BDF8"
+                            strokeWidth="0.5"
+                            strokeDasharray="2 2"
+                            opacity="0.9"
+                          />
+                        </g>
+                      );
+                    }
                     const brushDef = BRUSHES.find((b) => b.id === brush);
                     if (!brushDef) return null;
                     return (
-                      <rect
-                        key={coord}
-                        x={c * 16}
-                        y={r * 16}
-                        width="16"
-                        height="16"
-                        fill={brushDef.color}
-                        stroke="#0F172A"
-                        strokeWidth="0.5"
-                        opacity="0.85"
-                      />
+                      <g key={coord}>
+                        <rect
+                          x={c * 16}
+                          y={r * 16}
+                          width="16"
+                          height="16"
+                          fill={brushDef.color}
+                          stroke="#FFFFFF"
+                          strokeWidth="0.8"
+                          opacity="0.9"
+                        />
+                        <text
+                          x={c * 16 + 8}
+                          y={r * 16 + 11}
+                          fontSize="8"
+                          textAnchor="middle"
+                        >
+                          {brushDef.icon}
+                        </text>
+                      </g>
                     );
                   })}
 
@@ -1144,9 +1424,9 @@ export function WarehouseBuilderModal() {
                       y={hoverCoord[1] * 16}
                       width="16"
                       height="16"
-                      fill="rgba(59, 130, 246, 0.35)"
-                      stroke="#2563EB"
-                      strokeWidth="1.5"
+                      fill="rgba(56, 189, 248, 0.4)"
+                      stroke="#00FFFF"
+                      strokeWidth="2"
                     />
                   )}
                 </svg>
@@ -1156,18 +1436,20 @@ export function WarehouseBuilderModal() {
                   style={{ position: "absolute", inset: 0 }}
                   onMouseMove={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
-                    const c = Math.floor((e.clientX - rect.left) / 16);
-                    const r = Math.floor((e.clientY - rect.top) / 16);
+                    const scale = zoomLevel === "fit" ? Math.min(1, 680 / (widthM * 16), 460 / (depthM * 16)) : zoomLevel === "75" ? 0.75 : 1.0;
+                    const c = Math.floor((e.clientX - rect.left) / (16 * scale));
+                    const r = Math.floor((e.clientY - rect.top) / (16 * scale));
                     if (c >= 0 && c < widthM && r >= 0 && r < depthM) {
                       setHoverCoord([c, r]);
-                      if (isMouseDown) paintCell(c, r);
+                      if (isMouseDown || e.buttons === 1) paintCell(c, r);
                     }
                   }}
                   onMouseDown={(e) => {
                     setIsMouseDown(true);
                     const rect = e.currentTarget.getBoundingClientRect();
-                    const c = Math.floor((e.clientX - rect.left) / 16);
-                    const r = Math.floor((e.clientY - rect.top) / 16);
+                    const scale = zoomLevel === "fit" ? Math.min(1, 680 / (widthM * 16), 460 / (depthM * 16)) : zoomLevel === "75" ? 0.75 : 1.0;
+                    const c = Math.floor((e.clientX - rect.left) / (16 * scale));
+                    const r = Math.floor((e.clientY - rect.top) / (16 * scale));
                     if (c >= 0 && c < widthM && r >= 0 && r < depthM) {
                       paintCell(c, r);
                     }
