@@ -162,6 +162,7 @@ export type BotUnitStatus = "ACTIVE" | "CHARGING" | "IDLE" | "WARNING" | "ERROR"
 export type BotUnitFsmState =
   | "IDLE"
   | "NAVIGATING_TO_PICKUP"
+  | "STAGED_WAITING_AISLE"
   | "PICKING"
   | "NAVIGATING_TO_DELIVERY"
   | "DELIVERING"
@@ -262,6 +263,43 @@ export interface WarehouseLocation {
   coords: [x: number, z: number];
   accessPoint: [x: number, z: number];
   tiers?: ShelfTier[];
+}
+
+export interface AisleConfig {
+  id: string;
+  zoneId: string;
+  aisleIndex: number;
+  aisleRow: number;
+  minCol: number;
+  maxCol: number;
+  stagingPointEast: [number, number];
+  stagingPointWest: [number, number];
+}
+
+export const AISLE_CONFIGS: Record<string, AisleConfig> = {
+  "ZONE_A-AISLE-1": { id: "ZONE_A-AISLE-1", zoneId: "ZONE_A", aisleIndex: 1, aisleRow: 9.5, minCol: 5, maxCol: 23, stagingPointEast: [25.5, 9.5], stagingPointWest: [3.5, 9.5] },
+  "ZONE_A-AISLE-2": { id: "ZONE_A-AISLE-2", zoneId: "ZONE_A", aisleIndex: 2, aisleRow: 13.5, minCol: 5, maxCol: 23, stagingPointEast: [25.5, 13.5], stagingPointWest: [3.5, 13.5] },
+  "ZONE_A-AISLE-3": { id: "ZONE_A-AISLE-3", zoneId: "ZONE_A", aisleIndex: 3, aisleRow: 17.5, minCol: 5, maxCol: 23, stagingPointEast: [25.5, 17.5], stagingPointWest: [3.5, 17.5] },
+  "ZONE_A-AISLE-4": { id: "ZONE_A-AISLE-4", zoneId: "ZONE_A", aisleIndex: 4, aisleRow: 21.5, minCol: 5, maxCol: 23, stagingPointEast: [25.5, 21.5], stagingPointWest: [3.5, 21.5] },
+  "ZONE_B-AISLE-1": { id: "ZONE_B-AISLE-1", zoneId: "ZONE_B", aisleIndex: 1, aisleRow: 9.5, minCol: 34, maxCol: 52, stagingPointEast: [54.5, 9.5], stagingPointWest: [32.5, 9.5] },
+  "ZONE_B-AISLE-2": { id: "ZONE_B-AISLE-2", zoneId: "ZONE_B", aisleIndex: 2, aisleRow: 13.5, minCol: 34, maxCol: 52, stagingPointEast: [54.5, 13.5], stagingPointWest: [32.5, 13.5] },
+  "ZONE_B-AISLE-3": { id: "ZONE_B-AISLE-3", zoneId: "ZONE_B", aisleIndex: 3, aisleRow: 17.5, minCol: 34, maxCol: 52, stagingPointEast: [54.5, 17.5], stagingPointWest: [32.5, 17.5] },
+  "ZONE_B-AISLE-4": { id: "ZONE_B-AISLE-4", zoneId: "ZONE_B", aisleIndex: 4, aisleRow: 21.5, minCol: 34, maxCol: 52, stagingPointEast: [54.5, 21.5], stagingPointWest: [32.5, 21.5] },
+};
+
+export function getAisleIdForLocation(locId: string | null): string | null {
+  if (!locId || !locId.startsWith("SHELF-")) return null;
+  const parts = locId.split("-");
+  if (parts.length >= 3) {
+    return `${parts[1]}-AISLE-${parts[2]}`;
+  }
+  return null;
+}
+
+export function isBotInsideAisle(botPos: [number, number, number], cfg: AisleConfig): boolean {
+  const x = botPos[0];
+  const z = botPos[2];
+  return Math.abs(z - cfg.aisleRow) < 1.25 && x >= cfg.minCol - 0.5 && x <= cfg.maxCol + 0.5;
 }
 
 export interface WarehouseZone {
@@ -2054,35 +2092,81 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             }
           }
 
-          // Check if an AMR robot is directly ahead within 1.8m (ISO 3691-4 Cobot safety clearance)
-          let botAhead = false;
+          // ── Asymmetric Pedestrian Right-of-Way (ISO 3691-4) ──
+          // Pedestrians have absolute right-of-way. AMRs decelerate and yield.
+          // Humans do NOT freeze when an AMR is stopped/yielding; humans walk past smoothly!
+          // Only pause briefly if an AMR is moving fast (> 0.25 m/s) on an immediate collision course.
+          let mustYieldToFastBot = false;
+          let robotBlockingNextStep: BotUnit | null = null;
+
+          const nextStepCell = p.path && p.pathIndex < p.path.length ? p.path[p.pathIndex] : null;
+          const [nextStepX, nextStepZ] = nextStepCell
+            ? cellToWorld(nextStepCell[0], nextStepCell[1], navGrid.cellSize)
+            : [p.position[0], p.position[2]];
+
           for (const b of Object.values(nextBots)) {
             if (b.status === "OFFLINE" || b.status === "ERROR") continue;
             const bdx = b.position[0] - p.position[0];
             const bdz = b.position[2] - p.position[2];
             const bdist = Math.hypot(bdx, bdz);
-            if (bdist < 1.8) {
-              botAhead = true;
-              break;
+            if (bdist > 3.0) continue;
+
+            // Check if robot is physically occupying human's next step cell
+            if (nextStepCell) {
+              const distToStep = Math.hypot(b.position[0] - nextStepX, b.position[2] - nextStepZ);
+              if (distToStep < 0.75) {
+                robotBlockingNextStep = b;
+              }
+            }
+
+            // Only yield if robot is actively moving fast toward human
+            if (b.velocity > 0.25 && bdist < 1.6) {
+              const bcos = Math.cos(b.headingRad);
+              const bsin = Math.sin(b.headingRad);
+              const approachDist = -bdx * bcos - bdz * bsin;
+              if (approachDist > 0.1 && approachDist < 1.5) {
+                mustYieldToFastBot = true;
+                break;
+              }
             }
           }
 
-          if (botAhead) {
+          if (mustYieldToFastBot) {
             p.isYielding = true;
             nextPeople[pid] = p;
             return;
           }
 
+          // If a stopped robot is physically on the human's next cell, try an evasive sidestep along walkway
+          if (robotBlockingNextStep && p.path && p.pathIndex < p.path.length && nextStepCell) {
+            const blockedCellKey = cellKey(nextStepCell[0], nextStepCell[1]);
+            const hCell = worldToCell(p.position[0], p.position[2], navGrid.cellSize);
+            const targetWp = p.waypoints[p.currentWaypointIndex];
+            const targetCell = worldToCell(targetWp[0], targetWp[1], navGrid.cellSize);
+
+            const detourBlocked = new Set<string>();
+            detourBlocked.add(blockedCellKey);
+            const detourPath = findPathAStar(navGrid, hCell, targetCell, { blockedCells: detourBlocked });
+            if (detourPath && detourPath.length > 0) {
+              p.path = detourPath;
+              p.pathIndex = 0;
+            }
+          }
+
           p.isYielding = false;
-          const nextStepCell = p.path[p.pathIndex];
-          const [nextStepX, nextStepZ] = cellToWorld(nextStepCell[0], nextStepCell[1], navGrid.cellSize);
-          const dx = nextStepX - p.position[0];
-          const dz = nextStepZ - p.position[2];
+          if (!p.path || p.pathIndex >= p.path.length) {
+            nextPeople[pid] = p;
+            return;
+          }
+          const activeStepCell = p.path[p.pathIndex];
+          const [stepTargetX, stepTargetZ] = cellToWorld(activeStepCell[0], activeStepCell[1], navGrid.cellSize);
+          const dx = stepTargetX - p.position[0];
+          const dz = stepTargetZ - p.position[2];
           const dist = Math.hypot(dx, dz);
 
           const moveStep = p.speed * TICK_DURATION_S;
           if (dist <= moveStep || dist < 0.12) {
-            p.position = [nextStepX, 0, nextStepZ];
+            p.position = [stepTargetX, 0, stepTargetZ];
             p.pathIndex++;
             if (p.pathIndex >= p.path.length) {
               p.currentWaypointIndex = (p.currentWaypointIndex + 1) % p.waypoints.length;
@@ -2186,14 +2270,39 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         reservedCells.add(cellKey(obs.col, obs.row));
       });
 
+      // 2B. Aisle Mutex Manager: Map each aisle to its active occupant bot
+      const aisleOccupancy = new Map<string, string>(); // aisleId -> botId
+      Object.values(nextBots).forEach((b) => {
+        if (b.status === "OFFLINE" || b.status === "ERROR") return;
+        const bTargetAisle = getAisleIdForLocation(b.targetLocationId);
+        for (const cfg of Object.values(AISLE_CONFIGS)) {
+          if (
+            isBotInsideAisle(b.position, cfg) ||
+            (b.fsmState === "PICKING" && bTargetAisle === cfg.id)
+          ) {
+            aisleOccupancy.set(cfg.id, b.id);
+            break;
+          }
+        }
+      });
+
       // 3. Task Dispatching: Match Idle Bots with Pending Tasks
       const nextLogs = [...state.explainableLogs];
       const idleBots = Object.values(nextBots).filter(
         (b) => b.status === "IDLE" && b.batteryPct > BATTERY_LOW_THRESHOLD
       );
+      // Prioritize pending tasks that target unoccupied aisles over occupied ones to balance traffic
       const pendingTasks = Object.values(nextTasks)
         .filter((t) => t.status === "PENDING")
-        .sort((a, b) => (a.priority === "FLASH_SURGE" ? -1 : 1));
+        .sort((a, b) => {
+          if (a.priority === "FLASH_SURGE" && b.priority !== "FLASH_SURGE") return -1;
+          if (b.priority === "FLASH_SURGE" && a.priority !== "FLASH_SURGE") return 1;
+          const aAisle = getAisleIdForLocation(a.sourceLocId);
+          const bAisle = getAisleIdForLocation(b.sourceLocId);
+          const aOcc = aAisle && aisleOccupancy.has(aAisle) ? 1 : 0;
+          const bOcc = bAisle && aisleOccupancy.has(bAisle) ? 1 : 0;
+          return aOcc - bOcc;
+        });
 
       for (const task of pendingTasks) {
         if (idleBots.length === 0) break;
@@ -2452,6 +2561,129 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
           }
         }
 
+        // ── Aisle Mutex & Pre-Entrance Staging ──
+        if (bot.fsmState === "STAGED_WAITING_AISLE") {
+          const destAisleId = getAisleIdForLocation(bot.targetLocationId);
+          const aisleCfg = destAisleId ? AISLE_CONFIGS[destAisleId] : null;
+          const currentOccupant = destAisleId ? aisleOccupancy.get(destAisleId) : null;
+          const isLocked = Boolean(aisleCfg && currentOccupant && currentOccupant !== bot.id);
+
+          if (!isLocked) {
+            // Aisle has cleared! Replan path directly into the aisle to target shelf
+            const targetCoords = bot.currentTaskId && nextTasks[bot.currentTaskId]
+              ? nextTasks[bot.currentTaskId].sourceCoords
+              : null;
+            if (targetCoords) {
+              const startCell = worldToCell(currentPos[0], currentPos[2], navGrid.cellSize);
+              const goalCell = worldToCell(targetCoords[0], targetCoords[1], navGrid.cellSize);
+              const newPath =
+                findPathAStar(navGrid, startCell, goalCell, {
+                  blockedCells: reservedCells,
+                  congestionCostMap: activeCongestionMap,
+                  flowDirectionMap: state.aisleFlowMap,
+                }) ??
+                findPathAStar(navGrid, startCell, goalCell) ??
+                [];
+
+              const secondsStr = String(Math.floor(simTimeSec % 60)).padStart(2, "0");
+              const minutesStr = String(Math.floor(simTimeSec / 60)).padStart(2, "0");
+              const logEntry: ExplainableDispatchLog = {
+                id: `MUTEX-FREE-${currentTick}-${bot.id}`,
+                timestamp: `00:${minutesStr}:${secondsStr}`,
+                botId: bot.id,
+                taskId: bot.currentTaskId || "TRANSIT",
+                targetRack: `Aisle ${aisleCfg?.aisleIndex || 1}`,
+                tier: 1,
+                reason: `🟢 Aisle Mutex Released: Aisle ${aisleCfg?.aisleIndex || 1} is clear; ${bot.id} advancing to shelf.`,
+              };
+              nextLogs.unshift(logEntry);
+              if (nextLogs.length > 20) nextLogs.pop();
+
+              nextBots[bot.id] = {
+                ...bot,
+                fsmState: "NAVIGATING_TO_PICKUP",
+                path: newPath,
+                pathIndex: 0,
+                waitTicks: 0,
+                velocity: 0,
+                perception: {
+                  state: "CLEAR",
+                  frontObstacleId: null,
+                  frontDistM: null,
+                  warningProximity: false,
+                  yieldsToId: null,
+                },
+              };
+              return;
+            }
+          } else {
+            // Continue holding at staging line outside the aisle mouth
+            nextBots[bot.id] = {
+              ...bot,
+              velocity: 0,
+              waitTicks: bot.waitTicks + 1,
+              perception: {
+                state: "HOLDING",
+                frontObstacleId: currentOccupant ?? null,
+                frontDistM: 2.5,
+                warningProximity: false,
+                yieldsToId: currentOccupant ?? null,
+              },
+            };
+            return;
+          }
+        }
+
+        // Check if approaching an occupied aisle before entering the throat
+        if (bot.fsmState === "NAVIGATING_TO_PICKUP") {
+          const destAisleId = getAisleIdForLocation(bot.targetLocationId);
+          const aisleCfg = destAisleId ? AISLE_CONFIGS[destAisleId] : null;
+          const currentOccupant = destAisleId ? aisleOccupancy.get(destAisleId) : null;
+          const isLocked = Boolean(aisleCfg && currentOccupant && currentOccupant !== bot.id);
+
+          if (isLocked && aisleCfg) {
+            const alreadyInAisle = isBotInsideAisle(currentPos, aisleCfg);
+            if (!alreadyInAisle) {
+              const stagingPoint = currentPos[0] > (aisleCfg.minCol + aisleCfg.maxCol) / 2
+                ? aisleCfg.stagingPointEast
+                : aisleCfg.stagingPointWest;
+              const distToStaging = Math.hypot(currentPos[0] - stagingPoint[0], currentPos[2] - stagingPoint[1]);
+
+              // If within 1.4m of staging point, halt and enter STAGED_WAITING_AISLE state
+              if (distToStaging < 1.4) {
+                const secondsStr = String(Math.floor(simTimeSec % 60)).padStart(2, "0");
+                const minutesStr = String(Math.floor(simTimeSec / 60)).padStart(2, "0");
+                const logEntry: ExplainableDispatchLog = {
+                  id: `STG-${currentTick}-${bot.id}`,
+                  timestamp: `00:${minutesStr}:${secondsStr}`,
+                  botId: bot.id,
+                  taskId: bot.currentTaskId || "TRANSIT",
+                  targetRack: `Aisle ${aisleCfg.aisleIndex} Staging`,
+                  tier: 1,
+                  reason: `🚦 Aisle Mutex: ${bot.id} holding at Aisle ${aisleCfg.aisleIndex} staging line (${currentOccupant} picking inside).`,
+                };
+                nextLogs.unshift(logEntry);
+                if (nextLogs.length > 20) nextLogs.pop();
+
+                nextBots[bot.id] = {
+                  ...bot,
+                  fsmState: "STAGED_WAITING_AISLE",
+                  velocity: 0,
+                  waitTicks: 1,
+                  perception: {
+                    state: "HOLDING",
+                    frontObstacleId: currentOccupant ?? null,
+                    frontDistM: distToStaging,
+                    warningProximity: false,
+                    yieldsToId: currentOccupant ?? null,
+                  },
+                };
+                return;
+              }
+            }
+          }
+        }
+
         // D. Navigation Movement along A* Path with Connected Anti-Collision & Dynamic Replanning
         if (
           (bot.fsmState === "NAVIGATING_TO_PICKUP" ||
@@ -2630,6 +2862,22 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             const otherBot = nearestOtherBot ?? (blockedBy ? nextBots[blockedBy] : null);
             const blockedWait = bot.waitTicks + 1;
             const yieldsTo = humanInPerimeter || (otherBot ? checkRobotYieldsTo(bot, otherBot) : false);
+
+            if (humanInPerimeter && blockedWait === 1) {
+              const secondsStr = String(Math.floor(simTimeSec % 60)).padStart(2, "0");
+              const minutesStr = String(Math.floor(simTimeSec / 60)).padStart(2, "0");
+              const logEntry: ExplainableDispatchLog = {
+                id: `PED-${currentTick}-${bot.id}`,
+                timestamp: `00:${minutesStr}:${secondsStr}`,
+                botId: bot.id,
+                taskId: bot.currentTaskId || "TRANSIT",
+                targetRack: "Pedestrian Crosswalk",
+                tier: 1,
+                reason: `🚶 ISO 3691-4 Pedestrian Safety: ${bot.id} yielding right-of-way to ${blockedBy || "pedestrian"}.`,
+              };
+              nextLogs.unshift(logEntry);
+              if (nextLogs.length > 20) nextLogs.pop();
+            }
 
             // Priority Glide-Past:
             // Only glide if NOT head-on in a single-file corridor and at least 1.4m separation exists

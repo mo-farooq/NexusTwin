@@ -37,7 +37,7 @@ export function OrderLifecycleBar() {
   if (currentTask.status === "COMPLETED") {
     activeStage = 5;
   } else if (assignedBot) {
-    if (assignedBot.fsmState === "NAVIGATING_TO_PICKUP") {
+    if (assignedBot.fsmState === "NAVIGATING_TO_PICKUP" || assignedBot.fsmState === "STAGED_WAITING_AISLE") {
       activeStage = 2;
     } else if (assignedBot.fsmState === "PICKING") {
       activeStage = 3;

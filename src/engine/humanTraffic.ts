@@ -95,11 +95,14 @@ export function generateHumanWorkers(
   const midCol = Math.floor(cols / 2);
 
   // 1. Storage Picker: Patrols central cross-aisle & packing buffer
+  // Offset to rows 26..30 to align with marked pedestrian safety walkway,
+  // providing a safe 2.5m clearance buffer from rack aisle mouths and AMR turn radii.
+  const walkwayRow = Math.min(rows - 6, midRow + 2);
   const wp1Cells: GridCell[] = [
-    findSafeWalkwayCell(grid, Math.floor(cols * 0.35), midRow),
-    findSafeWalkwayCell(grid, Math.floor(cols * 0.65), midRow),
-    findSafeWalkwayCell(grid, Math.floor(cols * 0.65), midRow + 4),
-    findSafeWalkwayCell(grid, Math.floor(cols * 0.35), midRow + 4),
+    findSafeWalkwayCell(grid, Math.floor(cols * 0.30), walkwayRow),
+    findSafeWalkwayCell(grid, Math.floor(cols * 0.70), walkwayRow),
+    findSafeWalkwayCell(grid, Math.floor(cols * 0.70), walkwayRow + 4),
+    findSafeWalkwayCell(grid, Math.floor(cols * 0.30), walkwayRow + 4),
   ];
   const wp1World = wp1Cells.map(([c, r]) => cellToWorld(c, r, cellSize));
 

@@ -146,7 +146,7 @@ export function RightPanels() {
                   {/* FSM Workflow Track */}
                   <div className="fsm-track">
                     {FSM_STATES.map((f) => (
-                      <span key={f} className={f === currentBot.fsmState ? "on" : ""}>
+                      <span key={f} className={f === currentBot.fsmState || (f === "NAVIGATING_TO_PICKUP" && currentBot.fsmState === "STAGED_WAITING_AISLE") ? "on" : ""}>
                         {f.replace(/_/g, " ").replace("NAVIGATING TO", "NAV")}
                       </span>
                     ))}
