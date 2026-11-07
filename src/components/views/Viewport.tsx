@@ -53,22 +53,18 @@ export function Viewport() {
 
   const handleCameraSelect = (cam: "full" | "iso" | "top" | "robot" | "pack") => {
     setShowCamMenu(false);
-    setActiveCamera(cam);
-    if (cam === "full") {
-      selectBot(null);
-      setFocusTarget([30, 0, 20]);
-    } else if (cam === "iso") {
-      selectBot(null);
-      setFocusTarget([28, 0, 24]);
-    } else if (cam === "top") {
-      selectBot(null);
-      setFocusTarget([30, 0, 20]);
-    } else if (cam === "robot") {
+    if (cam === "robot") {
       const activeBot = Object.values(botUnits).find((b) => b.status === "ACTIVE") || Object.values(botUnits)[0];
       if (activeBot) selectBot(activeBot.id);
-    } else if (cam === "pack") {
+    } else {
       selectBot(null);
-      setFocusTarget([44, 0, 31]);
+    }
+
+    if (activeCamera === cam) {
+      setActiveCamera("custom");
+      setTimeout(() => setActiveCamera(cam), 16);
+    } else {
+      setActiveCamera(cam);
     }
   };
 

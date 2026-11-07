@@ -53,9 +53,9 @@ interface CameraRigProps {
 
 function CameraRig({ controlsRef, widthM, depthM }: CameraRigProps) {
   const selectedBotId = useTwinStore((s) => s.selectedBotId);
-  const botUnits = useTwinStore((s) => s.botUnits);
   const focusTarget = useTwinStore((s) => s.focusTarget);
   const activeCamera = useTwinStore((s) => s.activeCamera);
+  const setActiveCamera = useTwinStore((s) => s.setActiveCamera);
   const activeFloor = useTwinStore((s) => s.activeFloor);
 
   const defaultCenter = useMemo(
@@ -63,94 +63,159 @@ function CameraRig({ controlsRef, widthM, depthM }: CameraRigProps) {
     [widthM, depthM]
   );
 
-  const targetLerpGoal = useRef<THREE.Vector3>(defaultCenter.clone());
+  const targetLerpGoal = useRef<THREE.Vector3 | null>(null);
   const cameraPositionGoal = useRef<THREE.Vector3 | null>(null);
+  const isUserInteracting = useRef(false);
 
-  // Update target when camera mode, floor level, or selection changes
+  // Track user input on OrbitControls so automated camera motions NEVER fight user cursor movement
   useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+
+    const onStart = () => {
+      isUserInteracting.current = true;
+      // User grabbed the camera with mouse: cancel any automated motion immediately!
+      cameraPositionGoal.current = null;
+      targetLerpGoal.current = null;
+      // Switch activeCamera to "custom" so user has 100% full manual control
+      if (useTwinStore.getState().activeCamera !== "custom") {
+        setActiveCamera("custom");
+      }
+    };
+
+    const onEnd = () => {
+      isUserInteracting.current = false;
+    };
+
+    controls.addEventListener("start", onStart);
+    controls.addEventListener("end", onEnd);
+    return () => {
+      controls.removeEventListener("start", onStart);
+      controls.removeEventListener("end", onEnd);
+    };
+  }, [controlsRef, setActiveCamera]);
+
+  // One-shot camera preset transitions (ONLY triggers when user clicks a preset)
+  const prevCamRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeCamera === prevCamRef.current || activeCamera === "custom") {
+      prevCamRef.current = activeCamera;
+      return;
+    }
+    prevCamRef.current = activeCamera;
+
     const cx = widthM / 2;
     const cz = depthM / 2;
 
     if (activeCamera === "top") {
-      targetLerpGoal.current.set(cx, 0.2, cz);
+      targetLerpGoal.current = new THREE.Vector3(cx, 0.2, cz);
       cameraPositionGoal.current = new THREE.Vector3(cx, 58, cz + 0.001);
     } else if (activeCamera === "iso") {
-      targetLerpGoal.current.set(cx, 0.2, cz);
+      targetLerpGoal.current = new THREE.Vector3(cx, 0.2, cz);
       cameraPositionGoal.current = new THREE.Vector3(cx - 28, 32, cz + 32);
     } else if (activeCamera === "pack") {
-      targetLerpGoal.current.set(44, 0.2, 31);
+      targetLerpGoal.current = new THREE.Vector3(44, 0.2, 31);
       cameraPositionGoal.current = new THREE.Vector3(44, 15, 45);
+    } else if (activeCamera === "full") {
+      targetLerpGoal.current = new THREE.Vector3(cx, 0.2, cz);
+      cameraPositionGoal.current = new THREE.Vector3(cx - 38, 44, cz + 44);
     } else if (activeCamera === "robot") {
-      const bot = (selectedBotId && botUnits[selectedBotId]) || Object.values(botUnits).find((b) => b.status === "ACTIVE") || Object.values(botUnits)[0];
+      const bots = useTwinStore.getState().botUnits;
+      const bot = (selectedBotId && bots[selectedBotId]) || Object.values(bots).find((b) => b.status === "ACTIVE") || Object.values(bots)[0];
       if (bot) {
         const fwdX = Math.cos(bot.headingRad);
         const fwdZ = Math.sin(bot.headingRad);
-        targetLerpGoal.current.set(bot.position[0] + fwdX * 2.5, 0.6, bot.position[2] + fwdZ * 2.5);
-        cameraPositionGoal.current = new THREE.Vector3(
-          bot.position[0] - fwdX * 4.2,
-          2.2,
-          bot.position[2] - fwdZ * 4.2
-        );
+        targetLerpGoal.current = new THREE.Vector3(bot.position[0] + fwdX * 2.5, 0.6, bot.position[2] + fwdZ * 2.5);
+        cameraPositionGoal.current = new THREE.Vector3(bot.position[0] - fwdX * 4.2, 2.2, bot.position[2] - fwdZ * 4.2);
       }
-    } else if (activeCamera === "full") {
-      targetLerpGoal.current.set(cx, 0.2, cz);
-      cameraPositionGoal.current = new THREE.Vector3(cx - 38, 44, cz + 44);
-    } else if (selectedBotId && botUnits[selectedBotId]) {
-      const bot = botUnits[selectedBotId];
-      targetLerpGoal.current.set(bot.position[0], 0.6, bot.position[2]);
-    } else if (focusTarget) {
-      targetLerpGoal.current.set(focusTarget[0], focusTarget[1], focusTarget[2]);
-    } else {
-      targetLerpGoal.current.copy(defaultCenter);
     }
+  }, [activeCamera, widthM, depthM, selectedBotId]);
 
-    // Floor elevation adjustment
-    if (activeFloor === 1) {
-      targetLerpGoal.current.y = 0.2;
-    } else if (activeFloor === 2) {
-      targetLerpGoal.current.y = 4.2;
-      if (cameraPositionGoal.current && cameraPositionGoal.current.y < 20) {
-        cameraPositionGoal.current.y = 20;
-      }
-    } else if (activeFloor === "all") {
-      targetLerpGoal.current.y = 0.5;
+  // Floor elevation adjustment (one-shot when user clicks G / M1 / L2)
+  const prevFloorRef = useRef(activeFloor);
+  useEffect(() => {
+    if (activeFloor === prevFloorRef.current) return;
+    prevFloorRef.current = activeFloor;
+
+    const controls = controlsRef.current;
+    if (!controls) return;
+
+    const newTargetY = activeFloor === 2 ? 4.2 : 0.2;
+    targetLerpGoal.current = new THREE.Vector3(controls.target.x, newTargetY, controls.target.z);
+  }, [activeFloor, controlsRef]);
+
+  // Entity selection focus (one-shot when user clicks a bot or station)
+  const prevSelectedBotRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedBotId || selectedBotId === prevSelectedBotRef.current) {
+      prevSelectedBotRef.current = selectedBotId;
+      return;
     }
-  }, [activeCamera, activeFloor, selectedBotId, botUnits, focusTarget, defaultCenter, widthM, depthM]);
+    prevSelectedBotRef.current = selectedBotId;
+    const bot = useTwinStore.getState().botUnits[selectedBotId];
+    if (bot && activeCamera !== "top") {
+      targetLerpGoal.current = new THREE.Vector3(bot.position[0], 0.6, bot.position[2]);
+    }
+  }, [selectedBotId, activeCamera]);
 
+  // Explicit focusTarget change (one-shot when focusTarget is explicitly set)
+  const prevFocusTargetRef = useRef<[number, number, number] | null>(null);
+  useEffect(() => {
+    if (!focusTarget) return;
+    if (
+      prevFocusTargetRef.current &&
+      prevFocusTargetRef.current[0] === focusTarget[0] &&
+      prevFocusTargetRef.current[1] === focusTarget[1] &&
+      prevFocusTargetRef.current[2] === focusTarget[2]
+    ) {
+      return;
+    }
+    prevFocusTargetRef.current = focusTarget;
+    targetLerpGoal.current = new THREE.Vector3(focusTarget[0], focusTarget[1], focusTarget[2]);
+  }, [focusTarget]);
+
+  // Smooth frame loop
   useFrame(({ camera }, dt) => {
     const controls = controlsRef.current;
     if (!controls) return;
 
-    // Follow moving bot in "robot" POV mode
+    // If the user is actively dragging the mouse or moving controls: do NOT lerp!
+    if (isUserInteracting.current) {
+      controls.update();
+      return;
+    }
+
+    const lerpFactor = Math.min(1.0, 1.0 - Math.pow(0.001, dt));
+
+    // Follow moving bot in dedicated "robot" POV mode (if not interacting)
     if (activeCamera === "robot") {
-      const bot = (selectedBotId && botUnits[selectedBotId]) || Object.values(botUnits).find((b) => b.status === "ACTIVE");
+      const bots = useTwinStore.getState().botUnits;
+      const bot = (selectedBotId && bots[selectedBotId]) || Object.values(bots).find((b) => b.status === "ACTIVE");
       if (bot) {
         const fwdX = Math.cos(bot.headingRad);
         const fwdZ = Math.sin(bot.headingRad);
-        targetLerpGoal.current.set(
-          bot.position[0] + fwdX * 2.5,
-          0.6,
-          bot.position[2] + fwdZ * 2.5
-        );
-        cameraPositionGoal.current = new THREE.Vector3(
-          bot.position[0] - fwdX * 4.2,
-          2.2,
-          bot.position[2] - fwdZ * 4.2
-        );
+        const targetPos = new THREE.Vector3(bot.position[0] + fwdX * 2.5, 0.6, bot.position[2] + fwdZ * 2.5);
+        const camPos = new THREE.Vector3(bot.position[0] - fwdX * 4.2, 2.2, bot.position[2] - fwdZ * 4.2);
+        controls.target.lerp(targetPos, lerpFactor);
+        camera.position.lerp(camPos, lerpFactor);
+        controls.update();
+        return;
       }
-    } else if (selectedBotId && botUnits[selectedBotId] && activeCamera !== "top") {
-      const bot = botUnits[selectedBotId];
-      targetLerpGoal.current.set(bot.position[0], 0.6, bot.position[2]);
     }
 
-    // Exponential smoothing for fluid 60fps tracking
-    const lerpFactor = 1.0 - Math.pow(0.002, dt);
-    controls.target.lerp(targetLerpGoal.current, lerpFactor);
+    // Smoothly lerp target towards targetLerpGoal
+    if (targetLerpGoal.current) {
+      controls.target.lerp(targetLerpGoal.current, lerpFactor);
+      if (controls.target.distanceTo(targetLerpGoal.current) < 0.08) {
+        targetLerpGoal.current = null; // Reached! Stop lerping so user has 100% free pan control.
+      }
+    }
 
+    // Smoothly lerp camera position towards cameraPositionGoal
     if (cameraPositionGoal.current) {
       camera.position.lerp(cameraPositionGoal.current, lerpFactor);
-      if (camera.position.distanceTo(cameraPositionGoal.current) < 0.15 && activeCamera !== "robot") {
-        cameraPositionGoal.current = null;
+      if (camera.position.distanceTo(cameraPositionGoal.current) < 0.15) {
+        cameraPositionGoal.current = null; // Reached! Stop lerping so user has 100% free rotation/zoom control.
       }
     }
 
