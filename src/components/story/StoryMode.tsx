@@ -54,6 +54,25 @@ export function StoryMode() {
   const [rackClusters, setRackClusters] = useState(8);
   const [fleetToday, setFleetToday] = useState(Object.keys(botUnits).length || 48);
 
+  // 01 / BUILD Blueprint layer toggles (matching Dia design)
+  const [showRacks, setShowRacks] = useState(true);
+  const [showAisles, setShowAisles] = useState(true);
+  const [showDocks, setShowDocks] = useState(true);
+  const [showStations, setShowStations] = useState(true);
+
+  // Dynamic 2D AMR kinematics state for the blueprint
+  interface BlueprintBot {
+    id: string;
+    x: number;
+    y: number;
+    targetX: number;
+    targetY: number;
+    spd: number;
+    isUp: boolean;
+    phase: "aisle" | "top" | "bot";
+  }
+  const blueprintBotsRef = useRef<BlueprintBot[]>([]);
+
   // 04 / DECIDE inputs
   const [pickerWage, setPickerWage] = useState(180); // ₹ / hour
   const [pickerProductivity, setPickerProductivity] = useState(45); // orders / h
@@ -69,11 +88,16 @@ export function StoryMode() {
   const areaM2 = widthM * depthM;
   const clearanceM2 = (areaM2 / Math.max(1, fleetToday)).toFixed(1);
 
-  // Handle Preset selection
+  // Preset match detection
+  const isDarkPreset = widthM === 40 && depthM === 30 && rackClusters === 4 && fleetToday === 12;
+  const isHubPreset = widthM === 84 && depthM === 52 && rackClusters === 8 && fleetToday === 48;
+  const isMegaPreset = widthM === 140 && depthM === 90 && rackClusters === 15 && fleetToday === 120;
+
+  // Handle Preset selection (Matching Dia specifications: [40,30,4,12], [84,52,8,48], [140,90,15,120])
   const handlePreset = (preset: "dark" | "hub" | "mega") => {
     if (preset === "dark") {
       setWidthM(40);
-      setDepthM(25);
+      setDepthM(30);
       setRackClusters(4);
       setFleetToday(12);
     } else if (preset === "hub") {
@@ -83,9 +107,9 @@ export function StoryMode() {
       setFleetToday(48);
     } else if (preset === "mega") {
       setWidthM(140);
-      setDepthM(80);
-      setRackClusters(14);
-      setFleetToday(96);
+      setDepthM(90);
+      setRackClusters(15);
+      setFleetToday(120);
     }
   };
 
@@ -180,212 +204,435 @@ export function StoryMode() {
     }
   }, [activeStep]);
 
-  // Render authentic DR DIA Architectural Cyan-Blue Blueprint in step 0
+  // Render authentic DR DIA Architectural Royal-Blue Blueprint with dynamic sizing in step 0
   useEffect(() => {
+    if (activeStep !== 0) return;
     const cv = cvBuildRef.current;
     if (!cv) return;
     const ctx = cv.getContext("2d");
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
-    const rect = cv.getBoundingClientRect();
-    cv.width = rect.width * dpr;
-    cv.height = rect.height * dpr;
-    ctx.scale(dpr, dpr);
+    let animId: number;
+    let lastTime = performance.now();
 
-    const w = rect.width;
-    const h = rect.height;
+    // Re-synchronize or initialize simulated AMR bots when fleet, footprint, or cluster configuration changes
+    const gap = (widthM - 10) / Math.max(1, rackClusters);
+    const aisles = Array.from(
+      { length: rackClusters },
+      (_, i) => 6 + i * gap + Math.min(3.4, gap * 0.45) + (gap - Math.min(3.4, gap * 0.45)) / 2
+    );
+    const laneTop = Math.min(5, depthM * 0.12);
+    const laneBot = depthM - Math.min(9, depthM * 0.16);
 
-    // 1. Blueprint paper background with radial vignette gradient
-    const grad = ctx.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, Math.max(w, h) * 0.8);
-    grad.addColorStop(0, "#0D3B66");
-    grad.addColorStop(0.65, "#0A2540");
-    grad.addColorStop(1, "#06182C");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
-
-    // 2. 1m Minor Architectural Blueprint Grid
-    ctx.strokeStyle = "rgba(30, 81, 128, 0.4)";
-    ctx.lineWidth = 0.5;
-    const gridSize = 16;
-    for (let x = 0; x < w; x += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, h);
-      ctx.stroke();
-    }
-    for (let y = 0; y < h; y += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(w, y);
-      ctx.stroke();
-    }
-
-    // 3. 5m Major Cyan Blueprint Grid Lines
-    ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
-    ctx.lineWidth = 1;
-    const majorGridSize = gridSize * 5;
-    for (let x = 0; x < w; x += majorGridSize) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, h);
-      ctx.stroke();
-    }
-    for (let y = 0; y < h; y += majorGridSize) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(w, y);
-      ctx.stroke();
+    // Re-initialize bots if fleet count changes or if any bot is outside current facility dimensions
+    const isOutOfBounds = blueprintBotsRef.current.some((b) => b.x >= widthM || b.y >= depthM);
+    if (blueprintBotsRef.current.length !== fleetToday || isOutOfBounds) {
+      const bots: BlueprintBot[] = [];
+      for (let i = 0; i < fleetToday; i++) {
+        const aIdx = i % aisles.length;
+        const aisleX = aisles[aIdx];
+        const isUp = aIdx % 2 !== 0;
+        const y = laneTop + (i / Math.max(1, fleetToday)) * (laneBot - laneTop);
+        bots.push({
+          id: `AMR-${String(i + 1).padStart(2, "0")}`,
+          x: aisleX,
+          y,
+          targetX: aisleX,
+          targetY: isUp ? laneTop : laneBot,
+          spd: 1.4 + (i % 4) * 0.22,
+          isUp,
+          phase: "aisle",
+        });
+      }
+      blueprintBotsRef.current = bots;
     }
 
-    // 4. Perimeter margins for rulers & dimension witness lines
-    const padX = 42;
-    const padY = 42;
-    const innerW = w - 2 * padX;
-    const innerH = h - 2 * padY;
+    const render = (now: number) => {
+      const dt = Math.min(0.05, (now - lastTime) / 1000);
+      lastTime = now;
 
-    // Double concrete outer perimeter walls in architectural white ink
-    ctx.strokeStyle = "#38BDF8";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(padX - 4, padY - 4, innerW + 8, innerH + 8);
-    ctx.strokeStyle = "#FFFFFF";
-    ctx.lineWidth = 2.5;
-    ctx.strokeRect(padX, padY, innerW, innerH);
+      // 1. Advance simulated 2D AMRs along one-way circulatory corridors
+      blueprintBotsRef.current.forEach((b, idx) => {
+        const step = b.spd * dt * 4;
+        if (b.phase === "aisle") {
+          if (b.isUp) {
+            b.y -= step;
+            if (b.y <= laneTop) {
+              b.y = laneTop;
+              b.phase = "top";
+              const nextA = aisles[(idx + 1) % aisles.length];
+              b.targetX = nextA;
+              b.targetY = laneTop;
+            }
+          } else {
+            b.y += step;
+            if (b.y >= laneBot) {
+              b.y = laneBot;
+              b.phase = "bot";
+              const nextA = aisles[(idx + 1) % aisles.length];
+              b.targetX = nextA;
+              b.targetY = laneBot;
+            }
+          }
+        } else if (b.phase === "top" || b.phase === "bot") {
+          const dx = b.targetX - b.x;
+          if (Math.abs(dx) <= step) {
+            b.x = b.targetX;
+            b.phase = "aisle";
+            b.isUp = !b.isUp;
+            b.targetY = b.isUp ? laneTop : laneBot;
+          } else {
+            b.x += Math.sign(dx) * step;
+          }
+        }
+      });
 
-    // Dimension lines
-    ctx.strokeStyle = "rgba(147, 197, 253, 0.75)";
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 2]);
-    // Top witness lines
-    ctx.beginPath();
-    ctx.moveTo(padX, padY);
-    ctx.lineTo(padX, padY - 18);
-    ctx.moveTo(padX + innerW, padY);
-    ctx.lineTo(padX + innerW, padY - 18);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    // Top dimension line
-    ctx.strokeStyle = "#38BDF8";
-    ctx.beginPath();
-    ctx.moveTo(padX, padY - 14);
-    ctx.lineTo(padX + innerW, padY - 14);
-    ctx.stroke();
+      // 2. High-DPI canvas preparation
+      const dpr = window.devicePixelRatio || 1;
+      const rect = cv.getBoundingClientRect();
+      if (cv.width !== rect.width * dpr || cv.height !== rect.height * dpr) {
+        cv.width = rect.width * dpr;
+        cv.height = rect.height * dpr;
+      }
+      ctx.save();
+      ctx.scale(dpr, dpr);
 
-    // Top dimension meter callout
-    ctx.fillStyle = "#0A2540";
-    ctx.strokeStyle = "#38BDF8";
-    ctx.lineWidth = 0.8;
-    const topCalloutW = 120;
-    ctx.fillRect(padX + innerW / 2 - topCalloutW / 2, padY - 22, topCalloutW, 16);
-    ctx.strokeRect(padX + innerW / 2 - topCalloutW / 2, padY - 22, topCalloutW, 16);
-    ctx.fillStyle = "#FFFFFF";
-    ctx.font = "bold 9px 'JetBrains Mono', monospace";
-    ctx.textAlign = "center";
-    ctx.fillText(`◄─ ${widthM}.00 m (WIDTH) ─►`, padX + innerW / 2, padY - 11);
+      const w = rect.width;
+      const h = rect.height;
+      if (w <= 0 || h <= 0) {
+        ctx.restore();
+        animId = requestAnimationFrame(render);
+        return;
+      }
 
-    // 5. Draw 4-Tier Rack Clusters in blueprint theme
-    const colsCount = Math.max(2, Math.floor(rackClusters / 2));
-    const rowsCount = 2;
-    const bayW = innerW / (colsCount * 1.6);
-    const bayH = innerH / (rowsCount * 2.2);
+      // 3. Authentic Dia Blueprint Background (#1D3B8A)
+      ctx.fillStyle = "#1D3B8A";
+      ctx.fillRect(0, 0, w, h);
 
-    for (let r = 0; r < rowsCount; r++) {
-      for (let c = 0; c < colsCount; c++) {
-        const rx = padX + 16 + c * (bayW * 1.55);
-        const ry = padY + 16 + r * (bayH * 2.1);
+      // 4. Dynamic Aspect-Ratio Bounding Box Calculation
+      const padX = w * 0.08;
+      const padY = h * 0.12;
+      const availW = w - 2 * padX;
+      const availH = h - 2 * padY;
+      const s = Math.min(availW / widthM, availH / depthM);
+      const facilityW = widthM * s;
+      const facilityH = depthM * s;
+      const ox = (w - facilityW) / 2;
+      const oy = (h - facilityH) / 2;
+      const P = (x: number, y: number): [number, number] => [ox + x * s, oy + y * s];
 
-        // Rack footprint
-        ctx.fillStyle = "#0F2B48";
-        ctx.fillRect(rx, ry, bayW, bayH);
-        ctx.strokeStyle = "#FFFFFF";
-        ctx.lineWidth = 1.2;
-        ctx.strokeRect(rx, ry, bayW, bayH);
+      // 5. Facility Floor Interior
+      ctx.fillStyle = "#163272";
+      ctx.fillRect(ox, oy, facilityW, facilityH);
 
-        // Rack shelf tiers lines in blueprint cyan
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.7)";
-        ctx.lineWidth = 0.8;
+      // 6. Minor 4m Grid Lines
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+      ctx.lineWidth = 0.8;
+      for (let x = 0; x <= widthM; x += 4) {
+        const [p1x, p1y] = P(x, 0);
+        const [p2x, p2y] = P(x, depthM);
         ctx.beginPath();
-        ctx.moveTo(rx, ry + bayH * 0.25);
-        ctx.lineTo(rx + bayW, ry + bayH * 0.25);
-        ctx.moveTo(rx, ry + bayH * 0.50);
-        ctx.lineTo(rx + bayW, ry + bayH * 0.50);
-        ctx.moveTo(rx, ry + bayH * 0.75);
-        ctx.lineTo(rx + bayW, ry + bayH * 0.75);
+        ctx.moveTo(p1x, p1y);
+        ctx.lineTo(p2x, p2y);
         ctx.stroke();
-
-        // Structural upright indicator in center
-        ctx.strokeStyle = "#93C5FD";
-        ctx.setLineDash([2, 2]);
+      }
+      for (let y = 0; y <= depthM; y += 4) {
+        const [p1x, p1y] = P(0, y);
+        const [p2x, p2y] = P(widthM, y);
         ctx.beginPath();
-        ctx.moveTo(rx + bayW / 2, ry);
-        ctx.lineTo(rx + bayW / 2, ry + bayH);
+        ctx.moveTo(p1x, p1y);
+        ctx.lineTo(p2x, p2y);
+        ctx.stroke();
+      }
+
+      // 7. Major 16m Cyan Metric Grid Lines
+      ctx.strokeStyle = "rgba(157, 180, 255, 0.22)";
+      ctx.lineWidth = 1.2;
+      for (let x = 0; x <= widthM; x += 16) {
+        const [p1x, p1y] = P(x, 0);
+        const [p2x, p2y] = P(x, depthM);
+        ctx.beginPath();
+        ctx.moveTo(p1x, p1y);
+        ctx.lineTo(p2x, p2y);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= depthM; y += 16) {
+        const [p1x, p1y] = P(0, y);
+        const [p2x, p2y] = P(widthM, y);
+        ctx.beginPath();
+        ctx.moveTo(p1x, p1y);
+        ctx.lineTo(p2x, p2y);
+        ctx.stroke();
+      }
+
+      // 8. Outer Perimeter Boundary Walls (#9DB4FF)
+      ctx.strokeStyle = "#9DB4FF";
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(ox, oy, facilityW, facilityH);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(ox + 3, oy + 3, facilityW - 6, facilityH - 6);
+
+      // 9. Top & Bottom Express Feeder Lanes (Dashed White Lines)
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.32)";
+      ctx.lineWidth = 1;
+      const [lt1x, lt1y] = P(3, laneTop);
+      const [lt2x, lt2y] = P(widthM - 3, laneTop);
+      ctx.beginPath();
+      ctx.moveTo(lt1x, lt1y);
+      ctx.lineTo(lt2x, lt2y);
+      ctx.stroke();
+
+      const [lb1x, lb1y] = P(3, laneBot);
+      const [lb2x, lb2y] = P(widthM - 3, laneBot);
+      ctx.beginPath();
+      ctx.moveTo(lb1x, lb1y);
+      ctx.lineTo(lb2x, lb2y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 10. Dynamic Racks & One-Way Aisles
+      const rackRows = Math.max(1, Math.floor((depthM - 20) / 8));
+      for (let i = 0; i < rackClusters; i++) {
+        const rx = 6 + i * gap;
+        const rw = Math.min(3.4, gap * 0.45);
+        const aisleX = rx + rw + (gap - rw) / 2;
+
+        // One-Way Aisle Flow Directional Arrows (Coral #FFB08F)
+        if (showAisles) {
+          const [asx, asy] = P(aisleX, depthM / 2);
+          const isUp = i % 2 !== 0;
+          ctx.fillStyle = "#FFB08F";
+          ctx.beginPath();
+          if (isUp) {
+            ctx.moveTo(asx, asy - 7);
+            ctx.lineTo(asx + 5, asy + 5);
+            ctx.lineTo(asx - 5, asy + 5);
+          } else {
+            ctx.moveTo(asx, asy + 7);
+            ctx.lineTo(asx + 5, asy - 5);
+            ctx.lineTo(asx - 5, asy - 5);
+          }
+          ctx.fill();
+        }
+
+        // Storage Racks
+        if (showRacks) {
+          for (let j = 0; j < rackRows; j++) {
+            const ry = 9 + j * 8;
+            const rh = Math.min(6.4, ((depthM - 20) / rackRows) * 0.8);
+            const [px, py] = P(rx, ry);
+            const pw = rw * s;
+            const ph = rh * s;
+
+            ctx.fillStyle = "rgba(255, 255, 255, 0.07)";
+            ctx.fillRect(px, py, pw, ph);
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(px, py, pw, ph);
+
+            // 3-tier shelf divider lines
+            ctx.strokeStyle = "rgba(157, 180, 255, 0.35)";
+            ctx.lineWidth = 0.8;
+            for (let t = 1; t <= 3; t++) {
+              const ty = py + (ph * t) / 4;
+              ctx.beginPath();
+              ctx.moveTo(px, ty);
+              ctx.lineTo(px + pw, ty);
+              ctx.stroke();
+            }
+
+            // Center structural upright line
+            ctx.strokeStyle = "rgba(147, 197, 253, 0.45)";
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.moveTo(px + pw / 2, py);
+            ctx.lineTo(px + pw / 2, py + ph);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+        }
+      }
+
+      // 11. Packing Stations (Bottom Perimeter)
+      if (showStations) {
+        const ns = Math.max(2, Math.min(6, Math.round(widthM / 20)));
+        for (let k = 0; k < ns; k++) {
+          const cx = (widthM * (k + 1)) / (ns + 1);
+          const [px, py] = P(cx - 3, depthM - 7.5);
+          const pw = 6 * s;
+          const ph = 3.6 * s;
+
+          ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+          ctx.fillRect(px, py, pw, ph);
+          ctx.strokeStyle = "#FFFFFF";
+          ctx.lineWidth = 1.2;
+          ctx.strokeRect(px, py, pw, ph);
+
+          ctx.fillStyle = "#121826";
+          ctx.fillRect(px + 3, py + 3, Math.max(8, pw * 0.28), ph - 6);
+
+          ctx.fillStyle = "#121826";
+          ctx.font = "bold 9px 'JetBrains Mono', monospace";
+          ctx.textAlign = "left";
+          ctx.fillText(`PK-0${k + 1}`, px + Math.max(12, pw * 0.35), py + ph / 2 + 3);
+        }
+      }
+
+      // 12. Charging Bays / DC Docks (Left Margin)
+      if (showDocks) {
+        const nc = Math.max(2, Math.min(6, Math.round(fleetToday / 10)));
+        for (let k = 0; k < nc; k++) {
+          const cy = 9 + k * ((depthM - 22) / nc);
+          const [px, py] = P(1.2, cy);
+          const pw = 2.4 * s;
+          const ph = 2.4 * s;
+
+          ctx.fillStyle = "rgba(157, 180, 255, 0.15)";
+          ctx.fillRect(px, py, pw, ph);
+          ctx.strokeStyle = "#9DB4FF";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(px, py, pw, ph);
+
+          ctx.fillStyle = "#9DB4FF";
+          ctx.font = "bold 8px 'JetBrains Mono', monospace";
+          ctx.textAlign = "center";
+          ctx.fillText(`DC-${k + 1}`, px + pw / 2, py + ph / 2 + 3);
+        }
+      }
+
+      // 13. Live Animated AMRs Circulating on Blueprint
+      const R = Math.max(2.6, s * 0.62);
+      blueprintBotsRef.current.forEach((bot) => {
+        const [bx, by] = P(bot.x, bot.y);
+        // Dashed path line
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.30)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        const [tx, ty] = P(bot.targetX, bot.targetY);
+        ctx.lineTo(tx, ty);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Directional aisle flow arrows
-        const isEven = c % 2 === 0;
-        ctx.fillStyle = "#F8CB46";
+        // AMR Body (Signal Coral #FF5A1F with crisp white halo)
+        ctx.fillStyle = "#FF5A1F";
         ctx.beginPath();
-        const arrowX = rx + bayW + 8;
-        const arrowY = ry + bayH * 0.5;
-        if (isEven) {
-          ctx.moveTo(arrowX, arrowY - 6);
-          ctx.lineTo(arrowX + 4, arrowY + 6);
-          ctx.lineTo(arrowX - 4, arrowY + 6);
-        } else {
-          ctx.moveTo(arrowX, arrowY + 6);
-          ctx.lineTo(arrowX + 4, arrowY - 6);
-          ctx.lineTo(arrowX - 4, arrowY - 6);
-        }
+        ctx.arc(bx, by, R, 0, Math.PI * 2);
         ctx.fill();
-      }
-    }
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      });
 
-    // 6. Packing stations on bottom perimeter
-    for (let p = 0; p < 3; p++) {
-      const px = padX + p * (innerW / 3) + 24;
-      const py = padY + innerH - 30;
-      ctx.fillStyle = "#0F2742";
-      ctx.fillRect(px, py, 64, 20);
-      ctx.strokeStyle = "#F59E0B";
-      ctx.lineWidth = 1.2;
-      ctx.strokeRect(px, py, 64, 20);
+      // 14. Dynamic Metric CAD Witness Dimension Lines
+      // Top Witness Line (Width)
+      ctx.strokeStyle = "rgba(157, 180, 255, 0.65)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 2]);
+      ctx.beginPath();
+      ctx.moveTo(ox, oy);
+      ctx.lineTo(ox, oy - 20);
+      ctx.moveTo(ox + facilityW, oy);
+      ctx.lineTo(ox + facilityW, oy - 20);
+      ctx.stroke();
+      ctx.setLineDash([]);
 
-      ctx.fillStyle = "#38BDF8";
-      ctx.fillRect(px + 4, py + 4, 16, 12);
+      ctx.strokeStyle = "#38BDF8";
+      ctx.beginPath();
+      ctx.moveTo(ox, oy - 15);
+      ctx.lineTo(ox + facilityW, oy - 15);
+      ctx.stroke();
 
+      // Top Dimension Callout Pill
+      const topCalloutW = 140;
+      ctx.fillStyle = "#082138";
+      ctx.strokeStyle = "#38BDF8";
+      ctx.lineWidth = 0.8;
+      ctx.fillRect(ox + facilityW / 2 - topCalloutW / 2, oy - 23, topCalloutW, 16);
+      ctx.strokeRect(ox + facilityW / 2 - topCalloutW / 2, oy - 23, topCalloutW, 16);
+      ctx.fillStyle = "#FFFFFF";
+      ctx.font = "bold 9px 'JetBrains Mono', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`◄─ ${widthM}.00 m (WIDTH) ─►`, ox + facilityW / 2, oy - 12);
+
+      // Left Witness Line (Depth)
+      ctx.strokeStyle = "rgba(157, 180, 255, 0.65)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 2]);
+      ctx.beginPath();
+      ctx.moveTo(ox, oy);
+      ctx.lineTo(ox - 20, oy);
+      ctx.moveTo(ox, oy + facilityH);
+      ctx.lineTo(ox - 20, oy + facilityH);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.strokeStyle = "#38BDF8";
+      ctx.beginPath();
+      ctx.moveTo(ox - 15, oy);
+      ctx.lineTo(ox - 15, oy + facilityH);
+      ctx.stroke();
+
+      // Left Dimension Callout Pill
+      const leftCalloutH = 80;
+      ctx.fillStyle = "#082138";
+      ctx.strokeStyle = "#38BDF8";
+      ctx.lineWidth = 0.8;
+      ctx.fillRect(ox - 26, oy + facilityH / 2 - leftCalloutH / 2, 22, leftCalloutH);
+      ctx.strokeRect(ox - 26, oy + facilityH / 2 - leftCalloutH / 2, 22, leftCalloutH);
+      ctx.save();
+      ctx.translate(ox - 13, oy + facilityH / 2);
+      ctx.rotate(-Math.PI / 2);
       ctx.fillStyle = "#FFFFFF";
       ctx.font = "bold 8px 'JetBrains Mono', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`▲ ${depthM}.00 m (DEPTH) ▼`, 0, 3);
+      ctx.restore();
+
+      // 15. Architectural Title Block Stamp (Bottom Right)
+      const stampW = 175;
+      const stampH = 34;
+      const stampX = ox + facilityW - stampW - 6;
+      const stampY = oy + facilityH - stampH - 6;
+
+      ctx.fillStyle = "#082138";
+      ctx.fillRect(stampX, stampY, stampW, stampH);
+      ctx.strokeStyle = "#38BDF8";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(stampX, stampY, stampW, stampH);
+
+      ctx.fillStyle = "#FFFFFF";
+      ctx.font = "bold 8px 'Inter', sans-serif";
       ctx.textAlign = "left";
-      ctx.fillText(`PACK ${p + 1}`, px + 24, py + 13);
-    }
+      ctx.fillText("NEXUSTWIN · CAD BLUEPRINT", stampX + 6, stampY + 11);
 
-    // 7. Architectural Title Block Stamp (Bottom Right)
-    const stampW = 165;
-    const stampH = 34;
-    const stampX = padX + innerW - stampW - 6;
-    const stampY = padY + innerH - stampH - 6;
+      ctx.fillStyle = "#38BDF8";
+      ctx.font = "bold 7px 'JetBrains Mono', monospace";
+      ctx.fillText("REV C · 1:100", stampX + 120, stampY + 11);
 
-    ctx.fillStyle = "#082138";
-    ctx.fillRect(stampX, stampY, stampW, stampH);
-    ctx.strokeStyle = "#38BDF8";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(stampX, stampY, stampW, stampH);
+      ctx.fillStyle = "#93C5FD";
+      ctx.font = "7px 'JetBrains Mono', monospace";
+      ctx.fillText(
+        `FOOTPRINT: ${widthM}m × ${depthM}m (${(widthM * depthM).toLocaleString("en-IN")} m²)`,
+        stampX + 6,
+        stampY + 21
+      );
+      ctx.fillText(
+        `FLEET: ${fleetToday} AMRs · ${rackClusters} RACKS`,
+        stampX + 6,
+        stampY + 29
+      );
 
-    ctx.fillStyle = "#FFFFFF";
-    ctx.font = "bold 8px 'Inter', sans-serif";
-    ctx.textAlign = "left";
-    ctx.fillText("NEXUSTWIN · CAD BLUEPRINT", stampX + 6, stampY + 11);
+      ctx.restore();
+      animId = requestAnimationFrame(render);
+    };
 
-    ctx.fillStyle = "#38BDF8";
-    ctx.font = "bold 7px 'JetBrains Mono', monospace";
-    ctx.fillText("REV C · 1:100", stampX + 114, stampY + 11);
-
-    ctx.fillStyle = "#93C5FD";
-    ctx.font = "7px 'JetBrains Mono', monospace";
-    ctx.fillText(`FOOTPRINT: ${widthM}m × ${depthM}m (${(widthM * depthM).toLocaleString()} m²)`, stampX + 6, stampY + 21);
-    ctx.fillText(`FLEET: ${fleetToday} AMRs · ${rackClusters} RACKS`, stampX + 6, stampY + 29);
-  }, [widthM, depthM, rackClusters, fleetToday, activeStep]);
+    animId = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(animId);
+  }, [widthM, depthM, rackClusters, fleetToday, activeStep, showRacks, showAisles, showDocks, showStations]);
 
   // Financial ROI Payback Calculation with Institutional CapEx/OpEx, GST ITC, & 30-Seed Monte Carlo Spreads
   const financials = useMemo(() => {
@@ -576,11 +823,15 @@ export function StoryMode() {
 
               <div className="ctl">
                 <div className="seg" id="preset">
-                  <button onClick={() => handlePreset("dark")}>Dark store</button>
-                  <button className="on" onClick={() => handlePreset("hub")}>
+                  <button className={isDarkPreset ? "on" : ""} onClick={() => handlePreset("dark")}>
+                    Dark store
+                  </button>
+                  <button className={isHubPreset ? "on" : ""} onClick={() => handlePreset("hub")}>
                     Hub
                   </button>
-                  <button onClick={() => handlePreset("mega")}>Mega</button>
+                  <button className={isMegaPreset ? "on" : ""} onClick={() => handlePreset("mega")}>
+                    Mega
+                  </button>
                 </div>
 
                 <div className="field">
@@ -642,8 +893,11 @@ export function StoryMode() {
 
               <div className="callout">
                 <div className="k">WHY IT MATTERS</div>
-                Spreadsheets assume robots never meet. On this floor, <b>{clearanceM2} m²</b> per robot is
-                what decides whether aisles flow or jam.
+                Spreadsheets assume robots never meet. On this floor,{" "}
+                <b id="bClear" style={{ color: Number(clearanceM2) < 25 ? "#FF8A8A" : "#FFB08F" }}>
+                  {clearanceM2} m²
+                </b>{" "}
+                per robot is what decides whether aisles flow or jam.
               </div>
             </div>
 
@@ -654,31 +908,43 @@ export function StoryMode() {
                   <i style={{ background: "#FFB08F" }}></i>CAD Blueprint · BLR‑DC‑04 · Rev C
                 </div>
                 <div className="bp-tools">
-                  <button className="on">
+                  <button className={showRacks ? "on" : ""} onClick={() => setShowRacks(!showRacks)}>
                     <i style={{ background: "#fff" }}></i>Racks
                   </button>
-                  <button>
+                  <button className={showAisles ? "on" : ""} onClick={() => setShowAisles(!showAisles)}>
                     <i style={{ background: "#FFB08F" }}></i>One‑way aisle
                   </button>
-                  <button>
+                  <button className={showDocks ? "on" : ""} onClick={() => setShowDocks(!showDocks)}>
                     <i style={{ background: "#9DB4FF" }}></i>DC bay
                   </button>
-                  <button>
+                  <button className={showStations ? "on" : ""} onClick={() => setShowStations(!showStations)}>
                     <i style={{ background: "#121826", border: "1px solid #fff" }}></i>Station
                   </button>
                 </div>
                 <div className="bp-stats">
                   <div>
                     <span className="k">FLOOR</span>
-                    <span className="v">{areaM2.toLocaleString()} m²</span>
+                    <span className="v" id="sArea">
+                      {areaM2.toLocaleString("en-IN")} m²
+                    </span>
                   </div>
                   <div>
-                    <span className="k">AISLES</span>
-                    <span className="v">{rackClusters * 2}</span>
+                    <span className="k">RACK FACES</span>
+                    <span className="v" id="sRacks">
+                      {rackClusters * 4}
+                    </span>
                   </div>
                   <div>
-                    <span className="k">AMR DENSITY</span>
-                    <span className="v">{clearanceM2} m²/bot</span>
+                    <span className="k">STATIONS</span>
+                    <span className="v" id="sSt">
+                      {Math.max(2, Math.min(6, Math.round(widthM / 20)))}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="k">CLASS</span>
+                    <span className="v" id="sCls">
+                      {areaM2 < 2000 ? "Dark store" : areaM2 < 8000 ? "Hub" : "Mega"}
+                    </span>
                   </div>
                 </div>
               </div>
