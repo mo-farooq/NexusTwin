@@ -201,11 +201,13 @@ export function Viewport() {
                 ? "Top-down"
                 : activeCamera === "iso"
                 ? "Isometric"
+                : activeCamera === "full"
+                ? "Full facility"
                 : activeCamera === "robot"
                 ? "Robot POV"
                 : activeCamera === "pack"
                 ? "Packing zoom"
-                : "Camera"}
+                : "Isometric"}
             </span> ▾
           </button>
           {showCamMenu && (

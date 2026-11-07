@@ -1433,7 +1433,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     showLabels: false,
     showPaths: true,
     activeFloor: "all",
-    activeCamera: "MAIN",
+    activeCamera: "iso",
     activeTool: "sel",
     drawer: null,
     modal: null,

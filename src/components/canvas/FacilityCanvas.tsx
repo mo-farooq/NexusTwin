@@ -69,9 +69,21 @@ function CameraRig({
   const activeFloor = useTwinStore((s) => s.activeFloor);
 
   const defaultCenter = useMemo(
-    () => (fixedCameraTarget ? new THREE.Vector3(...fixedCameraTarget) : new THREE.Vector3(widthM / 2, 0.5, depthM / 2)),
+    () => (fixedCameraTarget ? new THREE.Vector3(...fixedCameraTarget) : new THREE.Vector3(widthM / 2, 0.2, depthM / 2)),
     [widthM, depthM, fixedCameraTarget]
   );
+
+  // Ensure controls.target is always locked to the middle of the facility from the very start
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    (window as unknown as { __threeControls: OrbitControlsImpl }).__threeControls = controls;
+    const initialTarget = fixedCameraTarget
+      ? new THREE.Vector3(...fixedCameraTarget)
+      : new THREE.Vector3(widthM / 2, 0.2, depthM / 2);
+    controls.target.copy(initialTarget);
+    controls.update();
+  }, [controlsRef, widthM, depthM, fixedCameraTarget]);
 
   const targetLerpGoal = useRef<THREE.Vector3 | null>(null);
   const cameraPositionGoal = useRef<THREE.Vector3 | null>(null);
@@ -740,10 +752,19 @@ export function FacilityCanvas({
   const gridDimensions = useTwinStore((s) => s.gridDimensions);
   const activeTool = useTwinStore((s) => s.activeTool);
 
-  // Initial Isometric Camera Position
+  const cx = gridDimensions.widthM / 2;
+  const cz = gridDimensions.depthM / 2;
+
+  // Axis of rotation: Centered in the middle of the warehouse floor from the start
+  const defaultTarget: [number, number, number] = useMemo(
+    () => cameraTarget || [cx, 0.2, cz],
+    [cameraTarget, cx, cz]
+  );
+
+  // Initial Isometric Camera Position looking directly at the facility center
   const cameraPosition: [number, number, number] = useMemo(
-    () => customCameraPosition || [gridDimensions.widthM * 0.95, 38, gridDimensions.depthM * 1.3],
-    [customCameraPosition, gridDimensions]
+    () => customCameraPosition || [cx - 28, 32, cz + 32],
+    [customCameraPosition, cx, cz]
   );
 
   return (
@@ -777,6 +798,7 @@ export function FacilityCanvas({
         <OrbitControls
           ref={controlsRef}
           makeDefault
+          target={defaultTarget}
           enabled={interactive}
           enableRotate={interactive}
           enablePan={interactive}
