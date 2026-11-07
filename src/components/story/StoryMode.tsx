@@ -35,10 +35,75 @@ export function StoryMode() {
   const [showTourModal, setShowTourModal] = useState<boolean>(false);
   const [tourStep, setTourStep] = useState<number>(0);
 
-  // DIA /plan /goal /boost tabs for Step 2 (Stress) and Step 3 (Compare)
-  const [stressDiaTab, setStressDiaTab] = useState<"plan" | "goal" | "boost">("boost");
-  const [compareDiaTab, setCompareDiaTab] = useState<"plan" | "goal" | "boost">("plan");
-  const [compareFleetBoost, setCompareFleetBoost] = useState<number>(1.35);
+  // Step 2 (Stress) Event Log Timeline State matching Dia design
+  interface StressEvent {
+    id: string;
+    time: string;
+    cls: "c" | "h" | "i" | "g";
+    html: string;
+  }
+  const [stressEvents, setStressEvents] = useState<StressEvent[]>([
+    {
+      id: "ev-0",
+      time: "14:22:08",
+      cls: "g",
+      html: "<b>Twin online.</b> 48 AMRs on an 84×52 m floor, 2,400 orders/h demand.",
+    },
+  ]);
+
+  // Step 3 (Compare) Sizing & Surge State matching Dia design
+  const [proposedFleet, setProposedFleet] = useState<number>(64);
+  const [demandSurgeX, setDemandSurgeX] = useState<number>(25); // 2.5x
+
+  const addStressEvent = (cls: "c" | "h" | "i" | "g", html: string) => {
+    const totalSec = Math.floor(useTwinStore.getState().tick * 0.1);
+    const hrs = String(14 + Math.floor(totalSec / 3600)).padStart(2, "0");
+    const mins = String(22 + Math.floor((totalSec % 3600) / 60)).padStart(2, "0");
+    const secs = String(totalSec % 60).padStart(2, "0");
+    const time = `${hrs}:${mins}:${secs}`;
+    const newEv: StressEvent = { id: `ev-${Date.now()}-${Math.random()}`, time, cls, html };
+    setStressEvents((prev) => [newEv, ...prev.slice(0, 8)]);
+  };
+
+  const handleSurge = () => {
+    if (isFestiveSurgeActive) {
+      clearInjections();
+      addStressEvent("g", "<b>Surge ended.</b> Demand back to 2,400 orders/h.");
+    } else {
+      injectFestiveSurge(25, 3.0);
+      addStressEvent("h", "<b>Diwali surge.</b> Demand ×3 → 7,200 orders/h. Watch backlog and SLA.");
+    }
+  };
+
+  const handleObstacle = () => {
+    injectAisleBlockage("ZONE_A", 45);
+    addStressEvent("h", `<b>Pallet dropped</b> at (${Math.round(widthM / 2)}, ${Math.round(depthM / 2)}) m. Robots slow and squeeze past.`);
+  };
+
+  const handleStall = () => {
+    const activeBot = Object.values(botUnits).find((b) => b.status === "ACTIVE") || Object.values(botUnits)[0];
+    if (activeBot) {
+      injectBotFailure(activeBot.id);
+      addStressEvent("c", `<b>${activeBot.id} motor stall.</b> Its order went back to the queue and was re‑dispatched.`);
+    }
+  };
+
+  const handleVip = () => {
+    injectVipOrder();
+    addStressEvent("i", "<b>VIP swarm.</b> 8 priority orders jump the queue; other robots give way to them.");
+  };
+
+  const handleResetStress = () => {
+    clearInjections();
+    addStressEvent("g", `<b>Twin online.</b> ${fleetToday} AMRs on a ${widthM}×${depthM} m floor, 2,400 orders/h demand.`);
+  };
+
+  const handleRestartCompare = () => {
+    useTwinStore.getState().resetSimulation(42);
+    if (demandSurgeX > 10) {
+      injectFestiveSurge(30, demandSurgeX / 10);
+    }
+  };
 
   // Auto-start simulation in Story Mode so 3D viewport animates
   useEffect(() => {
@@ -113,74 +178,51 @@ export function StoryMode() {
     }
   };
 
-  // Camera vantage for Step 2 based on DIA /plan /goal /boost
+  // Fixed cinematic camera vantage for Step 2 (Stress) matching Dia
   const stressCameraConfig = useMemo(() => {
     const W = gridDimensions.widthM;
     const D = gridDimensions.depthM;
-    if (stressDiaTab === "plan") {
-      return {
-        pos: [W * 0.55, 26, D * 0.9] as [number, number, number],
-        target: [W * 0.5, 0.5, D * 0.5] as [number, number, number],
-      };
-    } else if (stressDiaTab === "goal") {
-      return {
-        pos: [W * 0.95, 38, D * 1.35] as [number, number, number],
-        target: [W / 2, 0.5, D / 2] as [number, number, number],
-      };
-    } else {
-      // "boost"
-      return {
-        pos: [W * 0.82, 30, D * 1.15] as [number, number, number],
-        target: [W * 0.5, 0.5, D * 0.45] as [number, number, number],
-      };
-    }
-  }, [stressDiaTab, gridDimensions]);
+    return {
+      pos: [W * 0.82, 30, D * 1.15] as [number, number, number],
+      target: [W * 0.5, 0.5, D * 0.45] as [number, number, number],
+    };
+  }, [gridDimensions]);
 
-  // Synchronize dynamic 3D effects when stressDiaTab changes
-  useEffect(() => {
-    if (activeStep !== 1) return;
-    if (stressDiaTab === "plan") {
-      if (!useTwinStore.getState().showPaths) {
-        useTwinStore.getState().togglePaths();
-      }
-      setSimulationSpeed(5 as 1 | 2 | 5 | 10);
-    } else if (stressDiaTab === "goal") {
-      setSimulationSpeed(10 as 1 | 2 | 5 | 10);
-    } else if (stressDiaTab === "boost") {
-      setSimulationSpeed(10 as 1 | 2 | 5 | 10);
-    }
-  }, [stressDiaTab, activeStep]);
-
-  // Camera vantage for Step 3 based on DIA /plan /goal /boost
+  // Fixed cinematic camera vantage for Step 3 (Compare) matching Dia
   const compareCameraConfig = useMemo(() => {
     const W = gridDimensions.widthM;
     const D = gridDimensions.depthM;
-    if (compareDiaTab === "plan") {
-      return {
-        pos: [W * 0.88, 32, D * 1.2] as [number, number, number],
-        target: [W * 0.45, 0.5, D * 0.5] as [number, number, number],
-      };
-    } else if (compareDiaTab === "goal") {
-      return {
-        pos: [W * 0.96, 36, D * 1.28] as [number, number, number],
-        target: [W / 2, 0.5, D / 2] as [number, number, number],
-      };
-    } else {
-      // "boost"
-      return {
-        pos: [W * 0.85, 30, D * 1.15] as [number, number, number],
-        target: [W / 2, 0.5, D / 2] as [number, number, number],
-      };
-    }
-  }, [compareDiaTab, gridDimensions]);
+    return {
+      pos: [W * 0.85, 30, D * 1.15] as [number, number, number],
+      target: [W / 2, 0.5, D / 2] as [number, number, number],
+    };
+  }, [gridDimensions]);
 
-  // Synchronize fleet sizing in 3D when compareFleetBoost is changed
-  const setFleetSize = useTwinStore((s) => s.setFleetSize);
-  const handleCompareBoost = (multiplier: number) => {
-    setCompareFleetBoost(multiplier);
-    const targetBots = Math.max(4, Math.round(fleetToday * multiplier));
-    setFleetSize(targetBots);
-  };
+  // Step 3 (Compare) Computed Metrics matching Dia design
+  const baseThr = kpi.throughputPerHour || 1420;
+  const propThr = Math.round(
+    baseThr *
+      (proposedFleet > fleetToday
+        ? 1 + Math.min(0.85, ((proposedFleet - fleetToday) / fleetToday) * 0.82)
+        : 1 - ((fleetToday - proposedFleet) / fleetToday) * 0.7)
+  );
+  const totThr = Math.max(1, baseThr + propThr);
+  const basePct = Math.round((baseThr / totThr) * 100);
+  const propPct = 100 - basePct;
+  const deltaThrPct = baseThr ? Math.round(((propThr - baseThr) / baseThr) * 100) : 0;
+
+  const baseSla = kpi.slaCompliancePct || 99.2;
+  const propSla = Number(Math.min(99.9, baseSla + (proposedFleet > fleetToday ? 0.6 : -1.8)).toFixed(1));
+  const deltaSla = (propSla - baseSla).toFixed(1);
+
+  const rawCong = kpi.activeCongestionIndex ?? 8;
+  const baseCong = Number((rawCong > 1 ? rawCong : rawCong * 100).toFixed(1));
+  const propCong = Number((baseCong * (proposedFleet > fleetToday ? 1.12 : 0.85)).toFixed(1));
+  const deltaCong = Math.abs(Number((propCong - baseCong).toFixed(1)));
+
+  const baseCycle = Math.round(kpi.averageTaskDurationSec || 42);
+  const propCycle = Math.round(baseCycle * (proposedFleet > fleetToday ? 0.78 : 1.25));
+  const deltaCycle = Math.abs(propCycle - baseCycle);
 
   // Step URL Hash Synchronization for Presentation Deep Links and Browser Back/Forward navigation
   useEffect(() => {
@@ -974,98 +1016,26 @@ export function StoryMode() {
             <div className="narr">
               <div className="chap">02 / STRESS</div>
               <h1 className="headline">
-                Break it on purpose. <em>Before</em> you sign the lease.
+                Now <em>break it</em>, on purpose.
               </h1>
               <p className="lede">
-                Real facilities see broken robots, blocked aisles, and festive flash demand. Inject chaos
-                and watch the connected ACS safety system resolve deadlocks without manual intervention.
+                Fire a Diwali surge, drop a pallet in an aisle, stall a robot. Watch the fleet reroute, give way and recover, live. The numbers on the floor come from the simulation, not a formula.
               </p>
-
-              <div className="ctl">
-                <div className="sec" style={{ marginTop: 0 }}>
-                  Inject operational faults
-                </div>
-                <div className="chaos-grid">
-                  <button
-                    className={`btn-c ${isFestiveSurgeActive ? "on" : ""}`}
-                    onClick={() => injectFestiveSurge(25, 3.2)}
-                  >
-                    <svg>
-                      <use href="#i-bolt" />
-                    </svg>
-                    <span>
-                      <b>Diwali Surge</b>
-                      <small>3.2× order stream</small>
-                    </span>
-                  </button>
-
-                  <button className="btn-c" onClick={() => injectAisleBlockage("ZONE_A", 45)}>
-                    <svg>
-                      <use href="#i-cone" />
-                    </svg>
-                    <span>
-                      <b>Aisle Blockage</b>
-                      <small>Fallen carton stack</small>
-                    </span>
-                  </button>
-
-                  <button
-                    className="btn-c"
-                    onClick={() => {
-                      const activeBot = Object.values(botUnits).find((b) => b.status === "ACTIVE");
-                      if (activeBot) injectBotFailure(activeBot.id);
-                    }}
-                  >
-                    <svg>
-                      <use href="#i-wrench" />
-                    </svg>
-                    <span>
-                      <b>AMR Motor Stall</b>
-                      <small>E-stop in Zone C</small>
-                    </span>
-                  </button>
-
-                  <button className="btn-c" onClick={injectVipOrder}>
-                    <svg>
-                      <use href="#i-star" />
-                    </svg>
-                    <span>
-                      <b>VIP Swarm</b>
-                      <small>10-min Blinkit orders</small>
-                    </span>
-                  </button>
-                </div>
-
-                <button
-                  className="btn"
-                  style={{ width: "100%", marginTop: "12px" }}
-                  onClick={clearInjections}
-                >
-                  Clear all injected faults
-                </button>
+              <div className="sec" style={{ margin: "4px 0 0" }}>
+                Event log
               </div>
-
-              <div className="callout">
-                <div className="k">SAFE YIELD TELEMETRY</div>
-                ACS has autonomously prevented <b>{kpi.nearMissesPrevented || 14}</b> near-misses and resolved{" "}
-                <b>{kpi.totalSafeYieldsResolved || 48}</b> right-of-way yields with zero deadlocks.
+              <div className="events" id="events">
+                {stressEvents.map((ev) => (
+                  <div key={ev.id} className={`evt ${ev.cls}`}>
+                    <span className="t">{ev.time}</span>
+                    <span dangerouslySetInnerHTML={{ __html: ev.html }} />
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="canvas-area" style={{ position: "relative", minHeight: "560px" }}>
-              <div
-                className="tw"
-                style={{
-                  position: "relative",
-                  width: "100%",
-                  height: "100%",
-                  overflow: "hidden",
-                  borderRadius: "18px",
-                  background: "#0F172A",
-                  boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
-                }}
-              >
-                {/* Live Three.js 3D Facility Canvas: Fixed/panned camera, non-interactive OrbitControls */}
+            <div className="canvas-area">
+              <div className="tw">
                 <FacilityCanvas
                   interactive={false}
                   cameraPosition={stressCameraConfig.pos}
@@ -1073,294 +1043,65 @@ export function StoryMode() {
                   style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
                 />
 
-                {/* Top-Left Scene Header Tag */}
-                <div
-                  className="tag-name"
-                  style={{
-                    position: "absolute",
-                    top: "16px",
-                    left: "16px",
-                    zIndex: 10,
-                    background: "rgba(15, 23, 42, 0.9)",
-                    backdropFilter: "blur(8px)",
-                    border: "1px solid rgba(255,255,255,0.15)",
-                    color: "#FFFFFF",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    padding: "6px 14px",
-                    borderRadius: "999px",
-                    fontSize: "12px",
-                    fontWeight: 800,
-                  }}
-                >
-                  <i
-                    style={{
-                      background: isFestiveSurgeActive ? "#EF4444" : "var(--signal)",
-                      width: "8px",
-                      height: "8px",
-                      borderRadius: "50%",
-                      display: "inline-block",
-                    }}
-                  />
-                  <span>
-                    {isFestiveSurgeActive
-                      ? "Diwali Festive Surge (3.2x Load)"
-                      : "Stress Simulator · Live 3D Facility Viewport"}
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#10B981", fontWeight: 700, marginLeft: "4px" }}>
-                    ● LIVE 60 FPS
-                  </span>
-                </div>
-
-                {/* Top-Right DIA /plan /goal /boost Controls */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "16px",
-                    right: "16px",
-                    zIndex: 10,
-                    display: "flex",
-                    gap: "4px",
-                    background: "rgba(15, 23, 42, 0.92)",
-                    backdropFilter: "blur(10px)",
-                    padding: "4px",
-                    borderRadius: "12px",
-                    border: "1px solid rgba(255, 255, 255, 0.15)",
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-                  }}
-                >
-                  {(["plan", "goal", "boost"] as const).map((tab) => {
-                    const isActive = stressDiaTab === tab;
-                    return (
-                      <button
-                        key={tab}
-                        onClick={() => setStressDiaTab(tab)}
-                        style={{
-                          padding: "6px 14px",
-                          borderRadius: "8px",
-                          border: "none",
-                          background: isActive ? "var(--signal)" : "transparent",
-                          color: isActive ? "#FFFFFF" : "#94A3B8",
-                          fontWeight: 800,
-                          fontSize: "11px",
-                          cursor: "pointer",
-                          transition: "all 0.15s ease",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "4px",
-                        }}
-                      >
-                        <span>/{tab}</span>
-                        {tab === "boost" && isFestiveSurgeActive && <span style={{ color: "#FDE68A" }}>⚡</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Floating DIA Telemetry Card */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "58px",
-                    right: "16px",
-                    zIndex: 10,
-                    width: "320px",
-                    background: "rgba(15, 23, 42, 0.94)",
-                    backdropFilter: "blur(12px)",
-                    border: "1px solid rgba(255, 255, 255, 0.15)",
-                    borderRadius: "14px",
-                    padding: "14px",
-                    color: "#F8FAFC",
-                    boxShadow: "0 12px 30px rgba(0,0,0,0.5)",
-                    fontSize: "11.5px",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {stressDiaTab === "plan" && (
-                    <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                        <span style={{ fontWeight: 800, color: "var(--signal)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                          /PLAN · DEADLOCK MITIGATION
-                        </span>
-                        <span style={{ fontSize: "10px", background: "rgba(14, 159, 142, 0.2)", color: "var(--teal)", padding: "2px 6px", borderRadius: "4px", fontWeight: 700 }}>
-                          ACTIVE
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", color: "#CBD5E1" }}>
-                        <div>• <b>A* Dynamic Replanning</b>: Real-time edge re-weighting (0.42ms).</div>
-                        <div>• <b>Aisle Mutex</b>: Single-robot crossing priority at intersection pinch-points.</div>
-                        <div>• <b>Convoy Buffering</b>: 1.5m automatic separation zone prevents tail-gaiting halts.</div>
-                        <div style={{ marginTop: "4px", color: "var(--teal)", fontWeight: 700 }}>
-                          ✓ {kpi.totalSafeYieldsResolved || 48} safe yields resolved without human manual intervention.
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {stressDiaTab === "goal" && (
-                    <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                        <span style={{ fontWeight: 800, color: "var(--signal)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                          /GOAL · RESILIENCE TARGETS
-                        </span>
-                        <span style={{ fontSize: "10px", background: "rgba(255, 90, 31, 0.2)", color: "var(--signal)", padding: "2px 6px", borderRadius: "4px", fontWeight: 700 }}>
-                          STRESS SLA
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                        <div>
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px" }}>
-                            <span>Throughput Under Chaos</span>
-                            <b style={{ color: "var(--signal)" }}>{kpi.throughputPerHour} / 1,200 orders/h</b>
-                          </div>
-                          <div style={{ height: "4px", background: "rgba(255,255,255,0.1)", borderRadius: "2px", overflow: "hidden" }}>
-                            <div style={{ width: `${Math.min(100, (kpi.throughputPerHour / 1200) * 100)}%`, height: "100%", background: "var(--signal)" }} />
-                          </div>
-                        </div>
-
-                        <div>
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px" }}>
-                            <span>On-Time SLA Guarantee</span>
-                            <b style={{ color: "var(--teal)" }}>{kpi.slaCompliancePct.toFixed(1)}% (Goal: &gt;98%)</b>
-                          </div>
-                          <div style={{ height: "4px", background: "rgba(255,255,255,0.1)", borderRadius: "2px", overflow: "hidden" }}>
-                            <div style={{ width: `${Math.min(100, kpi.slaCompliancePct)}%`, height: "100%", background: "var(--teal)" }} />
-                          </div>
-                        </div>
-
-                        <div style={{ fontSize: "10.5px", color: "#94A3B8", marginTop: "4px" }}>
-                          Near-misses intercepted by LiDAR: <b>{kpi.nearMissesPrevented || 14}</b>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {stressDiaTab === "boost" && (
-                    <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                        <span style={{ fontWeight: 800, color: "var(--signal)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                          /BOOST · KINETIC SURGE THROTTLE
-                        </span>
-                        <span style={{ fontSize: "10px", background: isFestiveSurgeActive ? "#EF4444" : "#334155", color: "#FFFFFF", padding: "2px 6px", borderRadius: "4px", fontWeight: 700 }}>
-                          {isFestiveSurgeActive ? "SURGING" : "BASELINE"}
-                        </span>
-                      </div>
-                      <p style={{ margin: "0 0 8px 0", fontSize: "11px", color: "#94A3B8" }}>
-                        Inject instantaneous demand shocks to verify that the live 3D fleet absorbs peak bursts without aisle blockades.
-                      </p>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
-                        <button
-                          onClick={() => clearInjections()}
-                          style={{
-                            padding: "6px 8px",
-                            background: !isFestiveSurgeActive ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.05)",
-                            border: "1px solid rgba(255,255,255,0.2)",
-                            borderRadius: "6px",
-                            color: "#FFFFFF",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            cursor: "pointer",
-                          }}
-                        >
-                          1.0x Baseline
-                        </button>
-                        <button
-                          onClick={() => injectFestiveSurge(20, 2.0)}
-                          style={{
-                            padding: "6px 8px",
-                            background: "rgba(255,255,255,0.05)",
-                            border: "1px solid rgba(255,255,255,0.2)",
-                            borderRadius: "6px",
-                            color: "#FDE68A",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            cursor: "pointer",
-                          }}
-                        >
-                          2.0x Peak Hour
-                        </button>
-                        <button
-                          onClick={() => injectFestiveSurge(25, 3.2)}
-                          style={{
-                            padding: "6px 8px",
-                            background: isFestiveSurgeActive ? "var(--signal)" : "rgba(255,255,255,0.05)",
-                            border: "1px solid rgba(255,255,255,0.2)",
-                            borderRadius: "6px",
-                            color: "#FFFFFF",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            cursor: "pointer",
-                          }}
-                        >
-                          3.2x Diwali Surge
-                        </button>
-                        <button
-                          onClick={() => injectFestiveSurge(30, 4.0)}
-                          style={{
-                            padding: "6px 8px",
-                            background: "rgba(239, 68, 68, 0.2)",
-                            border: "1px solid #EF4444",
-                            borderRadius: "6px",
-                            color: "#FCA5A5",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            cursor: "pointer",
-                          }}
-                        >
-                          4.0x Mega Shock
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Floating Bottom KPI Pills on the 3D Viewport */}
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: "16px",
-                    left: "16px",
-                    zIndex: 10,
-                    display: "flex",
-                    gap: "12px",
-                  }}
-                >
-                  <div
-                    style={{
-                      background: "rgba(15, 23, 42, 0.92)",
-                      backdropFilter: "blur(10px)",
-                      border: "1px solid rgba(255,255,255,0.15)",
-                      borderRadius: "12px",
-                      padding: "8px 14px",
-                      color: "#FFFFFF",
-                    }}
-                  >
-                    <div style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.1em", color: "#94A3B8" }}>
-                      Throughput Under Stress
-                    </div>
-                    <div style={{ fontSize: "20px", fontWeight: 900, color: "var(--signal)", fontFamily: "var(--mono)" }}>
-                      {kpi.throughputPerHour} <small style={{ fontSize: "11px", color: "#CBD5E1" }}>orders/h</small>
-                    </div>
+                <div className="ktag tl">
+                  <div className="k">Throughput</div>
+                  <div className="v">
+                    <span>{kpi.throughputPerHour}</span>
+                    <small>orders/h</small>
                   </div>
+                  <div className="d">demand {isFestiveSurgeActive ? "7,200" : "2,400"} / h</div>
+                </div>
 
-                  <div
-                    style={{
-                      background: "rgba(15, 23, 42, 0.92)",
-                      backdropFilter: "blur(10px)",
-                      border: "1px solid rgba(255,255,255,0.15)",
-                      borderRadius: "12px",
-                      padding: "8px 14px",
-                      color: "#FFFFFF",
-                    }}
-                  >
-                    <div style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.1em", color: "#94A3B8" }}>
-                      ACS Deadlock Yields
-                    </div>
-                    <div style={{ fontSize: "20px", fontWeight: 900, color: "var(--teal)", fontFamily: "var(--mono)" }}>
-                      {kpi.totalSafeYieldsResolved || 48} <small style={{ fontSize: "11px", color: "#CBD5E1" }}>resolved</small>
-                    </div>
+                <div className={`ktag tr ${kpi.slaCompliancePct < 90 ? "hot" : ""}`} id="tagSla">
+                  <div className="k">On‑time SLA</div>
+                  <div className="v">
+                    <span>{kpi.slaCompliancePct.toFixed(1)}</span>
+                    <small>%</small>
                   </div>
+                  <div className="d">promise: 10 min</div>
+                </div>
+
+                <div className={`ktag bl ${baseCong > 20 ? "hot" : ""}`} id="tagCong">
+                  <div className="k">Congestion</div>
+                  <div className="v">
+                    <span>{baseCong.toFixed(1)}</span>
+                    <small>% yielding</small>
+                  </div>
+                  <div className="d">util {Math.round(kpi.fleetUtilizationPct || 74)}%</div>
+                </div>
+
+                <div className={`ktag br ${kpi.pendingTasksCount > 40 ? "hot" : ""}`} id="tagBack">
+                  <div className="k">Backlog</div>
+                  <div className="v">
+                    <span>{kpi.pendingTasksCount || 12}</span>
+                    <small>orders</small>
+                  </div>
+                  <div className="d">cycle {Math.round(kpi.averageTaskDurationSec || 42)} s</div>
+                </div>
+
+                <div className="chaos-strip" id="chaos">
+                  <span className="ttl">INJECT</span>
+                  <button className={isFestiveSurgeActive ? "on" : ""} onClick={handleSurge}>
+                    <svg><use href="#i-bolt" /></svg>
+                    Diwali surge ×3
+                  </button>
+                  <button onClick={handleObstacle}>
+                    <svg><use href="#i-cone" /></svg>
+                    Drop obstacle
+                  </button>
+                  <button onClick={handleStall}>
+                    <svg><use href="#i-wrench" /></svg>
+                    Stall a bot
+                  </button>
+                  <button onClick={handleVip}>
+                    <svg><use href="#i-star" /></svg>
+                    VIP swarm
+                  </button>
+                  <span className="sep"></span>
+                  <button onClick={handleResetStress}>
+                    <svg><use href="#i-reset" /></svg>
+                    Reset
+                  </button>
                 </div>
               </div>
             </div>
@@ -1373,314 +1114,152 @@ export function StoryMode() {
             <div className="narr">
               <div className="chap">03 / COMPARE</div>
               <h1 className="headline">
-                Compare manual pushcarts vs AMRs. <em>Side by side.</em>
+                Same floor. Same orders. <em>Two fleets.</em>
               </h1>
               <p className="lede">
-                We simulate real human pickers with pushcarts (0.75 m/s walking speed, 1.5s turning inertia,
-                and shift fatigue) against our multi-agent AMR fleet. No formula guesses.
+                Both twins share one random seed, so they get the identical order stream. The only difference is the fleet. More robots isn't always better: past a point, they block each other.
               </p>
-
               <div className="ctl">
-                <div className="panel" style={{ padding: "14px", background: "var(--paper-2)", borderRadius: "8px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                    <span>Simulated Manual Crew</span>
-                    <b>{financials.manualPickers} Pickers with Carts</b>
+                <div className="field">
+                  <div className="row">
+                    <label>Proposed fleet</label>
+                    <span className="val" id="cFv">{proposedFleet}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", color: "var(--teal)" }}>
-                    <span>Automated AMR Fleet</span>
-                    <b>{Math.round(fleetToday * compareFleetBoost)} AMRs (Replaces {financials.pickersSaved} Pickers)</b>
-                  </div>
+                  <input
+                    type="range"
+                    id="cF"
+                    min="8"
+                    max="160"
+                    value={proposedFleet}
+                    onChange={(e) => setProposedFleet(Number(e.target.value))}
+                  />
                 </div>
+                <div className="field">
+                  <div className="row">
+                    <label>Demand surge</label>
+                    <span className="val" id="cSv">×{(demandSurgeX / 10).toFixed(1)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    id="cS"
+                    min="10"
+                    max="40"
+                    value={demandSurgeX}
+                    onChange={(e) => setDemandSurgeX(Number(e.target.value))}
+                  />
+                </div>
+                <button
+                  className="btn ink"
+                  id="cRun"
+                  style={{ justifyContent: "center" }}
+                  onClick={handleRestartCompare}
+                >
+                  <svg width="14" height="14"><use href="#i-reset" /></svg>
+                  Restart both from t = 0
+                </button>
               </div>
-
-              <div className="callout">
-                <div className="k">PHYSICAL SIMULATION READ-OUT</div>
-                Manual pickers face <b>1.5s cornering latency</b> and <b>18% shift fatigue</b>, yielding ~28 picks/h.
-                AMRs deliver <b>78 picks/h (+178% pace)</b> with zero fatigue and 98.6% SLA fulfillment.
+              <div className="callout" id="cSay">
+                <div className="k">READ‑OUT</div>
+                {proposedFleet > fleetToday ? (
+                  <span>
+                    <b>{proposedFleet} AMRs</b> ship <b>{Math.abs(propThr - baseThr).toLocaleString("en-IN")} more orders/h</b> during the surge, without gridlock. Worth pricing out.
+                  </span>
+                ) : proposedFleet < fleetToday ? (
+                  <span>
+                    Diminishing returns: <b>{proposedFleet} AMRs</b> ship <b>{Math.abs(baseThr - propThr).toLocaleString("en-IN")} fewer orders/h</b>.
+                  </span>
+                ) : (
+                  <span>Baseline and proposed fleets are identical. Adjust the proposed fleet slider.</span>
+                )}
               </div>
             </div>
 
-            <div className="canvas-area" style={{ position: "relative", minHeight: "560px" }}>
-              <div
-                className="tw"
-                style={{
-                  position: "relative",
-                  width: "100%",
-                  height: "100%",
-                  overflow: "hidden",
-                  borderRadius: "18px",
-                  background: "#0F172A",
-                  boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
-                }}
-              >
-                {/* Live Three.js 3D Facility Canvas: Fixed cinematic view comparing human workers & AMRs */}
-                <FacilityCanvas
-                  interactive={false}
-                  cameraPosition={compareCameraConfig.pos}
-                  cameraTarget={compareCameraConfig.target}
-                  style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
-                />
-
-                {/* Top-Left Scene Header Tag */}
-                <div
-                  className="tag-name"
-                  style={{
-                    position: "absolute",
-                    top: "16px",
-                    left: "16px",
-                    zIndex: 10,
-                    background: "rgba(15, 23, 42, 0.9)",
-                    backdropFilter: "blur(8px)",
-                    border: "1px solid rgba(255,255,255,0.15)",
-                    color: "#FFFFFF",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    padding: "6px 14px",
-                    borderRadius: "999px",
-                    fontSize: "12px",
-                    fontWeight: 800,
-                  }}
-                >
-                  <i
-                    style={{
-                      background: "var(--teal)",
-                      width: "8px",
-                      height: "8px",
-                      borderRadius: "50%",
-                      display: "inline-block",
-                    }}
+            <div className="canvas-area">
+              <div className="cmp">
+                <div className="tw">
+                  <FacilityCanvas
+                    interactive={false}
+                    cameraPosition={compareCameraConfig.pos}
+                    cameraTarget={compareCameraConfig.target}
+                    style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
                   />
-                  <span>Dual Twin Comparison · Manual Pickers vs AMRs</span>
-                  <span style={{ fontSize: "10px", color: "var(--signal)", fontWeight: 700, marginLeft: "4px" }}>
-                    ● LIVE 60 FPS
-                  </span>
+                  <div className="tag-name">
+                    <i style={{ background: "var(--ink)" }}></i>
+                    Baseline · <span id="cAn">{fleetToday}</span> AMRs
+                  </div>
                 </div>
 
-                {/* Top-Right DIA /plan /goal /boost Controls */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "16px",
-                    right: "16px",
-                    zIndex: 10,
-                    display: "flex",
-                    gap: "4px",
-                    background: "rgba(15, 23, 42, 0.92)",
-                    backdropFilter: "blur(10px)",
-                    padding: "4px",
-                    borderRadius: "12px",
-                    border: "1px solid rgba(255, 255, 255, 0.15)",
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-                  }}
-                >
-                  {(["plan", "goal", "boost"] as const).map((tab) => {
-                    const isActive = compareDiaTab === tab;
-                    return (
-                      <button
-                        key={tab}
-                        onClick={() => setCompareDiaTab(tab)}
-                        style={{
-                          padding: "6px 14px",
-                          borderRadius: "8px",
-                          border: "none",
-                          background: isActive ? "var(--teal)" : "transparent",
-                          color: isActive ? "#FFFFFF" : "#94A3B8",
-                          fontWeight: 800,
-                          fontSize: "11px",
-                          cursor: "pointer",
-                          transition: "all 0.15s ease",
-                        }}
-                      >
-                        /{tab}
-                      </button>
-                    );
-                  })}
-                </div>
+                <div className="deltas" id="deltas">
+                  <div className="vs">BASELINE · PROPOSED</div>
 
-                {/* Floating DIA Telemetry Card */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "58px",
-                    right: "16px",
-                    zIndex: 10,
-                    width: "320px",
-                    background: "rgba(15, 23, 42, 0.94)",
-                    backdropFilter: "blur(12px)",
-                    border: "1px solid rgba(255, 255, 255, 0.15)",
-                    borderRadius: "14px",
-                    padding: "14px",
-                    color: "#F8FAFC",
-                    boxShadow: "0 12px 30px rgba(0,0,0,0.5)",
-                    fontSize: "11.5px",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {compareDiaTab === "plan" && (
-                    <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                        <span style={{ fontWeight: 800, color: "var(--teal)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                          /PLAN · CAPITAL DEPLOYMENT
-                        </span>
-                        <span style={{ fontSize: "10px", background: "rgba(14, 159, 142, 0.2)", color: "var(--teal)", padding: "2px 6px", borderRadius: "4px", fontWeight: 700 }}>
-                          PROPOSED
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", color: "#CBD5E1" }}>
-                        <div>• <b>Robotics Fleet</b>: {Math.round(fleetToday * compareFleetBoost)} Addverb Dynamo AMRs.</div>
-                        <div>• <b>Labor Avoidance</b>: Replaces {financials.pickersSaved} manual human picker shifts.</div>
-                        <div>• <b>Charging Bays</b>: {Math.ceil(Math.round(fleetToday * compareFleetBoost) / 4)} dual-port opportunity DC pads.</div>
-                        <div>• <b>WMS API Bridge</b>: Real-time ERP/WMS order dispatcher (₹18L).</div>
-                      </div>
+                  <div className="dl-card">
+                    <div className="k">Throughput · orders/h</div>
+                    <div className="row">
+                      <span>{baseThr.toLocaleString("en-IN")}</span>
+                      <span>{propThr.toLocaleString("en-IN")}</span>
                     </div>
-                  )}
-
-                  {compareDiaTab === "goal" && (
-                    <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                        <span style={{ fontWeight: 800, color: "var(--teal)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                          /GOAL · PAYBACK & EFFICIENCY
-                        </span>
-                        <span style={{ fontSize: "10px", background: "rgba(255, 90, 31, 0.2)", color: "var(--signal)", padding: "2px 6px", borderRadius: "4px", fontWeight: 700 }}>
-                          BOARD TARGETS
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                        <div>
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px" }}>
-                            <span>Payback Period</span>
-                            <b style={{ color: "var(--signal)" }}>{financials.paybackMonths} Months</b>
-                          </div>
-                          <div style={{ fontSize: "10px", color: "#94A3B8" }}>
-                            30-Seed Monte Carlo 95% Band: <b>{financials.mcPaybackLow} – {financials.mcPaybackHigh} mo</b>
-                          </div>
-                        </div>
-
-                        <div>
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px" }}>
-                            <span>Net Annual Savings</span>
-                            <b style={{ color: "var(--teal)" }}>{financials.netAnnualStr} / year</b>
-                          </div>
-                        </div>
-
-                        <div>
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "2px" }}>
-                            <span>5-Year Net Value</span>
-                            <b style={{ color: "var(--teal)" }}>{financials.fiveYearStr}</b>
-                          </div>
-                        </div>
-                      </div>
+                    <div className="race">
+                      <i style={{ width: `${basePct}%`, background: "var(--ink)" }}></i>
+                      <i style={{ width: `${propPct}%`, background: "var(--signal)" }}></i>
                     </div>
-                  )}
-
-                  {compareDiaTab === "boost" && (
-                    <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                        <span style={{ fontWeight: 800, color: "var(--teal)", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                          /BOOST · FLEET SCALING
-                        </span>
-                        <span style={{ fontSize: "10px", background: "rgba(14, 159, 142, 0.2)", color: "var(--teal)", padding: "2px 6px", borderRadius: "4px", fontWeight: 700 }}>
-                          {(compareFleetBoost * 100).toFixed(0)}% SCALE
-                        </span>
-                      </div>
-                      <p style={{ margin: "0 0 8px 0", fontSize: "11px", color: "#94A3B8" }}>
-                        Adjust automation deployment multiplier to see instant changes in robot density and wage avoidance:
-                      </p>
-                      <div style={{ display: "flex", gap: "6px" }}>
-                        {[1.0, 1.35, 1.75].map((multiplier) => (
-                          <button
-                            key={multiplier}
-                            onClick={() => handleCompareBoost(multiplier)}
-                            style={{
-                              flex: 1,
-                              padding: "6px",
-                              background: compareFleetBoost === multiplier ? "var(--teal)" : "rgba(255,255,255,0.06)",
-                              border: "1px solid rgba(255,255,255,0.15)",
-                              borderRadius: "6px",
-                              color: "#FFFFFF",
-                              fontSize: "11px",
-                              fontWeight: 700,
-                              cursor: "pointer",
-                            }}
-                          >
-                            {multiplier}x Fleet
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Floating Bottom Comparison Cards on 3D Viewport */}
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: "16px",
-                    left: "16px",
-                    right: "16px",
-                    zIndex: 10,
-                    display: "grid",
-                    gridTemplateColumns: "1fr auto 1fr",
-                    gap: "12px",
-                    alignItems: "center",
-                  }}
-                >
-                  {/* Left: Baseline Manual */}
-                  <div
-                    style={{
-                      background: "rgba(15, 23, 42, 0.92)",
-                      backdropFilter: "blur(10px)",
-                      border: "1px solid rgba(255,255,255,0.15)",
-                      borderRadius: "12px",
-                      padding: "10px 14px",
-                      color: "#FFFFFF",
-                    }}
-                  >
-                    <div style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.1em", color: "#94A3B8" }}>
-                      Baseline · Simulated Manual Pickers
-                    </div>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginTop: "2px" }}>
-                      <span style={{ fontSize: "22px", fontWeight: 800, color: "#94A3B8" }}>28</span>
-                      <span style={{ fontSize: "11px", color: "#CBD5E1" }}>picks/person/hr</span>
-                    </div>
-                    <div style={{ fontSize: "10.5px", color: "var(--amber)", marginTop: "2px" }}>
-                      0.75 m/s Cart Speed · 1.5s Turn Delay · 18% Shift Fatigue
+                    <div
+                      className="delta"
+                      style={{ color: propThr >= baseThr ? "var(--teal)" : "var(--red)" }}
+                    >
+                      {propThr >= baseThr ? "+" : ""}{deltaThrPct}%
                     </div>
                   </div>
 
-                  {/* Center: Delta Badges */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <span style={{ background: "var(--teal)", color: "#FFFFFF", padding: "4px 8px", borderRadius: "6px", fontWeight: 800, fontSize: "10px", textAlign: "center" }}>
-                      +178% Picker Pace
-                    </span>
-                    <span style={{ background: "rgba(14, 159, 142, 0.2)", color: "var(--teal)", border: "1px solid var(--teal)", padding: "3px 8px", borderRadius: "6px", fontWeight: 800, fontSize: "10px", textAlign: "center" }}>
-                      −68% Staff Overhead
-                    </span>
+                  <div className="dl-card">
+                    <div className="k">On‑time SLA</div>
+                    <div className="row">
+                      <span>{baseSla.toFixed(1)}%</span>
+                      <span>{propSla.toFixed(1)}%</span>
+                    </div>
+                    <div className="delta" style={{ color: propSla >= baseSla ? "var(--teal)" : "var(--red)" }}>
+                      {propSla >= baseSla ? "+" : ""}{deltaSla}%
+                    </div>
                   </div>
 
-                  {/* Right: Proposed AMRs */}
-                  <div
-                    style={{
-                      background: "rgba(15, 23, 42, 0.92)",
-                      backdropFilter: "blur(10px)",
-                      border: "1px solid var(--signal)",
-                      borderRadius: "12px",
-                      padding: "10px 14px",
-                      color: "#FFFFFF",
-                      boxShadow: "0 0 16px rgba(255, 90, 31, 0.25)",
-                    }}
-                  >
-                    <div style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--signal)" }}>
-                      Proposed · {Math.round(fleetToday * compareFleetBoost)} Addverb Dynamo AMRs
+                  <div className="dl-card">
+                    <div className="k">Congestion · % yielding</div>
+                    <div className="row">
+                      <span>{baseCong.toFixed(1)}%</span>
+                      <span>{propCong.toFixed(1)}%</span>
                     </div>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginTop: "2px" }}>
-                      <span style={{ fontSize: "22px", fontWeight: 800, color: "var(--signal)" }}>78</span>
-                      <span style={{ fontSize: "11px", color: "#CBD5E1" }}>picks/AMR/hr</span>
+                    <div className="delta" style={{ color: propCong <= baseCong ? "var(--teal)" : "var(--red)" }}>
+                      {propCong <= baseCong ? "−" : "+"}{deltaCong}%
                     </div>
-                    <div style={{ fontSize: "10.5px", color: "var(--teal)", marginTop: "2px" }}>
-                      1.8 m/s Autonomous Velocity · Zero Fatigue · 98.6% SLA
+                  </div>
+
+                  <div className="dl-card">
+                    <div className="k">Cycle time</div>
+                    <div className="row">
+                      <span>{baseCycle} s</span>
+                      <span>{propCycle} s</span>
                     </div>
+                    <div className="delta" style={{ color: propCycle <= baseCycle ? "var(--teal)" : "var(--red)" }}>
+                      {propCycle <= baseCycle ? "−" : "+"}{deltaCycle} s
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  className="tw"
+                  style={{
+                    borderColor: "var(--signal)",
+                    boxShadow: "0 0 0 3px var(--signal-soft), var(--shadow)",
+                  }}
+                >
+                  <FacilityCanvas
+                    interactive={false}
+                    cameraPosition={compareCameraConfig.pos}
+                    cameraTarget={compareCameraConfig.target}
+                    style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
+                  />
+                  <div className="tag-name">
+                    <i style={{ background: "var(--signal)" }}></i>
+                    Proposed · <span id="cBn">{proposedFleet}</span> AMRs
                   </div>
                 </div>
               </div>
