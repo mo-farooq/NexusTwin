@@ -18,6 +18,8 @@ export function TopBar() {
   const tick = useTwinStore((s) => s.tick);
   const appMode = useTwinStore((s) => s.appMode);
   const setAppMode = useTwinStore((s) => s.setAppMode);
+  const viewMode = useTwinStore((s) => s.viewMode);
+  const setViewMode = useTwinStore((s) => s.setViewMode);
 
   const startSimulation = useTwinStore((s) => s.startSimulation);
   const pauseSimulation = useTwinStore((s) => s.pauseSimulation);
@@ -78,6 +80,27 @@ export function TopBar() {
 
       {/* 3. Right Transport & Action Hub */}
       <div className="right">
+        {/* Focus / Full Mode Switcher */}
+        {appMode === "OPERATOR" && (
+          <>
+            <div className="seg mode-sw" id="modeSw" title="Press F to switch view">
+              <button
+                className={viewMode === "focus" ? "on" : ""}
+                onClick={() => setViewMode("focus")}
+              >
+                Focus
+              </button>
+              <button
+                className={viewMode === "full" ? "on" : ""}
+                onClick={() => setViewMode("full")}
+              >
+                Full
+              </button>
+            </div>
+            <span className="vsep" />
+          </>
+        )}
+
         {/* Playback Controls */}
         <div className="transport">
           <button

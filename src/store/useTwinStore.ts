@@ -970,6 +970,13 @@ export interface NexusTwinState {
   // View & UI Navigation
   appMode: "OPERATOR" | "STORY";
   setAppMode: (mode: "OPERATOR" | "STORY") => void;
+  viewMode: "focus" | "full";
+  setViewMode: (mode: "focus" | "full") => void;
+  focusDockTab: number | "ledger" | null;
+  setFocusDockTab: (tab: number | "ledger" | null) => void;
+  activePopover: "systems" | "incidents" | null;
+  setActivePopover: (pop: "systems" | "incidents" | null) => void;
+  closeAllFocusPopups: () => void;
   viewTab: "3D" | "MAP" | "TRAFFIC" | "HEATMAP";
   showLabels: boolean;
   showPaths: boolean;
@@ -1355,6 +1362,16 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     // View & UI Navigation
     appMode: "OPERATOR",
     setAppMode: (mode) => set({ appMode: mode }),
+    viewMode: (typeof localStorage !== "undefined" && (localStorage.getItem("nt-mode") as "focus" | "full")) || "focus",
+    setViewMode: (mode) => {
+      if (typeof localStorage !== "undefined") localStorage.setItem("nt-mode", mode);
+      set({ viewMode: mode });
+    },
+    focusDockTab: null,
+    setFocusDockTab: (tab) => set((s) => ({ focusDockTab: s.focusDockTab === tab ? null : tab })),
+    activePopover: null,
+    setActivePopover: (pop) => set((s) => ({ activePopover: s.activePopover === pop ? null : pop })),
+    closeAllFocusPopups: () => set({ activePopover: null, focusDockTab: null }),
     viewTab: "3D",
     showLabels: false,
     showPaths: true,

@@ -29,6 +29,8 @@ import { WhatIfDrawer } from "./components/ops/WhatIfDrawer";
 import { AuditLedgerModal } from "./components/ops/AuditLedgerModal";
 import { WarehouseBuilderModal } from "./components/hud/WarehouseBuilderModal";
 import { DecisionSandboxModal } from "./components/hud/DecisionSandboxModal";
+import { KpiStrip } from "./components/hud/KpiStrip";
+import { AnalyticsDock } from "./components/hud/AnalyticsDock";
 
 const DESIGN_W = 1536;
 const DESIGN_H = 860;
@@ -50,6 +52,7 @@ export function App() {
   useFitScale();
 
   const appMode = useTwinStore((s) => s.appMode);
+  const viewMode = useTwinStore((s) => s.viewMode);
   const isRunning = useTwinStore((s) => s.isRunning);
   const simulationSpeed = useTwinStore((s) => s.simulationSpeed);
   const stepSimulation = useTwinStore((s) => s.stepSimulation);
@@ -92,7 +95,7 @@ export function App() {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
-  // Keyboard shortcut listener: Space to toggle play/pause, 'w' for What-If
+  // Keyboard shortcut listener: Space to toggle play/pause, 'w' for What-If, 'f' for Focus/Full, Escape to close focus popups
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -106,6 +109,15 @@ export function App() {
         }
       } else if (e.key === "w" || e.key === "W") {
         useTwinStore.getState().setDrawer("whatif");
+      } else if (e.key === "f" || e.key === "F") {
+        const state = useTwinStore.getState();
+        state.setViewMode(state.viewMode === "focus" ? "full" : "focus");
+      } else if (e.key === "Escape") {
+        const state = useTwinStore.getState();
+        state.closeAllFocusPopups();
+        state.selectBot(null);
+        state.selectRack(null);
+        state.selectStation(null);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -117,7 +129,7 @@ export function App() {
   }
 
   return (
-    <div className="app calm">
+    <div className={`app calm ${viewMode === "focus" ? "focus" : ""}`}>
       <TopBar />
 
       <main className="body">
@@ -131,7 +143,9 @@ export function App() {
 
         {/* Center 3D/2D Viewport */}
         <section className="center">
+          {viewMode === "focus" && <KpiStrip />}
           <Viewport />
+          {viewMode === "focus" && <AnalyticsDock />}
         </section>
 
         {/* Bottom Dispatch & Analytics Dock */}

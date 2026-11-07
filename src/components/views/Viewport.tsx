@@ -13,6 +13,7 @@ import React, { useState } from "react";
 import { useTwinStore } from "../../store/useTwinStore";
 import { FacilityCanvas } from "../canvas/FacilityCanvas";
 import { MapView2D } from "./MapView2D";
+import { InspectorDock } from "../hud/InspectorDock";
 
 export function Viewport() {
   const viewTab = useTwinStore((s) => s.viewTab);
@@ -36,6 +37,10 @@ export function Viewport() {
   const injectBotFailure = useTwinStore((s) => s.injectBotFailure);
   const defragmentRacks = useTwinStore((s) => s.defragmentRacks);
   const clearInjections = useTwinStore((s) => s.clearInjections);
+  const selectedBotId = useTwinStore((s) => s.selectedBotId);
+  const selectedRackId = useTwinStore((s) => s.selectedRackId);
+  const selectedStationId = useTwinStore((s) => s.selectedStationId);
+  const isInspOpen = Boolean(selectedBotId || selectedRackId || selectedStationId);
 
   const [activeTool, setActiveTool] = useState<"sel" | "pan" | "ruler">("sel");
   const [showCamMenu, setShowCamMenu] = useState(false);
@@ -80,7 +85,7 @@ export function Viewport() {
   };
 
   return (
-    <div className="vp" id="vp">
+    <div className={`vp ${isInspOpen ? "insp-open" : ""}`} id="vp">
       {/* Primary 3D Canvas or 2D Map */}
       {viewTab === "3D" ? (
         <FacilityCanvas style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }} />
@@ -269,6 +274,9 @@ export function Viewport() {
           <b>16.6ms</b> · A* <b>0.42ms</b> · <b>{totalBots}</b> agents
         </span>
       </div>
+
+      {/* Focus Mode Slide-in Inspector Dock */}
+      <InspectorDock />
     </div>
   );
 }

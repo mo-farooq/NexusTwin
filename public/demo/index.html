@@ -6,6 +6,7 @@
 <title>NexusTwin · Operator View</title>
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="calm.css">
+<link rel="stylesheet" href="focus.css">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute">
@@ -51,6 +52,8 @@
     <div></div>
 
     <div class="right">
+      <div class="seg mode-sw" id="modeSw" title="Press F to switch"><button data-m="focus">Focus</button><button data-m="full">Full</button></div>
+      <span class="vsep"></span>
       <div class="transport" id="transport">
         <button class="play on" id="playBtn" title="Play / Pause (Space)"><svg><use href="#i-pause"/></svg></button>
         <button data-speed="1" class="on">1×</button><button data-speed="2">2×</button><button data-speed="5">5×</button><button data-speed="10">10×</button>
@@ -108,6 +111,19 @@
 
     <!-- ═════════ CENTER ═════════ -->
     <section class="center">
+      <!-- focus mode: the five numbers that matter + status, everything else on demand -->
+      <div class="kstrip" id="kstrip">
+        <div class="kq"><span class="k">Throughput</span><span class="v"><b id="fkPace">1,284</b><small>/ 1,200 u·h</small></span></div>
+        <div class="kq"><span class="k">On‑time</span><span class="v"><b id="fkSla">97.4</b><small>%</small></span></div>
+        <div class="kq"><span class="k">Cycle</span><span class="v"><b id="fkCyc">142</b><small>s</small></span></div>
+        <div class="kq"><span class="k">In flight</span><span class="v"><b id="fkFly">62</b></span></div>
+        <div class="kq fleet"><span class="k">Fleet · <b id="fkMov">36</b> of 48 moving</span><span class="kbar" id="fkBar"></span></div>
+        <span class="sp"></span>
+        <button class="kbtn" id="sysPill"><span class="led" id="sysLed"></span><span id="sysTxt">All systems nominal</span></button>
+        <button class="kbtn" id="incBtn" title="Incidents"><svg viewBox="0 0 24 24" width="15" height="15"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/></svg><span>Incidents</span><span class="badge" id="incBadge">3</span></button>
+        <div class="pop" id="popSys"></div>
+        <div class="pop" id="popInc"></div>
+      </div>
       <div class="vp" id="vp">
         <canvas id="scene"></canvas>
         <div class="ph"><div class="k">WEBGL VIEWPORT</div><div class="t">Live 3D twin mounts here</div><div class="s">&lt;TwinCanvas /&gt; · preview shown</div></div>
@@ -155,6 +171,22 @@
           <span><i style="background:var(--signal)"></i>Moving</span><span><i style="background:var(--blue)"></i>Charging</span><span><i style="background:var(--amber)"></i>Yielding</span><span><i style="background:var(--red)"></i>Fault</span>
           <span class="mono dim"><b id="ftime">16.6ms</b> · A* <b id="astar">0.42ms</b> · <b id="agents">48</b> agents</span>
         </div>
+
+        <!-- focus mode: inspector slides in only when something is selected -->
+        <div class="insp-dock" id="inspDock"><button class="close insp-x" id="inspX" title="Close (Esc)"><svg width="12" height="12"><use href="#i-x"/></svg></button></div>
+      </div>
+
+      <!-- focus mode: analytics live in a dock, opened one at a time -->
+      <div class="dock" id="dock">
+        <div class="dock-tabs" id="dockTabs">
+          <button data-d="0">Dispatch queue <span class="cnt" id="dkQ">62</span></button>
+          <button data-d="1">Throughput</button>
+          <button data-d="2">Order lifecycle</button>
+          <button data-d="ledger">Decision ledger</button>
+          <span class="sp"></span>
+          <span class="dock-hint">Click a robot, rack or station to inspect it</span>
+        </div>
+        <div class="dock-sheet" id="dockSheet"></div>
       </div>
     </section>
 
@@ -214,5 +246,6 @@
 <script src="app.js"></script>
 <script src="modals.js"></script>
 <script src="calm.js"></script>
+<script src="focus.js"></script>
 </body>
 </html>

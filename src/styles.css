@@ -1,6 +1,7 @@
 @import "./styles/scada.css";
 @import "./styles/calm.css";
 @import "./styles/story.css";
+@import "./styles/focus.css";
 
 :root {
   --bg: #F8FAFC;

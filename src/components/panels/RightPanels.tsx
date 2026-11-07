@@ -21,7 +21,7 @@ const FSM_STATES = [
   "CHARGING",
 ];
 
-export function RightPanels() {
+export function RightPanels({ asDock }: { asDock?: boolean } = {}) {
   const selectedBotId = useTwinStore((s) => s.selectedBotId);
   const selectBot = useTwinStore((s) => s.selectBot);
   const botUnits = useTwinStore((s) => s.botUnits);
@@ -72,11 +72,10 @@ export function RightPanels() {
       .slice(0, 15);
   }, [explainableLogs]);
 
-  return (
-    <aside className="col r">
-      <section className="card grow">
-        {/* Primary Panel Tabs */}
-        <div className="ptabs" id="pTabs">
+  const cardContent = (
+    <section className="card grow">
+      {/* Primary Panel Tabs */}
+      <div className="ptabs" id="pTabs">
           <button className={mainTab === "insp" ? "on" : ""} onClick={() => setMainTab("insp")}>
             Inspector
           </button>
@@ -469,6 +468,15 @@ export function RightPanels() {
           </div>
         )}
       </section>
+  );
+
+  if (asDock) {
+    return cardContent;
+  }
+
+  return (
+    <aside className="col r">
+      {cardContent}
     </aside>
   );
 }
