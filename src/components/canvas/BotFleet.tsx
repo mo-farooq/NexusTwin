@@ -52,6 +52,7 @@ interface BotStatusBadgeProps {
   perceptionState?: string;
   warningProximity?: boolean;
   isBackingOff?: boolean;
+  isReversing?: boolean;
   onClick: () => void;
 }
 
@@ -64,11 +65,15 @@ function BotStatusBadge({
   perceptionState,
   warningProximity,
   isBackingOff,
+  isReversing,
   onClick,
 }: BotStatusBadgeProps) {
   const [hovered, setHovered] = useState(false);
 
   const acBadge = useMemo(() => {
+    if (isReversing) {
+      return { label: "⏪ REVERSING", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.24)" };
+    }
     if (isBackingOff || perceptionState === "BACKING_OFF") {
       return { label: "🛡️ SIDESTEP", color: "#8B5CF6", bg: "rgba(139, 92, 246, 0.18)" };
     }
@@ -82,7 +87,7 @@ function BotStatusBadge({
       return { label: "⚠️ DECEL", color: "#FBBF24", bg: "rgba(251, 191, 36, 0.15)" };
     }
     return null;
-  }, [perceptionState, isBackingOff]);
+  }, [perceptionState, isBackingOff, isReversing]);
 
   return (
     <div
@@ -242,6 +247,9 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
 
   // Real-time status LED color mapping
   const statusColor = useMemo(() => {
+    if (bot.isReversing) {
+      return BOT_THEME.LED_AMBER; // Strobe amber on reverse
+    }
     switch (bot.status) {
       case "ACTIVE":
         return BOT_THEME.LED_GREEN;
@@ -256,7 +264,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
       default:
         return BOT_THEME.LED_AMBER;
     }
-  }, [bot.status]);
+  }, [bot.status, bot.isReversing]);
 
   // High-precision useFrame interpolation loop (scales proportionally with simulationSpeed 1x/2x/5x/10x)
   useFrame(({ clock }, dt) => {
@@ -285,9 +293,10 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
     while (dHeading < -Math.PI) dHeading += Math.PI * 2;
     grp.rotation.y += dHeading * (simulationSpeed >= 5 ? Math.max(k, 0.85) : k);
 
-    // Rotate wheels dynamically based on linear movement velocity and simulationSpeed
-    if (wheelsRef.current && bot.velocity > 0.05) {
-      wheelsRef.current.rotation.x -= (bot.velocity / 0.08) * effectiveDt;
+    // Rotate wheels dynamically based on linear movement velocity and simulationSpeed (supports reverse drive)
+    if (wheelsRef.current && Math.abs(bot.velocity) > 0.05) {
+      const rotDir = (bot.isReversing || bot.velocity < 0) ? 1 : -1;
+      wheelsRef.current.rotation.x += rotDir * (Math.abs(bot.velocity) / 0.08) * effectiveDt;
     }
 
     // Breathing pulse animation for status LED ring
@@ -391,6 +400,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
                 perceptionState={bot.perception?.state}
                 warningProximity={bot.perception?.warningProximity}
                 isBackingOff={bot.backingOff}
+                isReversing={bot.isReversing}
                 onClick={onSelect}
               />
             ) : (
