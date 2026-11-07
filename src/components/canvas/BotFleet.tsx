@@ -235,14 +235,15 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
   const [hovered, setHovered] = useState(false);
   const groupRef = useRef<THREE.Group>(null!);
   const wheelRefs = useRef<Array<THREE.Group | null>>([]);
-  const wheelAngleRef = useRef(0);
+  const leftWheelAngleRef = useRef(0);
+  const rightWheelAngleRef = useRef(0);
   const ledRingRef = useRef<THREE.Mesh>(null!);
 
   // Initial mount coordinate references to prevent frame flickers
   const initRef = useRef<{ pos: [number, number, number]; heading: number } | null>(null);
   if (!initRef.current) {
     initRef.current = {
-      pos: [bot.position[0], 0.2, bot.position[2]],
+      pos: [bot.position[0], 0.0, bot.position[2]],
       heading: -bot.headingRad,
     };
   }
@@ -287,25 +288,36 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
       grp.position.x += (bot.position[0] - grp.position.x) * k;
       grp.position.z += (bot.position[2] - grp.position.z) * k;
     }
-    grp.position.y = 0.2; // Keep fixed ground clearance
+    grp.position.y = 0.0; // Grounded on floor
 
     // Shortest angular turn interpolation (Three.js Euler Y rotation requires -headingRad for +X forward)
     let dHeading = -bot.headingRad - grp.rotation.y;
     while (dHeading > Math.PI) dHeading -= Math.PI * 2;
     while (dHeading < -Math.PI) dHeading += Math.PI * 2;
-    grp.rotation.y += dHeading * (simulationSpeed >= 5 ? Math.max(k, 0.85) : k);
+    const turnStep = dHeading * (simulationSpeed >= 5 ? Math.max(k, 0.85) : k);
+    grp.rotation.y += turnStep;
 
-    // Rotate individual wheels around their local Z axle based on forward/reverse linear velocity
-    if (Math.abs(bot.velocity) > 0.02) {
-      const rotDir = (bot.isReversing || bot.velocity < 0) ? 1 : -1;
-      const wheelRadius = 0.078;
-      wheelAngleRef.current += rotDir * (Math.abs(bot.velocity) / wheelRadius) * effectiveDt;
-      wheelRefs.current.forEach((w) => {
-        if (w) {
-          w.rotation.z = wheelAngleRef.current;
-        }
-      });
-    }
+    // Realistic AMR Differential Drive Wheel Kinematics:
+    // Wheels roll based on linear travel velocity AND turn rotation!
+    const wheelRadius = 0.08;
+    const halfTrackWidth = 0.32;
+    const linearDist = bot.velocity * effectiveDt;
+    const turnDist = turnStep * halfTrackWidth;
+
+    // Differential drive: Left wheels roll forward with (+turn), Right wheels with (-turn)
+    const dLeft = (linearDist + turnDist) / wheelRadius;
+    const dRight = (linearDist - turnDist) / wheelRadius;
+
+    leftWheelAngleRef.current += dLeft;
+    rightWheelAngleRef.current += dRight;
+
+    wheelRefs.current.forEach((w, idx) => {
+      if (w) {
+        // idx 0, 1 are Right wheels (wz > 0); idx 2, 3 are Left wheels (wz < 0)
+        const angle = idx < 2 ? rightWheelAngleRef.current : leftWheelAngleRef.current;
+        w.rotation.z = -angle;
+      }
+    });
 
     // Breathing pulse animation for status LED ring
     if (ledRingRef.current) {
@@ -393,7 +405,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
         {/* Clickable Hovering HTML Status Badge (Shown when selected, hovered, or labels toggled ON) */}
         {(showLabels || isSelected || hovered) && activeCamera !== "robot" && (
           <Html
-            position={[0, 1.45, 0]}
+            position={[0, 1.25, 0]}
             center
             distanceFactor={32}
             zIndexRange={[15, 0]}
@@ -432,7 +444,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
         {/* 3. Breathing Status LED Ring on Floor */}
         <mesh
           ref={ledRingRef}
-          position={[0, -0.18, 0]}
+          position={[0, 0.005, 0]}
           rotation-x={-Math.PI / 2}
         >
           <ringGeometry args={[0.56, 0.72, 36]} />
@@ -453,7 +465,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
         </mesh>
 
         {/* 4. Compact LiDAR Proximity Safety Zone & Chassis Footprint */}
-        <mesh position={[0, -0.188, 0]} rotation-x={-Math.PI / 2}>
+        <mesh position={[0, 0.003, 0]} rotation-x={-Math.PI / 2}>
           <ringGeometry
             args={[
               0.52,
@@ -489,7 +501,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
 
         {/* 5. Directional Forward Path Guidance Ray (Compact & Clean) */}
         {isSelected && (
-          <mesh position={[0.35, -0.186, 0]} rotation-x={-Math.PI / 2}>
+          <mesh position={[0.35, 0.004, 0]} rotation-x={-Math.PI / 2}>
             <circleGeometry args={[0.9, 24, -Math.PI / 6, Math.PI / 3]} />
             <meshBasicMaterial
               color={
@@ -508,7 +520,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
 
         {/* Selected Highlight Aura Disk */}
         {isSelected && (
-          <mesh position={[0, -0.19, 0]} rotation-x={-Math.PI / 2}>
+          <mesh position={[0, 0.002, 0]} rotation-x={-Math.PI / 2}>
             <circleGeometry args={[0.9, 36]} />
             <meshBasicMaterial
               color={BOT_THEME.ACCENT_YELLOW}
@@ -528,9 +540,9 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
           onPointerOut={() => (document.body.style.cursor = "default")}
         >
           {/* Main White Chassis */}
-          <group position={[0, 0.12, 0]}>
+          <group position={[0, 0.15, 0]}>
             <RoundedBox
-              args={[0.96, 0.24, 0.7]}
+              args={[0.96, 0.18, 0.62]}
               radius={0.03}
               smoothness={4}
               castShadow
@@ -544,8 +556,8 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
           </group>
 
           {/* Yellow Front & Rear Bumper Trim (#F8CB46) */}
-          <group position={[0.47, 0.08, 0]}>
-            <RoundedBox args={[0.04, 0.1, 0.68]} radius={0.015} smoothness={4}>
+          <group position={[0.47, 0.14, 0]}>
+            <RoundedBox args={[0.04, 0.12, 0.60]} radius={0.015} smoothness={4}>
               <meshStandardMaterial
                 color={BOT_THEME.ACCENT_YELLOW}
                 roughness={0.3}
@@ -553,8 +565,8 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
               />
             </RoundedBox>
           </group>
-          <group position={[-0.47, 0.08, 0]}>
-            <RoundedBox args={[0.04, 0.1, 0.68]} radius={0.015} smoothness={4}>
+          <group position={[-0.47, 0.14, 0]}>
+            <RoundedBox args={[0.04, 0.12, 0.60]} radius={0.015} smoothness={4}>
               <meshStandardMaterial
                 color={BOT_THEME.ACCENT_YELLOW}
                 roughness={0.3}
@@ -564,10 +576,10 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
           </group>
 
           {/* Contrast Top Deck Plate */}
-          <group position={[0, 0.26, 0]}>
+          <group position={[0, 0.245, 0]}>
             <RoundedBox
-              args={[0.82, 0.05, 0.58]}
-              radius={0.02}
+              args={[0.82, 0.02, 0.56]}
+              radius={0.01}
               smoothness={4}
               castShadow
             >
@@ -580,8 +592,8 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
           </group>
 
           {/* Front Cyan Navigational Light Strip */}
-          <group position={[0.485, 0.14, 0]}>
-            <RoundedBox args={[0.02, 0.05, 0.48]} radius={0.01} smoothness={4}>
+          <group position={[0.485, 0.16, 0]}>
+            <RoundedBox args={[0.02, 0.04, 0.44]} radius={0.01} smoothness={4}>
               <meshBasicMaterial color={BOT_THEME.FRONT_LIGHT} />
             </RoundedBox>
           </group>
@@ -589,16 +601,16 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
           {/* 4 Realistic Industrial AMR Wheels with Individual Axle Rotation */}
           <group>
             {[
-              [-0.30, -0.35],
-              [0.30, -0.35],
-              [-0.30, 0.35],
-              [0.30, 0.35],
+              [0.28, 0.32],
+              [-0.28, 0.32],
+              [0.28, -0.32],
+              [-0.28, -0.32],
             ].map(([wx, wz], idx) => (
-              <group key={`wheel-pos-${idx}`} position={[wx, 0.07, wz]}>
+              <group key={`wheel-pos-${idx}`} position={[wx, 0.08, wz]}>
                 <group ref={(el) => (wheelRefs.current[idx] = el)}>
-                  {/* Outer Rubber Tire */}
+                  {/* Outer Rubber Tire with Treads */}
                   <mesh rotation-x={Math.PI / 2} castShadow>
-                    <cylinderGeometry args={[0.078, 0.078, 0.052, 24]} />
+                    <cylinderGeometry args={[0.08, 0.08, 0.052, 24]} />
                     <meshStandardMaterial
                       color="#18181B"
                       roughness={0.85}
@@ -607,7 +619,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
                   </mesh>
                   {/* Metallic Alloy Rim Lip */}
                   <mesh rotation-x={Math.PI / 2}>
-                    <cylinderGeometry args={[0.052, 0.052, 0.056, 24]} />
+                    <cylinderGeometry args={[0.055, 0.055, 0.056, 24]} />
                     <meshStandardMaterial
                       color="#D4D4D8"
                       roughness={0.25}
@@ -616,7 +628,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
                   </mesh>
                   {/* Signature Yellow Axle Hub Cap & Bolts */}
                   <mesh rotation-x={Math.PI / 2}>
-                    <cylinderGeometry args={[0.022, 0.022, 0.060, 12]} />
+                    <cylinderGeometry args={[0.024, 0.024, 0.060, 12]} />
                     <meshStandardMaterial
                       color={BOT_THEME.ACCENT_YELLOW}
                       roughness={0.35}
@@ -625,15 +637,15 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
                   </mesh>
                   {/* High-Contrast Spokes for unmistakable axle rotation visibility */}
                   <mesh position={[0, 0, wz > 0 ? 0.028 : -0.028]}>
-                    <boxGeometry args={[0.11, 0.018, 0.005]} />
+                    <boxGeometry args={[0.12, 0.018, 0.005]} />
                     <meshStandardMaterial color="#334155" roughness={0.3} metalness={0.7} />
                   </mesh>
                   <mesh position={[0, 0, wz > 0 ? 0.028 : -0.028]}>
-                    <boxGeometry args={[0.018, 0.11, 0.005]} />
+                    <boxGeometry args={[0.018, 0.12, 0.005]} />
                     <meshStandardMaterial color="#334155" roughness={0.3} metalness={0.7} />
                   </mesh>
                   <mesh position={[0, 0, wz > 0 ? 0.031 : -0.031]}>
-                    <boxGeometry args={[0.026, 0.026, 0.006]} />
+                    <boxGeometry args={[0.028, 0.028, 0.006]} />
                     <meshStandardMaterial color={BOT_THEME.ACCENT_YELLOW} roughness={0.2} metalness={0.6} />
                   </mesh>
                 </group>
@@ -643,10 +655,10 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
 
           {/* Toggleable Packaging Box on Top (when carrying load) */}
           {bot.currentPayloadKg > 0 && (
-            <group position={[0, 0.56, 0]}>
+            <group position={[0, 0.44, 0]}>
               {/* Kraft Corrugated Box */}
               <RoundedBox
-                args={[0.72, 0.48, 0.54]}
+                args={[0.64, 0.36, 0.48]}
                 radius={0.02}
                 smoothness={4}
                 castShadow

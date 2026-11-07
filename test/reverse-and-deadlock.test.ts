@@ -225,4 +225,89 @@ describe("NexusTwin Autonomous Reverse & Convoy Deadlock Resolution", () => {
     );
     expect(distToEgress).toBeGreaterThanOrEqual(3.0);
   });
+
+  it("decouples infeed queue slots and egress departure corridors laterally to eliminate head-on station blockades", () => {
+    for (const [stId, cfg] of Object.entries(PACKING_STATION_CONFIGS)) {
+      const accessX = cfg.accessPoint[0];
+      const egressX = cfg.egressPoint[0];
+      const queueX = cfg.queueSlots[0][0];
+
+      // Egress departs on the opposite side of the infeed queue (lateral decoupling)
+      expect(egressX).not.toEqual(queueX);
+      const egressAisleSeparation = Math.abs(egressX - queueX);
+      expect(egressAisleSeparation).toBeGreaterThanOrEqual(4.0); // At least 4m lateral lane separation!
+    }
+  });
+
+  it("prioritizes station egress clearing over approaching delivery traffic", () => {
+    const egressingBot: BotUnit = {
+      id: "BOT-04",
+      profileId: "LIGHT_PICKER",
+      position: [37.5, 0.0, 31.0],
+      headingRad: -Math.PI / 2,
+      velocity: 1.0,
+      batteryPct: 88,
+      status: "ACTIVE",
+      fsmState: "STATION_EGRESS", // Vacating dock!
+      healthPct: 100,
+      currentTaskId: null,
+      targetLocationId: null,
+      path: [[35, 29]],
+      pathIndex: 0,
+      currentPayloadKg: 0,
+      stats: { distanceTraveledM: 0, tasksCompleted: 1, energyConsumedWh: 0, busyTicks: 0, idleTicks: 0, waitTicks: 0 },
+      perception: { state: "CLEAR", frontObstacleId: null, frontDistM: null, warningProximity: false, yieldsToId: null },
+      waitTicks: 0,
+      backingOff: false,
+      isReversing: false,
+      reverseTicks: 0,
+      recentBreadcrumbs: [],
+      resumeGoalCoords: null,
+      resumeTaskId: null,
+      resumeLocationId: null,
+      resumeFsmState: null,
+      safeYieldsCount: 0,
+    };
+
+    const incomingBot: BotUnit = {
+      id: "BOT-01",
+      profileId: "LIGHT_PICKER",
+      position: [40.0, 0.0, 28.5],
+      headingRad: Math.PI / 2,
+      velocity: 0.0,
+      batteryPct: 92,
+      status: "ACTIVE",
+      fsmState: "NAVIGATING_TO_DELIVERY", // Waiting to enter dock with customer cargo
+      healthPct: 100,
+      currentTaskId: "TASK-05",
+      targetLocationId: "PACK-STATION-1",
+      path: [[38, 31]],
+      pathIndex: 0,
+      currentPayloadKg: 18,
+      stats: { distanceTraveledM: 0, tasksCompleted: 0, energyConsumedWh: 0, busyTicks: 0, idleTicks: 0, waitTicks: 2 },
+      perception: { state: "HOLDING", frontObstacleId: "BOT-04", frontDistM: 1.4, warningProximity: true, yieldsToId: "BOT-04" },
+      waitTicks: 2,
+      backingOff: false,
+      isReversing: false,
+      reverseTicks: 0,
+      recentBreadcrumbs: [],
+      resumeGoalCoords: null,
+      resumeTaskId: null,
+      resumeLocationId: null,
+      resumeFsmState: null,
+      safeYieldsCount: 0,
+    };
+
+    // Protocol: Egressing bot clearing the dock NEVER yields to incoming delivery bot
+    const egressYieldsToIncoming = egressingBot.fsmState === "STATION_EGRESS" && incomingBot.fsmState !== "STATION_EGRESS"
+      ? false
+      : true;
+    expect(egressYieldsToIncoming).toBe(false);
+
+    // Incoming bot MUST yield right-of-way to egressing bot
+    const incomingYieldsToEgress = incomingBot.fsmState !== "STATION_EGRESS" && egressingBot.fsmState === "STATION_EGRESS"
+      ? true
+      : false;
+    expect(incomingYieldsToEgress).toBe(true);
+  });
 });

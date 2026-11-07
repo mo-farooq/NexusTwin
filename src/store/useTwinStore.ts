@@ -305,36 +305,36 @@ export const PACKING_STATION_CONFIGS: Record<string, PackingStationConfig> = {
     id: "PACK-STATION-1",
     name: "Packing Station 01",
     accessPoint: [37.5, 31.0],
-    stagingPoint: [37.5, 28.5],
-    egressPoint: [37.5, 25.5],
+    stagingPoint: [40.0, 28.5],
+    egressPoint: [34.5, 28.5],
     queueSlots: [
-      [37.5, 28.5],
-      [37.5, 26.0],
-      [37.5, 23.5],
+      [40.0, 28.5],
+      [40.0, 26.0],
+      [40.0, 23.5],
     ],
   },
   "PACK-STATION-2": {
     id: "PACK-STATION-2",
     name: "Packing Station 02",
     accessPoint: [44.5, 31.0],
-    stagingPoint: [44.5, 28.5],
-    egressPoint: [44.5, 25.5],
+    stagingPoint: [47.5, 28.5],
+    egressPoint: [41.5, 28.5],
     queueSlots: [
-      [44.5, 28.5],
-      [44.5, 26.0],
-      [44.5, 23.5],
+      [47.5, 28.5],
+      [47.5, 26.0],
+      [47.5, 23.5],
     ],
   },
   "PACK-STATION-3": {
     id: "PACK-STATION-3",
     name: "Packing Station 03",
     accessPoint: [51.5, 31.0],
-    stagingPoint: [51.5, 28.5],
-    egressPoint: [51.5, 25.5],
+    stagingPoint: [54.5, 28.5],
+    egressPoint: [48.5, 28.5],
     queueSlots: [
-      [51.5, 28.5],
-      [51.5, 26.0],
-      [51.5, 23.5],
+      [54.5, 28.5],
+      [54.5, 26.0],
+      [54.5, 23.5],
     ],
   },
 };
@@ -1946,7 +1946,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       for (let i = 0; i < orderCount; i++) {
         seq++;
         const sLoc = state.locations[shelfKeys[Math.floor(rng() * shelfKeys.length)]];
-        const dLoc = state.locations[packKeys[Math.floor(rng() * packKeys.length)]];
+        const dLoc = state.locations[packKeys[i % packKeys.length]] || state.locations[packKeys[0]];
         const taskId = `TASK-SURGE-${seq}`;
         newTasks[taskId] = {
           id: taskId,
@@ -1979,11 +1979,11 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       const shelfKeys = Object.keys(state.locations).filter((k) => state.locations[k].type === "SHELF");
       const packKeys = Object.keys(state.locations).filter((k) => state.locations[k].type === "PACK_STATION");
 
-      // Spawn a 4-item high-priority VIP order swarm
+      // Spawn a 4-item high-priority VIP order swarm balanced across pack lines
       for (let i = 0; i < 4; i++) {
         seq++;
         const sLoc = state.locations[shelfKeys[Math.floor(rng() * shelfKeys.length)]];
-        const dLoc = state.locations[packKeys[Math.floor(rng() * packKeys.length)]];
+        const dLoc = state.locations[packKeys[i % packKeys.length]] || state.locations[packKeys[0]];
         const taskId = `VIP-SWARM-${seq}`;
         newTasks[taskId] = {
           id: taskId,
@@ -2293,9 +2293,31 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
           } else {
             taskType = "ORDER_PICK";
             sLoc = locations[shelfKeys[Math.floor(rng() * shelfKeys.length)]];
-            dLoc = packKeys.length > 0
-              ? locations[packKeys[Math.floor(rng() * packKeys.length)]]
-              : locations[shelfKeys[Math.floor(rng() * shelfKeys.length)]];
+            if (packKeys.length > 0) {
+              const packPipelineLoad: Record<string, number> = {};
+              packKeys.forEach((k) => { packPipelineLoad[k] = 0; });
+              Object.values(nextBots).forEach((b) => {
+                if (b.targetLocationId && packPipelineLoad[b.targetLocationId] !== undefined) {
+                  packPipelineLoad[b.targetLocationId]++;
+                }
+              });
+              Object.values(nextTasks).forEach((t) => {
+                if ((t.status === "PENDING" || t.status === "ASSIGNED" || t.status === "IN_PROGRESS") && t.destLocId && packPipelineLoad[t.destLocId] !== undefined) {
+                  packPipelineLoad[t.destLocId]++;
+                }
+              });
+              let minStationKey = packKeys[0];
+              let minL = Infinity;
+              packKeys.forEach((k) => {
+                if (packPipelineLoad[k] < minL) {
+                  minL = packPipelineLoad[k];
+                  minStationKey = k;
+                }
+              });
+              dLoc = locations[minStationKey] || locations[packKeys[0]];
+            } else {
+              dLoc = locations[shelfKeys[Math.floor(rng() * shelfKeys.length)]];
+            }
           }
 
           const chosenTier = ((Math.floor(rng() * 4) + 1) as 1 | 2 | 3 | 4);
@@ -2508,6 +2530,12 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       const checkRobotYieldsTo = (botA: BotUnit, botB: BotUnit): boolean => {
         const taskA = botA.currentTaskId ? nextTasks[botA.currentTaskId] : null;
         const taskB = botB.currentTaskId ? nextTasks[botB.currentTaskId] : null;
+
+        // 0. Station Egress Priority: A robot vacating a packing station or workstation dock MUST clear the dock!
+        // Incoming and queued robots yield to allow egress to complete cleanly.
+        const aIsEgress = botA.fsmState === "STATION_EGRESS";
+        const bIsEgress = botB.fsmState === "STATION_EGRESS";
+        if (aIsEgress !== bIsEgress) return !aIsEgress;
 
         // 1. VIP / FLASH_SURGE order priority
         const aIsSurge = taskA?.priority === "FLASH_SURGE";
@@ -2892,7 +2920,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               const distToAccess = Math.hypot(currentPos[0] - packCfg.accessPoint[0], currentPos[2] - packCfg.accessPoint[1]);
 
               // If arrived near assigned queue slot or within distance threshold, hold position
-              if (distToSlot < 1.3 || (queueRank > 0 && distToAccess < (queueRank + 1) * 2.2)) {
+              if (distToSlot < 1.3 || (queueRank > 0 && distToAccess < 2.5 + queueRank * 2.0)) {
                 nextBots[bot.id] = {
                   ...bot,
                   velocity: 0,
@@ -2906,6 +2934,22 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                   },
                 };
                 return;
+              } else {
+                // Steer into queue slot approach path so it does not crowd access point
+                const currentGoal = bot.path.length > 0 ? bot.path[bot.path.length - 1] : null;
+                const slotCell = worldToCell(targetSlot[0], targetSlot[1], navGrid.cellSize);
+                if (!currentGoal || Math.abs(currentGoal[0] - slotCell[0]) > 1 || Math.abs(currentGoal[1] - slotCell[1]) > 1) {
+                  const sCell = worldToCell(currentPos[0], currentPos[2], navGrid.cellSize);
+                  const qPath = findPathAStar(navGrid, sCell, slotCell, {
+                    blockedCells: reservedCells,
+                    congestionCostMap: activeCongestionMap,
+                    flowDirectionMap: state.aisleFlowMap,
+                  }) ?? findPathAStar(navGrid, sCell, slotCell);
+                  if (qPath && qPath.length > 0) {
+                    bot.path = qPath;
+                    bot.pathIndex = 0;
+                  }
+                }
               }
             }
           }
@@ -2997,7 +3041,9 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               for (const o of Object.values(nextBots)) {
                 if (o.id === bot.id || o.status === "OFFLINE" || o.status === "ERROR") continue;
                 const d = Math.hypot(testX - o.position[0], testZ - o.position[2]);
-                if (d < 0.95) { collides = true; break; }
+                const curD = Math.hypot(currentPos[0] - o.position[0], currentPos[2] - o.position[2]);
+                // Only treat as collision if candidate step moves CLOSER to the other bot than current position
+                if (d < 0.95 && d < curD) { collides = true; break; }
                 if (d < minBotDist) minBotDist = d;
               }
               if (collides) continue;
@@ -4034,7 +4080,9 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                   let botHit = false;
                   for (const o of allActiveBots) {
                     if (o.id === yieldingBot.id) continue;
-                    if (Math.hypot(tx - o.position[0], tz - o.position[2]) < 0.95) { botHit = true; break; }
+                    const dCandidate = Math.hypot(tx - o.position[0], tz - o.position[2]);
+                    const dCurrent = Math.hypot(yieldingBot.position[0] - o.position[0], yieldingBot.position[2] - o.position[2]);
+                    if (dCandidate < 0.90 && dCandidate < dCurrent) { botHit = true; break; }
                   }
                   if (!botHit) {
                     bestBreakout = tc;
