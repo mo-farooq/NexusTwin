@@ -80,7 +80,7 @@ export function AuditLedgerModal() {
   return (
     <div className="modal-bg" onClick={() => setModal(null)}>
       <div
-        className="modal"
+        className="modal on"
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}

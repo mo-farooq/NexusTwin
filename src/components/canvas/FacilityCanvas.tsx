@@ -55,6 +55,8 @@ function CameraRig({ controlsRef, widthM, depthM }: CameraRigProps) {
   const selectedBotId = useTwinStore((s) => s.selectedBotId);
   const botUnits = useTwinStore((s) => s.botUnits);
   const focusTarget = useTwinStore((s) => s.focusTarget);
+  const activeCamera = useTwinStore((s) => s.activeCamera);
+  const activeFloor = useTwinStore((s) => s.activeFloor);
 
   const defaultCenter = useMemo(
     () => new THREE.Vector3(widthM / 2, 0.5, depthM / 2),
@@ -64,25 +66,79 @@ function CameraRig({ controlsRef, widthM, depthM }: CameraRigProps) {
   const targetLerpGoal = useRef<THREE.Vector3>(defaultCenter.clone());
   const cameraPositionGoal = useRef<THREE.Vector3 | null>(null);
 
-  // Update target when selected bot or focus target changes
+  // Update target when camera mode, floor level, or selection changes
   useEffect(() => {
-    if (selectedBotId && botUnits[selectedBotId]) {
+    const cx = widthM / 2;
+    const cz = depthM / 2;
+
+    if (activeCamera === "top") {
+      targetLerpGoal.current.set(cx, 0.2, cz);
+      cameraPositionGoal.current = new THREE.Vector3(cx, 58, cz + 0.001);
+    } else if (activeCamera === "iso") {
+      targetLerpGoal.current.set(cx, 0.2, cz);
+      cameraPositionGoal.current = new THREE.Vector3(cx - 28, 32, cz + 32);
+    } else if (activeCamera === "pack") {
+      targetLerpGoal.current.set(44, 0.2, 31);
+      cameraPositionGoal.current = new THREE.Vector3(44, 15, 45);
+    } else if (activeCamera === "robot") {
+      const bot = (selectedBotId && botUnits[selectedBotId]) || Object.values(botUnits).find((b) => b.status === "ACTIVE") || Object.values(botUnits)[0];
+      if (bot) {
+        const fwdX = Math.cos(bot.headingRad);
+        const fwdZ = Math.sin(bot.headingRad);
+        targetLerpGoal.current.set(bot.position[0] + fwdX * 2.5, 0.6, bot.position[2] + fwdZ * 2.5);
+        cameraPositionGoal.current = new THREE.Vector3(
+          bot.position[0] - fwdX * 4.2,
+          2.2,
+          bot.position[2] - fwdZ * 4.2
+        );
+      }
+    } else if (activeCamera === "full") {
+      targetLerpGoal.current.set(cx, 0.2, cz);
+      cameraPositionGoal.current = new THREE.Vector3(cx - 38, 44, cz + 44);
+    } else if (selectedBotId && botUnits[selectedBotId]) {
       const bot = botUnits[selectedBotId];
       targetLerpGoal.current.set(bot.position[0], 0.6, bot.position[2]);
     } else if (focusTarget) {
       targetLerpGoal.current.set(focusTarget[0], focusTarget[1], focusTarget[2]);
     } else {
       targetLerpGoal.current.copy(defaultCenter);
-      cameraPositionGoal.current = null;
     }
-  }, [selectedBotId, botUnits, focusTarget, defaultCenter]);
+
+    // Floor elevation adjustment
+    if (activeFloor === 1) {
+      targetLerpGoal.current.y = 0.2;
+    } else if (activeFloor === 2) {
+      targetLerpGoal.current.y = 4.2;
+      if (cameraPositionGoal.current && cameraPositionGoal.current.y < 20) {
+        cameraPositionGoal.current.y = 20;
+      }
+    } else if (activeFloor === "all") {
+      targetLerpGoal.current.y = 0.5;
+    }
+  }, [activeCamera, activeFloor, selectedBotId, botUnits, focusTarget, defaultCenter, widthM, depthM]);
 
   useFrame(({ camera }, dt) => {
     const controls = controlsRef.current;
     if (!controls) return;
 
-    // Follow moving bot if still selected
-    if (selectedBotId && botUnits[selectedBotId]) {
+    // Follow moving bot in "robot" POV mode
+    if (activeCamera === "robot") {
+      const bot = (selectedBotId && botUnits[selectedBotId]) || Object.values(botUnits).find((b) => b.status === "ACTIVE");
+      if (bot) {
+        const fwdX = Math.cos(bot.headingRad);
+        const fwdZ = Math.sin(bot.headingRad);
+        targetLerpGoal.current.set(
+          bot.position[0] + fwdX * 2.5,
+          0.6,
+          bot.position[2] + fwdZ * 2.5
+        );
+        cameraPositionGoal.current = new THREE.Vector3(
+          bot.position[0] - fwdX * 4.2,
+          2.2,
+          bot.position[2] - fwdZ * 4.2
+        );
+      }
+    } else if (selectedBotId && botUnits[selectedBotId] && activeCamera !== "top") {
       const bot = botUnits[selectedBotId];
       targetLerpGoal.current.set(bot.position[0], 0.6, bot.position[2]);
     }
@@ -93,6 +149,9 @@ function CameraRig({ controlsRef, widthM, depthM }: CameraRigProps) {
 
     if (cameraPositionGoal.current) {
       camera.position.lerp(cameraPositionGoal.current, lerpFactor);
+      if (camera.position.distanceTo(cameraPositionGoal.current) < 0.15 && activeCamera !== "robot") {
+        cameraPositionGoal.current = null;
+      }
     }
 
     controls.update();
@@ -398,7 +457,7 @@ function FloorObstaclesCollection() {
 
         return (
           <group
-            key={obs.id}
+            key={obs.id || `obs-${obs.col}-${obs.row}`}
             position={[x, 0, z]}
             onClick={(e) => {
               e.stopPropagation();
@@ -562,6 +621,7 @@ export interface FacilityCanvasProps {
 export function FacilityCanvas({ className, style }: FacilityCanvasProps) {
   const controlsRef = useRef<OrbitControlsImpl>(null!);
   const gridDimensions = useTwinStore((s) => s.gridDimensions);
+  const activeTool = useTwinStore((s) => s.activeTool);
 
   // Initial Isometric Camera Position
   const cameraPosition: [number, number, number] = useMemo(
@@ -578,6 +638,7 @@ export function FacilityCanvas({ className, style }: FacilityCanvasProps) {
         position: "relative",
         background: COLORS.BACKGROUND,
         overflow: "hidden",
+        cursor: activeTool === "pan" ? "grab" : "default",
         ...style,
       }}
     >
@@ -600,9 +661,14 @@ export function FacilityCanvas({ className, style }: FacilityCanvasProps) {
           makeDefault
           enableDamping
           dampingFactor={0.08}
+          mouseButtons={{
+            LEFT: activeTool === "pan" ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: THREE.MOUSE.PAN,
+          }}
           maxPolarAngle={Math.PI / 2.05} // Prevent camera going below floor
-          minDistance={10}
-          maxDistance={120}
+          minDistance={6}
+          maxDistance={140}
         />
         <FacilityScene controlsRef={controlsRef} />
       </Canvas>

@@ -42,20 +42,24 @@ export function Viewport() {
   const selectedStationId = useTwinStore((s) => s.selectedStationId);
   const isInspOpen = Boolean(selectedBotId || selectedRackId || selectedStationId);
 
-  const [activeTool, setActiveTool] = useState<"sel" | "pan" | "ruler">("sel");
+  const activeTool = useTwinStore((s) => s.activeTool);
+  const setActiveTool = useTwinStore((s) => s.setActiveTool);
+  const storeHeatmapMode = useTwinStore((s) => s.heatmapMode);
+  const toggleHeatmapMode = useTwinStore((s) => s.toggleHeatmapMode);
+
   const [showCamMenu, setShowCamMenu] = useState(false);
-  const [heatmapMode, setHeatmapMode] = useState<"OFF" | "LIVE" | "LONG">("LIVE");
 
   const totalBots = Object.keys(botUnits).length;
 
   const handleCameraSelect = (cam: "full" | "iso" | "top" | "robot" | "pack") => {
     setShowCamMenu(false);
+    setActiveCamera(cam);
     if (cam === "full") {
       selectBot(null);
       setFocusTarget([30, 0, 20]);
     } else if (cam === "iso") {
       selectBot(null);
-      setFocusTarget([25, 0, 25]);
+      setFocusTarget([28, 0, 24]);
     } else if (cam === "top") {
       selectBot(null);
       setFocusTarget([30, 0, 20]);
@@ -63,7 +67,8 @@ export function Viewport() {
       const activeBot = Object.values(botUnits).find((b) => b.status === "ACTIVE") || Object.values(botUnits)[0];
       if (activeBot) selectBot(activeBot.id);
     } else if (cam === "pack") {
-      setFocusTarget([43, 0, 32]);
+      selectBot(null);
+      setFocusTarget([44, 0, 31]);
     }
   };
 
@@ -78,7 +83,7 @@ export function Viewport() {
     } else if (mode === "vip") {
       injectVipOrder();
     } else if (mode === "heat") {
-      setHeatmapMode((m) => (m === "LIVE" ? "LONG" : m === "LONG" ? "OFF" : "LIVE"));
+      toggleHeatmapMode();
     } else if (mode === "slot") {
       defragmentRacks();
     }
@@ -108,6 +113,50 @@ export function Viewport() {
               border: "none",
               color: "#FFFFFF",
               cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Active Measurement Ruler Overlay */}
+      {activeTool === "ruler" && (
+        <div
+          style={{
+            position: "absolute",
+            top: "56px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "rgba(15, 23, 42, 0.88)",
+            color: "#F8FAFC",
+            backdropFilter: "blur(8px)",
+            padding: "6px 16px",
+            borderRadius: "20px",
+            fontSize: "12px",
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            zIndex: 30,
+            pointerEvents: "auto",
+          }}
+        >
+          <span>📐 <b>Facility Scale</b>: 60.0m × 40.0m (2,400 m²)</span>
+          <span style={{ color: "#94A3B8" }}>|</span>
+          <span><b>Aisle Clearance</b>: 2.40m</span>
+          <span style={{ color: "#94A3B8" }}>|</span>
+          <span><b>Rack Pitch</b>: 1.20m</span>
+          <button
+            onClick={() => setActiveTool("sel")}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#94A3B8",
+              cursor: "pointer",
+              marginLeft: "6px",
               fontWeight: 700,
             }}
           >
@@ -151,7 +200,17 @@ export function Viewport() {
             <svg>
               <use href="#i-cam" />
             </svg>
-            <span>Camera</span> ▾
+            <span>
+              {activeCamera === "top"
+                ? "Top-down"
+                : activeCamera === "iso"
+                ? "Isometric"
+                : activeCamera === "robot"
+                ? "Robot POV"
+                : activeCamera === "pack"
+                ? "Packing zoom"
+                : "Camera"}
+            </span> ▾
           </button>
           {showCamMenu && (
             <div className="float cam-menu" style={{ display: "flex", position: "absolute", top: "100%", right: 0, marginTop: "4px" }}>
@@ -176,8 +235,8 @@ export function Viewport() {
           </button>
           <button
             className={activeTool === "pan" ? "on" : ""}
-            onClick={() => setActiveTool("pan")}
-            title="Pan"
+            onClick={() => setActiveTool(activeTool === "pan" ? "sel" : "pan")}
+            title="Pan Mode (Left-Click Drag to Pan 3D View)"
           >
             <svg>
               <use href="#i-hand" />
@@ -185,8 +244,8 @@ export function Viewport() {
           </button>
           <button
             className={activeTool === "ruler" ? "on" : ""}
-            onClick={() => setActiveTool("ruler")}
-            title="Measure"
+            onClick={() => setActiveTool(activeTool === "ruler" ? "sel" : "ruler")}
+            title="Measure Tool (Facility Dimensions & Clearances)"
           >
             <svg>
               <use href="#i-ruler" />
@@ -242,11 +301,15 @@ export function Viewport() {
           VIP
         </button>
         <span className="div"></span>
-        <button onClick={() => handleChaosMode("heat")} title="Toggle Dynamic Floor Congestion Heatmap">
+        <button
+          onClick={() => handleChaosMode("heat")}
+          className={storeHeatmapMode ? "on" : ""}
+          title="Toggle Dynamic Floor Congestion Heatmap"
+        >
           <svg>
             <use href="#i-heat" />
           </svg>
-          Heatmap <span className="x">{heatmapMode}</span>
+          Heatmap <span className="x">{storeHeatmapMode ? "LIVE" : "OFF"}</span>
         </button>
         <button onClick={() => handleChaosMode("slot")} title="AI Rack Dynamic Reslotting">
           <svg>

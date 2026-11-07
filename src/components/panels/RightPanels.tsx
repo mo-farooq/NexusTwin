@@ -31,6 +31,7 @@ export function RightPanels({ asDock }: { asDock?: boolean } = {}) {
   const explainableLogs = useTwinStore((s) => s.explainableLogs);
   const recentEvents = useTwinStore((s) => s.recentEvents);
   const kpi = useTwinStore((s) => s.kpi);
+  const setModal = useTwinStore((s) => s.setModal);
 
   const [mainTab, setMainTab] = useState<"insp" | "ledger" | "road">("insp");
   const [inspSubTab, setInspSubTab] = useState<"bot" | "rack" | "station">("bot");
@@ -386,12 +387,22 @@ export function RightPanels({ asDock }: { asDock?: boolean } = {}) {
         {/* 2. LEDGER PANE */}
         {mainTab === "ledger" && (
           <div className="pane on">
-            <div className="tabs" id="ledTabs">
-              <button className={ledgerSubTab === "disp" ? "on" : ""} onClick={() => setLedgerSubTab("disp")}>
-                Dispatch reasoning
-              </button>
-              <button className={ledgerSubTab === "safe" ? "on" : ""} onClick={() => setLedgerSubTab("safe")}>
-                Safety events
+            <div className="tabs" id="ledTabs" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "4px" }}>
+                <button className={ledgerSubTab === "disp" ? "on" : ""} onClick={() => setLedgerSubTab("disp")}>
+                  Dispatch reasoning
+                </button>
+                <button className={ledgerSubTab === "safe" ? "on" : ""} onClick={() => setLedgerSubTab("safe")}>
+                  Safety events
+                </button>
+              </div>
+              <button
+                className="pill-s"
+                onClick={() => setModal("audit")}
+                title="Open Enterprise Audit Ledger"
+                style={{ padding: "2px 8px", fontSize: "10px", fontWeight: 700, cursor: "pointer", background: "rgba(248, 203, 70, 0.15)", color: "#0F172A", border: "1px solid rgba(248, 203, 70, 0.5)", borderRadius: "4px" }}
+              >
+                Full Ledger ↗
               </button>
             </div>
             <div className="card-b fill">

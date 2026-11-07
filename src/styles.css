@@ -1169,16 +1169,24 @@ table.dt tr.sel td {
   justify-content: center;
 }
 
-.modal {
+.modal,
+.modal-bg .modal,
+.modal.on {
   width: min(1050px, 92vw);
   height: min(700px, 86vh);
-  background: var(--panel);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
+  background: var(--panel, #FFFFFF);
+  border: 1px solid var(--border-strong, #E2E8F0);
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
   overflow: hidden;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: none !important;
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
 }
 
 .modal-h {

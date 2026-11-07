@@ -1001,6 +1001,7 @@ export interface NexusTwinState {
   showPaths: boolean;
   activeFloor: "all" | "exploded" | 1 | 2;
   activeCamera: string;
+  activeTool: "sel" | "pan" | "ruler";
   drawer: null | "copilot" | "scenarios" | "whatif";
   modal: null | "audit" | "tasks" | "builder" | "sandbox";
 
@@ -1010,6 +1011,7 @@ export interface NexusTwinState {
   togglePaths: () => void;
   setActiveFloor: (floor: "all" | "exploded" | 1 | 2) => void;
   setActiveCamera: (cam: string) => void;
+  setActiveTool: (tool: "sel" | "pan" | "ruler") => void;
   setDrawer: (drawer: null | "copilot" | "scenarios" | "whatif") => void;
   setModal: (modal: null | "audit" | "tasks" | "builder" | "sandbox") => void;
 
@@ -1396,6 +1398,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     showPaths: true,
     activeFloor: "all",
     activeCamera: "MAIN",
+    activeTool: "sel",
     drawer: null,
     modal: null,
 
@@ -1415,6 +1418,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     togglePaths: () => set((s) => ({ showPaths: !s.showPaths })),
     setActiveFloor: (floor) => set({ activeFloor: floor }),
     setActiveCamera: (cam) => set({ activeCamera: cam }),
+    setActiveTool: (tool) => set({ activeTool: tool }),
     setDrawer: (drawer) => set((s) => ({ drawer: s.drawer === drawer ? null : drawer })),
     setModal: (modal) => set({ modal }),
 
@@ -2001,8 +2005,14 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     },
 
     injectAisleBlockage: (zoneId, durationSeconds = 45) => {
-      const { zones, tick } = get();
+      const { zones, customObstacles } = get();
       if (!zones[zoneId]) return;
+      const obsCol = zoneId === "ZONE_B" ? 42 : 14;
+      const obsRow = 10;
+      const newObs = [
+        ...customObstacles.filter((o) => o.col !== obsCol || o.row !== obsRow),
+        { id: `obs-${obsCol}-${obsRow}`, col: obsCol, row: obsRow, label: `Spilled Pallet (${zoneId})` },
+      ];
       set({
         zones: {
           ...zones,
@@ -2012,6 +2022,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             blockedReason: `Aisle Obstruction: Spilled pallet load (${durationSeconds}s)`,
           },
         },
+        customObstacles: newObs,
       });
     },
 
@@ -2020,14 +2031,14 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       const restoredBots = { ...botUnits };
       Object.keys(restoredBots).forEach((id) => {
         if (restoredBots[id].status === "ERROR") {
-          restoredBots[id] = { ...restoredBots[id], status: "IDLE", fsmState: "IDLE" };
+          restoredBots[id] = { ...restoredBots[id], status: "IDLE", fsmState: "IDLE", healthPct: 100 };
         }
       });
       const restoredZones = { ...zones };
       Object.keys(restoredZones).forEach((zid) => {
         restoredZones[zid] = { ...restoredZones[zid], isBlocked: false, blockedReason: null };
       });
-      set({ botUnits: restoredBots, zones: restoredZones });
+      set({ botUnits: restoredBots, zones: restoredZones, customObstacles: [] });
     },
 
     resetSimulation: (newSeed = 42) => {

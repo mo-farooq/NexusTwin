@@ -29,6 +29,7 @@ import { WhatIfDrawer } from "./components/ops/WhatIfDrawer";
 import { AuditLedgerModal } from "./components/ops/AuditLedgerModal";
 import { WarehouseBuilderModal } from "./components/hud/WarehouseBuilderModal";
 import { DecisionSandboxModal } from "./components/hud/DecisionSandboxModal";
+import { OperationsTableModal } from "./components/hud/OperationsTableModal";
 import { KpiStrip } from "./components/hud/KpiStrip";
 import { AnalyticsDock } from "./components/hud/AnalyticsDock";
 
@@ -161,6 +162,7 @@ export function App() {
 
       {/* Enterprise Modals */}
       <AuditLedgerModal />
+      <OperationsTableModal />
       <WarehouseBuilderModal />
       <DecisionSandboxModal />
     </div>

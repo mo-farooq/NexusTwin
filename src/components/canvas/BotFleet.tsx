@@ -231,9 +231,11 @@ interface SingleBotProps {
 }
 
 function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulationSpeed }: SingleBotProps) {
+  const activeCamera = useTwinStore((s) => s.activeCamera);
   const [hovered, setHovered] = useState(false);
   const groupRef = useRef<THREE.Group>(null!);
-  const wheelsRef = useRef<THREE.Group>(null!);
+  const wheelRefs = useRef<Array<THREE.Group | null>>([]);
+  const wheelAngleRef = useRef(0);
   const ledRingRef = useRef<THREE.Mesh>(null!);
 
   // Initial mount coordinate references to prevent frame flickers
@@ -293,10 +295,16 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
     while (dHeading < -Math.PI) dHeading += Math.PI * 2;
     grp.rotation.y += dHeading * (simulationSpeed >= 5 ? Math.max(k, 0.85) : k);
 
-    // Rotate wheels dynamically based on linear movement velocity and simulationSpeed (supports reverse drive)
-    if (wheelsRef.current && Math.abs(bot.velocity) > 0.05) {
+    // Rotate individual wheels around their local Z axle based on forward/reverse linear velocity
+    if (Math.abs(bot.velocity) > 0.02) {
       const rotDir = (bot.isReversing || bot.velocity < 0) ? 1 : -1;
-      wheelsRef.current.rotation.x += rotDir * (Math.abs(bot.velocity) / 0.08) * effectiveDt;
+      const wheelRadius = 0.078;
+      wheelAngleRef.current += rotDir * (Math.abs(bot.velocity) / wheelRadius) * effectiveDt;
+      wheelRefs.current.forEach((w) => {
+        if (w) {
+          w.rotation.z = wheelAngleRef.current;
+        }
+      });
     }
 
     // Breathing pulse animation for status LED ring
@@ -383,7 +391,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
         }}
       >
         {/* Clickable Hovering HTML Status Badge (Shown when selected, hovered, or labels toggled ON) */}
-        {(showLabels || isSelected || hovered) && (
+        {(showLabels || isSelected || hovered) && activeCamera !== "robot" && (
           <Html
             position={[0, 1.45, 0]}
             center
@@ -578,26 +586,58 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
             </RoundedBox>
           </group>
 
-          {/* 4 Charcoal (#1C1C1C) Wheels */}
-          <group ref={wheelsRef}>
+          {/* 4 Realistic Industrial AMR Wheels with Individual Axle Rotation */}
+          <group>
             {[
-              [-0.32, -0.34],
-              [0.32, -0.34],
-              [-0.32, 0.34],
-              [0.32, 0.34],
+              [-0.30, -0.35],
+              [0.30, -0.35],
+              [-0.30, 0.35],
+              [0.30, 0.35],
             ].map(([wx, wz], idx) => (
-              <mesh
-                key={`wheel-${idx}`}
-                position={[wx, 0.07, wz]}
-                rotation-z={Math.PI / 2}
-              >
-                <cylinderGeometry args={[0.075, 0.075, 0.065, 16]} />
-                <meshStandardMaterial
-                  color={BOT_THEME.WHEEL_CHARCOAL}
-                  roughness={0.8}
-                  metalness={0.3}
-                />
-              </mesh>
+              <group key={`wheel-pos-${idx}`} position={[wx, 0.07, wz]}>
+                <group ref={(el) => (wheelRefs.current[idx] = el)}>
+                  {/* Outer Rubber Tire */}
+                  <mesh rotation-x={Math.PI / 2} castShadow>
+                    <cylinderGeometry args={[0.078, 0.078, 0.052, 24]} />
+                    <meshStandardMaterial
+                      color="#18181B"
+                      roughness={0.85}
+                      metalness={0.15}
+                    />
+                  </mesh>
+                  {/* Metallic Alloy Rim Lip */}
+                  <mesh rotation-x={Math.PI / 2}>
+                    <cylinderGeometry args={[0.052, 0.052, 0.056, 24]} />
+                    <meshStandardMaterial
+                      color="#D4D4D8"
+                      roughness={0.25}
+                      metalness={0.8}
+                    />
+                  </mesh>
+                  {/* Signature Yellow Axle Hub Cap & Bolts */}
+                  <mesh rotation-x={Math.PI / 2}>
+                    <cylinderGeometry args={[0.022, 0.022, 0.060, 12]} />
+                    <meshStandardMaterial
+                      color={BOT_THEME.ACCENT_YELLOW}
+                      roughness={0.35}
+                      metalness={0.5}
+                    />
+                  </mesh>
+                  {/* High-Contrast Spokes for unmistakable axle rotation visibility */}
+                  <mesh position={[0, 0, wz > 0 ? 0.028 : -0.028]}>
+                    <boxGeometry args={[0.11, 0.018, 0.005]} />
+                    <meshStandardMaterial color="#334155" roughness={0.3} metalness={0.7} />
+                  </mesh>
+                  <mesh position={[0, 0, wz > 0 ? 0.028 : -0.028]}>
+                    <boxGeometry args={[0.018, 0.11, 0.005]} />
+                    <meshStandardMaterial color="#334155" roughness={0.3} metalness={0.7} />
+                  </mesh>
+                  <mesh position={[0, 0, wz > 0 ? 0.031 : -0.031]}>
+                    <boxGeometry args={[0.026, 0.026, 0.006]} />
+                    <meshStandardMaterial color={BOT_THEME.ACCENT_YELLOW} roughness={0.2} metalness={0.6} />
+                  </mesh>
+                </group>
+              </group>
             ))}
           </group>
 
