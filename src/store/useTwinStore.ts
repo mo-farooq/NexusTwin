@@ -931,6 +931,45 @@ function createDefaultLayout(dimensions: GridDimensions): {
 // 6. NexusTwin Store Interface
 // ─────────────────────────────────────────────────────────────
 
+export interface FleetSummary {
+  total: number;
+  active: number;
+  charging: number;
+  idle: number;
+  error: number;
+  inFlightTasks: number;
+}
+
+export function computeFleetSummary(
+  bots: Record<string, BotUnit>,
+  tasks: Record<string, Task> = {}
+): FleetSummary {
+  const botVals = Object.values(bots);
+  let active = 0;
+  let charging = 0;
+  let idle = 0;
+  let error = 0;
+  for (let i = 0; i < botVals.length; i++) {
+    const st = botVals[i].status;
+    if (st === "ACTIVE") active++;
+    else if (st === "CHARGING") charging++;
+    else if (st === "ERROR" || st === "OFFLINE") error++;
+    else idle++;
+  }
+  const inFlightTasks = Object.values(tasks).filter(
+    (t) => t.status === "IN_PROGRESS" || t.status === "ASSIGNED"
+  ).length;
+
+  return {
+    total: botVals.length,
+    active,
+    charging,
+    idle,
+    error,
+    inFlightTasks,
+  };
+}
+
 export interface NexusTwinState {
   // Warehouse & Grid Environment
   gridDimensions: GridDimensions;
@@ -954,6 +993,7 @@ export interface NexusTwinState {
   botProfiles: Record<string, BotProfile>;
   selectedFleetProfileId: string;
   botUnits: Record<string, BotUnit>;
+  fleetSummary: FleetSummary;
 
   // Task Engine
   tasks: Record<string, Task>;
@@ -1407,6 +1447,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     botProfiles: BOT_PROFILES,
     selectedFleetProfileId: "LIGHT_PICKER",
     botUnits: initialLayout.initialBotUnits,
+    fleetSummary: computeFleetSummary(initialLayout.initialBotUnits),
 
     tasks: {},
     taskSequence: 1000,
@@ -2097,6 +2138,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         chargingDocks: layout.chargingDocks,
         elevators: layout.elevators,
         botUnits: layout.initialBotUnits,
+        fleetSummary: computeFleetSummary(layout.initialBotUnits),
         selectedBotId: null,
         selectedElevatorId: null,
         selectedStationId: null,
@@ -4174,9 +4216,48 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
           ? computeFinancials(nextBots, botProfiles, nextKpi, state.financialParams)
           : state.decisionMetrics;
 
+      // 9. Precomputed fleet summary for decoupled 60 FPS UI selectors
+      const botVals = Object.values(nextBots);
+      const curSummary = state.fleetSummary;
+      let activeCount = 0;
+      let chargingCount = 0;
+      let idleCount = 0;
+      let errorCount = 0;
+      for (let i = 0; i < botVals.length; i++) {
+        const st = botVals[i].status;
+        if (st === "ACTIVE") activeCount++;
+        else if (st === "CHARGING") chargingCount++;
+        else if (st === "ERROR" || st === "OFFLINE") errorCount++;
+        else idleCount++;
+      }
+      const inFlightTasksCount = Object.values(nextTasks).filter(
+        (t) => t.status === "IN_PROGRESS" || t.status === "ASSIGNED"
+      ).length;
+
+      const hasSummaryChanged =
+        !curSummary ||
+        curSummary.total !== botVals.length ||
+        curSummary.active !== activeCount ||
+        curSummary.charging !== chargingCount ||
+        curSummary.idle !== idleCount ||
+        curSummary.error !== errorCount ||
+        curSummary.inFlightTasks !== inFlightTasksCount;
+
+      const nextFleetSummary = hasSummaryChanged
+        ? {
+            total: botVals.length,
+            active: activeCount,
+            charging: chargingCount,
+            idle: idleCount,
+            error: errorCount,
+            inFlightTasks: inFlightTasksCount,
+          }
+        : curSummary;
+
       set({
         tick: currentTick,
         botUnits: nextBots,
+        fleetSummary: nextFleetSummary,
         people: nextPeople,
         tasks: nextTasks,
         chargingDocks: nextDocks,

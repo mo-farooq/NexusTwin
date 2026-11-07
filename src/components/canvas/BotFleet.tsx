@@ -610,43 +610,30 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
                 <group ref={(el) => (wheelRefs.current[idx] = el)}>
                   {/* Outer Rubber Tire with Treads */}
                   <mesh rotation-x={Math.PI / 2} castShadow>
-                    <cylinderGeometry args={[0.08, 0.08, 0.052, 24]} />
+                    <cylinderGeometry args={[0.08, 0.08, 0.052, 16]} />
                     <meshStandardMaterial
                       color="#18181B"
                       roughness={0.85}
                       metalness={0.15}
                     />
                   </mesh>
-                  {/* Metallic Alloy Rim Lip */}
+                  {/* Signature Yellow Axle Hub Cap */}
                   <mesh rotation-x={Math.PI / 2}>
-                    <cylinderGeometry args={[0.055, 0.055, 0.056, 24]} />
-                    <meshStandardMaterial
-                      color="#D4D4D8"
-                      roughness={0.25}
-                      metalness={0.8}
-                    />
-                  </mesh>
-                  {/* Signature Yellow Axle Hub Cap & Bolts */}
-                  <mesh rotation-x={Math.PI / 2}>
-                    <cylinderGeometry args={[0.024, 0.024, 0.060, 12]} />
+                    <cylinderGeometry args={[0.032, 0.032, 0.058, 12]} />
                     <meshStandardMaterial
                       color={BOT_THEME.ACCENT_YELLOW}
                       roughness={0.35}
                       metalness={0.5}
                     />
                   </mesh>
-                  {/* High-Contrast Spokes for unmistakable axle rotation visibility */}
-                  <mesh position={[0, 0, wz > 0 ? 0.028 : -0.028]}>
-                    <boxGeometry args={[0.12, 0.018, 0.005]} />
+                  {/* High-Contrast Dual-Axle Spoke Cross for unmistakable rotation visibility */}
+                  <mesh position={[0, 0, wz > 0 ? 0.029 : -0.029]}>
+                    <boxGeometry args={[0.12, 0.022, 0.004]} />
                     <meshStandardMaterial color="#334155" roughness={0.3} metalness={0.7} />
                   </mesh>
-                  <mesh position={[0, 0, wz > 0 ? 0.028 : -0.028]}>
-                    <boxGeometry args={[0.018, 0.12, 0.005]} />
+                  <mesh position={[0, 0, wz > 0 ? 0.029 : -0.029]}>
+                    <boxGeometry args={[0.022, 0.12, 0.004]} />
                     <meshStandardMaterial color="#334155" roughness={0.3} metalness={0.7} />
-                  </mesh>
-                  <mesh position={[0, 0, wz > 0 ? 0.031 : -0.031]}>
-                    <boxGeometry args={[0.028, 0.028, 0.006]} />
-                    <meshStandardMaterial color={BOT_THEME.ACCENT_YELLOW} roughness={0.2} metalness={0.6} />
                   </mesh>
                 </group>
               </group>

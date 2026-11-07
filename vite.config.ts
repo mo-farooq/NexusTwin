@@ -15,6 +15,22 @@ export default defineConfig({
     port: 3003,
     host: true,
   },
+  build: {
+    target: "esnext",
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/three") || id.includes("node_modules/@react-three")) {
+            return "vendor-three";
+          }
+          if (id.includes("node_modules/react") || id.includes("node_modules/zustand")) {
+            return "vendor-react";
+          }
+        },
+      },
+    },
+  },
   test: {
     include: ["test/**/*.test.ts"],
     environment: "node",

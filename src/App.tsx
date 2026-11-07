@@ -11,7 +11,7 @@
  * - Drawers & Modals: CopilotDrawer, WhatIfDrawer, AuditLedgerModal, WarehouseBuilderModal, DecisionSandboxModal
  */
 
-import React, { useEffect } from "react";
+import React, { useEffect, Suspense, lazy } from "react";
 import { useTwinStore } from "./store/useTwinStore";
 import { TopBar } from "./components/shell/TopBar";
 import { Viewport } from "./components/views/Viewport";
@@ -23,15 +23,27 @@ import {
 } from "./components/panels/LeftPanels";
 import { RightPanels } from "./components/panels/RightPanels";
 import { BottomPanels } from "./components/panels/BottomPanels";
-import { StoryMode } from "./components/story/StoryMode";
 import { CopilotDrawer } from "./components/ops/CopilotDrawer";
 import { WhatIfDrawer } from "./components/ops/WhatIfDrawer";
-import { AuditLedgerModal } from "./components/ops/AuditLedgerModal";
-import { WarehouseBuilderModal } from "./components/hud/WarehouseBuilderModal";
-import { DecisionSandboxModal } from "./components/hud/DecisionSandboxModal";
-import { OperationsTableModal } from "./components/hud/OperationsTableModal";
 import { KpiStrip } from "./components/hud/KpiStrip";
 import { AnalyticsDock } from "./components/hud/AnalyticsDock";
+
+// Async code splitting for heavy presentation & modal bundles
+const StoryMode = lazy(() =>
+  import("./components/story/StoryMode").then((m) => ({ default: m.StoryMode }))
+);
+const AuditLedgerModal = lazy(() =>
+  import("./components/ops/AuditLedgerModal").then((m) => ({ default: m.AuditLedgerModal }))
+);
+const WarehouseBuilderModal = lazy(() =>
+  import("./components/hud/WarehouseBuilderModal").then((m) => ({ default: m.WarehouseBuilderModal }))
+);
+const DecisionSandboxModal = lazy(() =>
+  import("./components/hud/DecisionSandboxModal").then((m) => ({ default: m.DecisionSandboxModal }))
+);
+const OperationsTableModal = lazy(() =>
+  import("./components/hud/OperationsTableModal").then((m) => ({ default: m.OperationsTableModal }))
+);
 
 const DESIGN_W = 1536;
 const DESIGN_H = 860;
@@ -153,7 +165,11 @@ export function App() {
   }, [appMode]);
 
   if (appMode === "STORY") {
-    return <StoryMode />;
+    return (
+      <Suspense fallback={<div className="story-loading" style={{ background: "#06182C", width: "100vw", height: "100vh" }} />}>
+        <StoryMode />
+      </Suspense>
+    );
   }
 
   return (
@@ -187,11 +203,13 @@ export function App() {
       <CopilotDrawer />
       <WhatIfDrawer />
 
-      {/* Enterprise Modals */}
-      <AuditLedgerModal />
-      <OperationsTableModal />
-      <WarehouseBuilderModal />
-      <DecisionSandboxModal />
+      {/* Enterprise Modals (Lazy Loaded) */}
+      <Suspense fallback={null}>
+        <AuditLedgerModal />
+        <OperationsTableModal />
+        <WarehouseBuilderModal />
+        <DecisionSandboxModal />
+      </Suspense>
     </div>
   );
 }

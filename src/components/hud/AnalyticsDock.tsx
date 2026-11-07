@@ -15,12 +15,10 @@ import { TaskQueuePanel, ThroughputPanel, OrderLifecycleBar } from "../panels/Bo
 export function AnalyticsDock() {
   const focusDockTab = useTwinStore((s) => s.focusDockTab);
   const setFocusDockTab = useTwinStore((s) => s.setFocusDockTab);
-  const tasks = useTwinStore((s) => s.tasks);
+  const fleetSummary = useTwinStore((s) => s.fleetSummary);
   const explainableLogs = useTwinStore((s) => s.explainableLogs);
 
-  const activeTaskCount = Object.values(tasks).filter(
-    (t) => t.status !== "COMPLETED" && t.status !== "CANCELLED"
-  ).length;
+  const activeTaskCount = fleetSummary.inFlightTasks;
 
   const isOpen = focusDockTab !== null;
 

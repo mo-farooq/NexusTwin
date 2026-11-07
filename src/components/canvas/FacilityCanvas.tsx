@@ -264,12 +264,13 @@ function CameraRig({
 // ─────────────────────────────────────────────────────────────
 
 function ArchitecturalLighting({ widthM, depthM }: { widthM: number; depthM: number }) {
-  const { scene } = useThree();
+  const { scene, gl } = useThree();
 
   useEffect(() => {
+    (window as unknown as { __threeRenderer: THREE.WebGLRenderer }).__threeRenderer = gl;
     scene.background = new THREE.Color(COLORS.BACKGROUND);
     scene.fog = new THREE.Fog(COLORS.BACKGROUND, 90, 220);
-  }, [scene]);
+  }, [scene, gl]);
 
   return (
     <>
@@ -392,6 +393,31 @@ function FloorAndTransitLanes({ widthM, depthM }: { widthM: number; depthM: numb
     ];
   }, []);
 
+  // Memoize transit lane configurations and textures once
+  const preparedCorridors = useMemo(() => {
+    return transitCorridors.map((lane, idx) => {
+      const dx = lane.end[0] - lane.start[0];
+      const dz = lane.end[1] - lane.start[1];
+      const length = Math.hypot(dx, dz);
+      const angle = Math.atan2(dz, dx);
+      const midX = (lane.start[0] + lane.end[0]) / 2;
+      const midZ = (lane.start[1] + lane.end[1]) / 2;
+
+      const tex = dashedLaneTexture.clone();
+      tex.repeat.set(length / 2.0, 1);
+      tex.needsUpdate = true;
+
+      return {
+        key: idx,
+        position: [midX, 0.015, midZ] as [number, number, number],
+        rotation: [-Math.PI / 2, 0, -angle] as [number, number, number],
+        length,
+        width: lane.width,
+        texture: tex,
+      };
+    });
+  }, [transitCorridors, dashedLaneTexture]);
+
   return (
     <group>
       {/* Elevated Foundation Plinth / Perimeter Trim */}
@@ -405,25 +431,31 @@ function FloorAndTransitLanes({ widthM, depthM }: { widthM: number; depthM: numb
         rotation-x={-Math.PI / 2}
         position={[widthM / 2, 0.0, depthM / 2]}
         receiveShadow
-        onPointerMove={(e) => {
-          if (!isObstaclePlacementActive) return;
-          e.stopPropagation();
-          const col = Math.floor(e.point.x / cellSize);
-          const row = Math.floor(e.point.z / cellSize);
-          if (col >= 0 && col < widthM && row >= 0 && row < depthM) {
-            setHoverTile([col, row]);
-          }
-        }}
-        onPointerOut={() => setHoverTile(null)}
-        onClick={(e) => {
-          if (!isObstaclePlacementActive) return;
-          e.stopPropagation();
-          const col = Math.floor(e.point.x / cellSize);
-          const row = Math.floor(e.point.z / cellSize);
-          if (col >= 0 && col < widthM && row >= 0 && row < depthM) {
-            toggleFloorObstacle(col, row);
-          }
-        }}
+        onPointerMove={
+          isObstaclePlacementActive
+            ? (e) => {
+                e.stopPropagation();
+                const col = Math.floor(e.point.x / cellSize);
+                const row = Math.floor(e.point.z / cellSize);
+                if (col >= 0 && col < widthM && row >= 0 && row < depthM) {
+                  setHoverTile([col, row]);
+                }
+              }
+            : undefined
+        }
+        onPointerOut={isObstaclePlacementActive ? () => setHoverTile(null) : undefined}
+        onClick={
+          isObstaclePlacementActive
+            ? (e) => {
+                e.stopPropagation();
+                const col = Math.floor(e.point.x / cellSize);
+                const row = Math.floor(e.point.z / cellSize);
+                if (col >= 0 && col < widthM && row >= 0 && row < depthM) {
+                  toggleFloorObstacle(col, row);
+                }
+              }
+            : undefined
+        }
       >
         <planeGeometry args={[widthM, depthM]} />
         <meshStandardMaterial
@@ -448,36 +480,23 @@ function FloorAndTransitLanes({ widthM, depthM }: { widthM: number; depthM: numb
         </mesh>
       )}
 
-      {/* Dashed Blinkit Yellow Transit Lanes */}
-      {transitCorridors.map((lane, idx) => {
-        const dx = lane.end[0] - lane.start[0];
-        const dz = lane.end[1] - lane.start[1];
-        const length = Math.hypot(dx, dz);
-        const angle = Math.atan2(dz, dx);
-        const midX = (lane.start[0] + lane.end[0]) / 2;
-        const midZ = (lane.start[1] + lane.end[1]) / 2;
-
-        const clonedTex = dashedLaneTexture.clone();
-        clonedTex.repeat.set(length / 2.0, 1);
-        clonedTex.needsUpdate = true;
-
-        return (
-          <mesh
-            key={idx}
-            position={[midX, 0.015, midZ]}
-            rotation={[-Math.PI / 2, 0, -angle]}
-          >
-            <planeGeometry args={[length, lane.width]} />
-            <meshBasicMaterial
-              map={clonedTex}
-              transparent
-              opacity={0.88}
-              polygonOffset
-              polygonOffsetFactor={-1}
-            />
-          </mesh>
-        );
-      })}
+      {/* Dashed Blinkit Yellow Transit Lanes (Pre-memoized) */}
+      {preparedCorridors.map((lane) => (
+        <mesh
+          key={lane.key}
+          position={lane.position}
+          rotation={lane.rotation}
+        >
+          <planeGeometry args={[lane.length, lane.width]} />
+          <meshBasicMaterial
+            map={lane.texture}
+            transparent
+            opacity={0.88}
+            polygonOffset
+            polygonOffsetFactor={-1}
+          />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -715,7 +734,7 @@ function FacilityScene({
         <HumanWorkers />
         <BotFleet />
 
-        {/* Soft Grounding Contact Shadows */}
+        {/* Soft Grounding Contact Shadows (Calculated once for 60 FPS performance) */}
         <ContactShadows
           position={[widthM / 2, 0.005, depthM / 2]}
           opacity={0.45}
@@ -723,6 +742,7 @@ function FacilityScene({
           blur={2.2}
           far={10}
           color="#334155"
+          frames={1}
         />
       </group>
     </>

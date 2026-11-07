@@ -12,16 +12,11 @@ import React from "react";
 import { useTwinStore } from "../../store/useTwinStore";
 
 export function FleetOverviewPanel() {
-  const botUnits = useTwinStore((s) => s.botUnits);
+  const fleetSummary = useTwinStore((s) => s.fleetSummary);
   const gridDimensions = useTwinStore((s) => s.gridDimensions);
   const setModal = useTwinStore((s) => s.setModal);
 
-  const bots = Object.values(botUnits);
-  const total = bots.length;
-  const active = bots.filter((b) => b.status === "ACTIVE").length;
-  const charging = bots.filter((b) => b.status === "CHARGING").length;
-  const idle = bots.filter((b) => b.status === "IDLE" || b.status === "WARNING").length;
-  const error = bots.filter((b) => b.status === "ERROR" || b.status === "OFFLINE").length;
+  const { total, active, charging, idle, error } = fleetSummary;
 
   const areaM2 = gridDimensions.widthM * gridDimensions.depthM;
   const density = total > 0 ? (areaM2 / total).toFixed(1) : "0.0";

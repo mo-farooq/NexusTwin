@@ -11,8 +11,7 @@ import { SystemStatusPanel, AlertsPanel } from "../panels/LeftPanels";
 
 export function KpiStrip() {
   const kpi = useTwinStore((s) => s.kpi);
-  const botUnits = useTwinStore((s) => s.botUnits);
-  const tasks = useTwinStore((s) => s.tasks);
+  const fleetSummary = useTwinStore((s) => s.fleetSummary);
   const alerts = useTwinStore((s) => s.alerts);
   const conveyors = useTwinStore((s) => s.conveyors);
 
@@ -32,16 +31,14 @@ export function KpiStrip() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [setActivePopover]);
 
-  const bots = Object.values(botUnits);
-  const totalBots = bots.length;
-  const activeBots = bots.filter((b) => b.status === "ACTIVE").length;
-  const chargingBots = bots.filter((b) => b.status === "CHARGING").length;
-  const idleBots = bots.filter((b) => b.status === "IDLE").length;
-  const errorBots = bots.filter((b) => b.status === "ERROR" || b.status === "WARNING" || b.status === "OFFLINE").length;
-
-  const inFlightCount = Object.values(tasks).filter(
-    (t) => t.status === "IN_PROGRESS" || t.status === "ASSIGNED"
-  ).length;
+  const {
+    total: totalBots,
+    active: activeBots,
+    charging: chargingBots,
+    idle: idleBots,
+    error: errorBots,
+    inFlightTasks: inFlightCount,
+  } = fleetSummary;
 
   const alertList = Object.values(alerts);
   const unackedAlerts = alertList.filter((a) => !a.acknowledged);
