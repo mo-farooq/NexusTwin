@@ -182,25 +182,35 @@ export function StoryMode() {
     setFleetSize(targetBots);
   };
 
-  // Step URL Hash Synchronization for Presentation Deep Links
+  // Step URL Hash Synchronization for Presentation Deep Links and Browser Back/Forward navigation
   useEffect(() => {
-    const hash = window.location.hash.toLowerCase();
-    if (hash.includes("stress") || hash.includes("step2")) {
-      setActiveStep(1);
-    } else if (hash.includes("compare") || hash.includes("step3")) {
-      setActiveStep(2);
-    } else if (hash.includes("decide") || hash.includes("step4")) {
-      setActiveStep(3);
-    } else if (hash.includes("build") || hash.includes("step1")) {
-      setActiveStep(0);
-    }
+    const syncStepFromHash = () => {
+      const hash = window.location.hash.toLowerCase();
+      if (hash.includes("stress") || hash.includes("step2")) {
+        setActiveStep(1);
+      } else if (hash.includes("compare") || hash.includes("step3")) {
+        setActiveStep(2);
+      } else if (hash.includes("decide") || hash.includes("step4")) {
+        setActiveStep(3);
+      } else if (hash.includes("build") || hash.includes("step1") || hash === "#story") {
+        setActiveStep(0);
+      }
+    };
+
+    syncStepFromHash();
+    window.addEventListener("hashchange", syncStepFromHash);
+    window.addEventListener("popstate", syncStepFromHash);
+    return () => {
+      window.removeEventListener("hashchange", syncStepFromHash);
+      window.removeEventListener("popstate", syncStepFromHash);
+    };
   }, []);
 
   useEffect(() => {
     const stepNames = ["build", "stress", "compare", "decide"];
     const targetHash = `#story/${stepNames[activeStep]}`;
-    if (window.location.hash !== targetHash) {
-      window.history.replaceState(null, "", targetHash);
+    if (window.location.hash.toLowerCase() !== targetHash) {
+      window.location.hash = targetHash;
     }
   }, [activeStep]);
 
@@ -800,7 +810,13 @@ export function StoryMode() {
               20×
             </button>
           </div>
-          <button className="hbtn ghost" onClick={() => setAppMode("OPERATOR")}>
+          <button
+            className="hbtn ghost"
+            onClick={() => {
+              window.location.hash = "#operator";
+              setAppMode("OPERATOR");
+            }}
+          >
             Operator view →
           </button>
         </div>

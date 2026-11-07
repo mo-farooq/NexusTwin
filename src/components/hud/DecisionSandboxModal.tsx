@@ -13,7 +13,13 @@ import { useTwinStore, BOT_PROFILES } from "../../store/useTwinStore";
 
 export function DecisionSandboxModal() {
   const isOpen = useTwinStore((s) => s.isSandboxModalOpen);
-  const closeSandboxModal = useTwinStore((s) => s.closeSandboxModal);
+  const rawCloseSandboxModal = useTwinStore((s) => s.closeSandboxModal);
+  const closeSandboxModal = () => {
+    rawCloseSandboxModal();
+    if (typeof window !== "undefined" && (window.location.hash.includes("sandbox") || window.location.hash.includes("roi"))) {
+      window.location.hash = "#operator";
+    }
+  };
 
   // Active Tab: "chaos" | "profiles" | "payback"
   const [activeTab, setActiveTab] = useState<"chaos" | "profiles" | "payback">("chaos");

@@ -69,6 +69,9 @@ export function App() {
   const isRunning = useTwinStore((s) => s.isRunning);
   const simulationSpeed = useTwinStore((s) => s.simulationSpeed);
   const stepSimulation = useTwinStore((s) => s.stepSimulation);
+  const isBuilderModalOpen = useTwinStore((s) => s.isBuilderModalOpen);
+  const isSandboxModalOpen = useTwinStore((s) => s.isSandboxModalOpen);
+  const modal = useTwinStore((s) => s.modal);
 
   // High-performance requestAnimationFrame simulation runner with time accumulator
   // Synchronizes ticks to the display frame rate without throttling or flooding React dispatches
@@ -84,8 +87,22 @@ export function App() {
       const dt = Math.min(0.25, (now - lastTime) / 1000);
       lastTime = now;
 
+      // 1. Performance optimization: Suspend simulation tick accumulator when tab is backgrounded / minimized
+      if (typeof document !== "undefined" && document.hidden) {
+        accumulator = 0;
+        return;
+      }
+
       const state = useTwinStore.getState();
       if (!state.isRunning) {
+        accumulator = 0;
+        return;
+      }
+
+      // 2. Performance optimization: When in Story Mode step 0 (Build) or step 3 (Decide),
+      // there is no 3D canvas active, so throttle/skip background physics ticks to preserve CPU and GPU
+      const hash = typeof window !== "undefined" ? window.location.hash.toLowerCase() : "";
+      if (state.appMode === "STORY" && (hash.includes("build") || hash.includes("decide") || hash === "#story")) {
         accumulator = 0;
         return;
       }
@@ -141,28 +158,83 @@ export function App() {
   useEffect(() => {
     const handleHash = () => {
       const hash = window.location.hash.toLowerCase();
-      if (hash.includes("story")) {
-        useTwinStore.getState().setAppMode("STORY");
-      } else if (hash.includes("operator") || hash.includes("scada")) {
-        useTwinStore.getState().setAppMode("OPERATOR");
-      } else if (hash.includes("studio") || hash.includes("builder")) {
-        useTwinStore.getState().setAppMode("OPERATOR");
-        useTwinStore.getState().openBuilderModal();
+      const state = useTwinStore.getState();
+
+      if (hash.startsWith("#story")) {
+        if (state.appMode !== "STORY") state.setAppMode("STORY");
+      } else {
+        if (state.appMode !== "OPERATOR") state.setAppMode("OPERATOR");
+
+        if (hash.includes("studio") || hash.includes("builder")) {
+          if (!state.isBuilderModalOpen) state.openBuilderModal();
+        } else if (hash.includes("sandbox") || hash.includes("roi")) {
+          if (!state.isSandboxModalOpen) state.openSandboxModal();
+        } else if (hash.includes("audit") || hash.includes("ledger")) {
+          if (state.modal !== "audit") state.setModal("audit");
+        } else if (hash.includes("operations") || hash.includes("tasks") || hash.includes("table")) {
+          if (state.modal !== "tasks") state.setModal("tasks");
+        } else {
+          // Normal operator view (#operator or #/) -> close modals
+          if (state.isBuilderModalOpen) state.closeBuilderModal();
+          if (state.isSandboxModalOpen) state.closeSandboxModal();
+          if (state.modal) state.setModal(null);
+        }
       }
     };
+
     handleHash();
     window.addEventListener("hashchange", handleHash);
-    return () => window.removeEventListener("hashchange", handleHash);
+    window.addEventListener("popstate", handleHash);
+    return () => {
+      window.removeEventListener("hashchange", handleHash);
+      window.removeEventListener("popstate", handleHash);
+    };
   }, []);
 
-  // Sync current mode to URL hash seamlessly without page reload
+  // Sync current mode and modals to URL hash seamlessly with browser history
   useEffect(() => {
-    if (appMode === "STORY" && !window.location.hash.toLowerCase().startsWith("#story")) {
-      window.history.replaceState(null, "", "#story");
-    } else if (appMode === "OPERATOR" && window.location.hash.toLowerCase().startsWith("#story")) {
-      window.history.replaceState(null, "", "#operator");
+    const currentHash = window.location.hash.toLowerCase();
+
+    if (appMode === "STORY") {
+      if (!currentHash.startsWith("#story")) {
+        window.history.pushState(null, "", "#story/build");
+      }
+      return;
     }
-  }, [appMode]);
+
+    // When in OPERATOR mode:
+    if (isBuilderModalOpen) {
+      if (!currentHash.includes("studio") && !currentHash.includes("builder")) {
+        window.history.pushState(null, "", "#studio");
+      }
+    } else if (isSandboxModalOpen) {
+      if (!currentHash.includes("sandbox") && !currentHash.includes("roi")) {
+        window.history.pushState(null, "", "#sandbox");
+      }
+    } else if (modal === "audit") {
+      if (!currentHash.includes("audit") && !currentHash.includes("ledger")) {
+        window.history.pushState(null, "", "#audit");
+      }
+    } else if (modal === "tasks") {
+      if (!currentHash.includes("operations") && !currentHash.includes("tasks") && !currentHash.includes("table")) {
+        window.history.pushState(null, "", "#operations");
+      }
+    } else {
+      // No modals open - return to operator root if previously on a modal hash
+      if (
+        currentHash.includes("studio") ||
+        currentHash.includes("builder") ||
+        currentHash.includes("sandbox") ||
+        currentHash.includes("audit") ||
+        currentHash.includes("ledger") ||
+        currentHash.includes("operations") ||
+        currentHash.includes("tasks") ||
+        currentHash.includes("table")
+      ) {
+        window.history.pushState(null, "", "#operator");
+      }
+    }
+  }, [appMode, isBuilderModalOpen, isSandboxModalOpen, modal]);
 
   if (appMode === "STORY") {
     return (

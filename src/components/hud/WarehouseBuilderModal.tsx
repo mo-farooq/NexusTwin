@@ -51,7 +51,12 @@ const BRUSHES: BrushDef[] = [
 
 export function WarehouseBuilderModal() {
   const isBuilderModalOpen = useTwinStore((s) => s.isBuilderModalOpen || s.modal === "builder");
-  const closeBuilderModal = () => useTwinStore.setState({ isBuilderModalOpen: false, modal: null });
+  const closeBuilderModal = () => {
+    useTwinStore.setState({ isBuilderModalOpen: false, modal: null });
+    if (typeof window !== "undefined" && (window.location.hash.includes("studio") || window.location.hash.includes("builder"))) {
+      window.location.hash = "#operator";
+    }
+  };
   const applyCustomLayout = useTwinStore((s) => s.applyCustomLayout);
 
   // Layout parameters

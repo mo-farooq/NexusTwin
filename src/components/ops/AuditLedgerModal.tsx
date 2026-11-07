@@ -14,6 +14,12 @@ import { useTwinStore, type TwinEvent } from "../../store/useTwinStore";
 export function AuditLedgerModal() {
   const isOpen = useTwinStore((s) => s.modal === "audit");
   const setModal = useTwinStore((s) => s.setModal);
+  const closeModal = () => {
+    setModal(null);
+    if (typeof window !== "undefined" && (window.location.hash.includes("audit") || window.location.hash.includes("ledger"))) {
+      window.location.hash = "#operator";
+    }
+  };
   const selectBot = useTwinStore((s) => s.selectBot);
   const recentEvents = useTwinStore((s) => s.recentEvents);
 
@@ -78,7 +84,7 @@ export function AuditLedgerModal() {
   };
 
   return (
-    <div className="modal-bg" onClick={() => setModal(null)}>
+    <div className="modal-bg" onClick={closeModal}>
       <div
         className="modal on"
         role="dialog"
@@ -94,7 +100,7 @@ export function AuditLedgerModal() {
           <button className="btn" onClick={() => exportFile("json")}>
             Export JSON
           </button>
-          <button className="icon-btn" onClick={() => setModal(null)}>
+          <button className="icon-btn" onClick={closeModal}>
             ✕
           </button>
         </header>

@@ -803,6 +803,7 @@ export function FacilityCanvas({
     >
       <Canvas
         shadows
+        dpr={Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, 1.75)}
         camera={{
           position: cameraPosition,
           fov: 38,
@@ -810,6 +811,7 @@ export function FacilityCanvas({
           far: 300,
         }}
         gl={{
+          powerPreference: "high-performance",
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.05,

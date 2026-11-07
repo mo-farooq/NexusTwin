@@ -126,7 +126,13 @@ export function TopBar() {
         {/* Story Mode / Operator View Switcher */}
         <button
           className="hbtn ghost"
-          onClick={() => setAppMode(appMode === "OPERATOR" ? "STORY" : "OPERATOR")}
+          onClick={() => {
+            if (appMode === "OPERATOR") {
+              window.location.hash = "#story/build";
+            } else {
+              window.location.hash = "#operator";
+            }
+          }}
           style={{ cursor: "pointer", fontWeight: 700 }}
           title={appMode === "OPERATOR" ? "Switch to Story Mode executive walkthrough" : "Switch to Operator View SCADA console"}
         >
@@ -136,7 +142,10 @@ export function TopBar() {
         {/* Studio Builder */}
         <button
           className="hbtn"
-          onClick={() => openBuilderModal()}
+          onClick={() => {
+            window.location.hash = "#studio";
+            openBuilderModal();
+          }}
           title="Open Warehouse Layout Builder & Auto-Zoner Studio"
         >
           <svg>
@@ -148,7 +157,10 @@ export function TopBar() {
         {/* ROI Sandbox */}
         <button
           className="hbtn"
-          onClick={() => openSandboxModal()}
+          onClick={() => {
+            window.location.hash = "#sandbox";
+            openSandboxModal();
+          }}
           title="Vendor AMR Comparison & INR Capex Payback"
         >
           <svg>

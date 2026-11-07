@@ -16,6 +16,12 @@ type TabMode = "FLEET" | "ZONES" | "ORDERS";
 export function OperationsTableModal() {
   const isOpen = useTwinStore((s) => s.modal === "tasks");
   const setModal = useTwinStore((s) => s.setModal);
+  const closeModal = () => {
+    setModal(null);
+    if (typeof window !== "undefined" && (window.location.hash.includes("operations") || window.location.hash.includes("tasks") || window.location.hash.includes("table"))) {
+      window.location.hash = "#operator";
+    }
+  };
   const botUnits = useTwinStore((s) => s.botUnits);
   const zones = useTwinStore((s) => s.zones);
   const tasks = useTwinStore((s) => s.tasks);
@@ -73,7 +79,7 @@ export function OperationsTableModal() {
     if (b) {
       setFocusTarget([b.position[0], 0.6, b.position[2]]);
     }
-    setModal(null);
+    closeModal();
   };
 
   const handleFocusZone = (zoneId: string) => {
@@ -83,7 +89,7 @@ export function OperationsTableModal() {
       const midZ = (z.bounds[1] + z.bounds[3]) / 2;
       setFocusTarget([midX, 0.5, midZ]);
     }
-    setModal(null);
+    closeModal();
   };
 
   const handleFocusTask = (taskId: string) => {
@@ -95,7 +101,7 @@ export function OperationsTableModal() {
         setFocusTarget([t.sourceCoords[0], 0.6, t.sourceCoords[1]]);
       }
     }
-    setModal(null);
+    closeModal();
   };
 
   const exportCSV = () => {
@@ -132,7 +138,7 @@ export function OperationsTableModal() {
   };
 
   return (
-    <div className="modal-bg" onClick={() => setModal(null)}>
+    <div className="modal-bg" onClick={closeModal}>
       <div
         className="modal on"
         role="dialog"
@@ -176,7 +182,7 @@ export function OperationsTableModal() {
           <button className="btn" onClick={exportCSV} style={{ fontSize: "11px", padding: "4px 10px" }}>
             Export CSV
           </button>
-          <button className="icon-btn" onClick={() => setModal(null)} title="Close Modal">
+          <button className="icon-btn" onClick={closeModal} title="Close Modal">
             ✕
           </button>
         </header>
