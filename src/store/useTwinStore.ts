@@ -52,53 +52,104 @@ export interface BotProfile {
 }
 
 export const BOT_PROFILES: Record<string, BotProfile> = {
+  // Published Representative Commercial AMR Profiles
+  ADDVERB_DYNAMO_200: {
+    id: "ADDVERB_DYNAMO_200",
+    name: "Dynamo 200 (Addverb Class)",
+    vendor: "Addverb Technologies (Representative)",
+    category: "LIGHT_PICKER",
+    maxSpeedMps: 1.8,
+    accelerationMps2: 1.2,
+    payloadCapacityKg: 200,
+    batteryCapacityWh: 1500, // 24V 22Ah LTO fast-charge
+    batteryDrainPerTick: 0.006,
+    batteryDrainIdlePerTick: 0.0004,
+    batteryDrainPayloadCoeff: 0.00003,
+    chargeRatePerTick: 0.12, // 8-minute fast opportunity charge (20% to 80%)
+    capexCostINR: 480000, // ₹4.8 Lakhs representative
+    annualMaintenanceINR: 35000,
+  },
+  GREYORANGE_BUTLER_M: {
+    id: "GREYORANGE_BUTLER_M",
+    name: "Butler M (GreyOrange Class)",
+    vendor: "GreyOrange (Representative)",
+    category: "MEDIUM_HAULER",
+    maxSpeedMps: 1.5,
+    accelerationMps2: 1.1,
+    payloadCapacityKg: 500, // Rack-lifting mobile storage unit
+    batteryCapacityWh: 2400, // High-density Li-ion
+    batteryDrainPerTick: 0.010,
+    batteryDrainIdlePerTick: 0.0006,
+    batteryDrainPayloadCoeff: 0.00005,
+    chargeRatePerTick: 0.07,
+    capexCostINR: 850000, // ₹8.5 Lakhs representative
+    annualMaintenanceINR: 55000,
+  },
+  UNBOX_SORT_SR550: {
+    id: "UNBOX_SORT_SR550",
+    name: "UnboxSort SR-550 (Unbox Class)",
+    vendor: "Unbox Robotics (Representative)",
+    category: "HEAVY_PALLET",
+    maxSpeedMps: 3.0, // High-speed parcel sortation
+    accelerationMps2: 1.8,
+    payloadCapacityKg: 25,
+    batteryCapacityWh: 800,
+    batteryDrainPerTick: 0.012,
+    batteryDrainIdlePerTick: 0.0003,
+    batteryDrainPayloadCoeff: 0.00002,
+    chargeRatePerTick: 0.15,
+    capexCostINR: 380000, // ₹3.8 Lakhs representative
+    annualMaintenanceINR: 28000,
+  },
+
+  // Aliases for seamless backward compatibility
   LIGHT_PICKER: {
     id: "LIGHT_PICKER",
-    name: "Lite Tote Bot",
-    vendor: "QuickBot India",
+    name: "Dynamo 200 (Addverb Class)",
+    vendor: "Addverb Technologies (Representative)",
     category: "LIGHT_PICKER",
-    maxSpeedMps: 1.2,
+    maxSpeedMps: 1.8,
     accelerationMps2: 1.2,
-    payloadCapacityKg: 100,
-    batteryCapacityWh: 1200,
-    batteryDrainPerTick: 0.007,
-    batteryDrainIdlePerTick: 0.0005,
+    payloadCapacityKg: 200,
+    batteryCapacityWh: 1500,
+    batteryDrainPerTick: 0.006,
+    batteryDrainIdlePerTick: 0.0004,
     batteryDrainPayloadCoeff: 0.00003,
-    chargeRatePerTick: 0.08,
-    capexCostINR: 450000, // ₹4.5 Lakhs
-    annualMaintenanceINR: 32000,
+    chargeRatePerTick: 0.12,
+    capexCostINR: 480000,
+    annualMaintenanceINR: 35000,
   },
   MEDIUM_HAULER: {
     id: "MEDIUM_HAULER",
-    name: "Medium Pallet Hauler",
-    vendor: "Falcon Robotics",
+    name: "Butler M (GreyOrange Class)",
+    vendor: "GreyOrange (Representative)",
     category: "MEDIUM_HAULER",
-    maxSpeedMps: 1.6,
+    maxSpeedMps: 1.5,
     accelerationMps2: 1.1,
-    payloadCapacityKg: 400,
-    batteryCapacityWh: 2200,
-    batteryDrainPerTick: 0.011,
-    batteryDrainIdlePerTick: 0.0008,
+    payloadCapacityKg: 500,
+    batteryCapacityWh: 2400,
+    batteryDrainPerTick: 0.010,
+    batteryDrainIdlePerTick: 0.0006,
     batteryDrainPayloadCoeff: 0.00005,
-    chargeRatePerTick: 0.06,
-    capexCostINR: 700000, // ₹7.0 Lakhs
-    annualMaintenanceINR: 50000,
+    chargeRatePerTick: 0.07,
+    capexCostINR: 850000,
+    annualMaintenanceINR: 55000,
   },
   HEAVY_PALLET: {
     id: "HEAVY_PALLET",
-    name: "Heavy Rack Mover",
-    vendor: "Bharat Logistics AMR",
+    name: "UnboxSort SR-550 (Unbox Class)",
+    vendor: "Unbox Robotics (Representative)",
     category: "HEAVY_PALLET",
-    maxSpeedMps: 2.0,
-    accelerationMps2: 1.4,
-    payloadCapacityKg: 1000,
-    batteryCapacityWh: 3500,
-    batteryDrainPerTick: 0.015,
-    batteryDrainIdlePerTick: 0.0011,
-    batteryDrainPayloadCoeff: 0.00007,
-    chargeRatePerTick: 0.05,
-    capexCostINR: 950000, // ₹9.5 Lakhs
-    annualMaintenanceINR: 68000,
+    maxSpeedMps: 3.0,
+    accelerationMps2: 1.8,
+    payloadCapacityKg: 25,
+    batteryCapacityWh: 800,
+    batteryDrainPerTick: 0.012,
+    batteryDrainIdlePerTick: 0.0003,
+    batteryDrainPayloadCoeff: 0.00002,
+    chargeRatePerTick: 0.15,
+    capexCostINR: 380000,
+    annualMaintenanceINR: 28000,
   },
 };
 
@@ -249,29 +300,120 @@ export interface ElevatorNode {
 // 3. Automation Decision & Financial ROI Model (Indian Context)
 // ─────────────────────────────────────────────────────────────
 
+export interface SourcedBenchmark {
+  category: string;
+  parameter: string;
+  value: string;
+  source: string;
+  citationUrl: string;
+  notes: string;
+}
+
+export const INSTITUTIONAL_BENCHMARK_CITATIONS: SourcedBenchmark[] = [
+  {
+    category: "Labor Economics",
+    parameter: "Picker Base Wage & Staffing Margin",
+    value: "₹18,000 / mo + 22% statutory markup",
+    source: "TeamLease Employment & Salary Report (Logistics & Supply Chain 2024-2025)",
+    citationUrl: "https://www.teamlease.com",
+    notes: "Covers Tier-1/Tier-2 Indian logistics hubs, including statutory PF, ESI, gratuity, and contractor compliance fee."
+  },
+  {
+    category: "Power Tariffs",
+    parameter: "Industrial HT Commercial Power",
+    value: "₹8.50 / kWh (Grid) & ₹28.00 / kWh (DG Genset)",
+    source: "BESCOM Bengaluru HT-2 / MSEDCL Maharashtra Industrial Schedules",
+    citationUrl: "https://bescom.karnataka.gov.in",
+    notes: "Blended 85% grid electricity with 15% backup diesel generator operating cost at 0.28 L/kWh fuel burn."
+  },
+  {
+    category: "AMR Hardware",
+    parameter: "Tote Carrier AMR Specifications",
+    value: "200 kg payload, 1.8 m/s speed, 8-min fast charge",
+    source: "Addverb Dynamo 200 Published Technical Specifications",
+    citationUrl: "https://addverb.com",
+    notes: "Representative commercial autonomous mobile robot engineered with 24V LTO battery chemistry."
+  },
+  {
+    category: "AMR Hardware",
+    parameter: "Mobile Storage Rack Lifter",
+    value: "500 kg payload, 1.5 m/s speed, 2.4 kWh Li-ion",
+    source: "GreyOrange Butler M Published Product Architecture",
+    citationUrl: "https://www.greyorange.com",
+    notes: "Goods-to-Person automated storage and retrieval system with opportunity charging."
+  },
+  {
+    category: "Tax & Finance",
+    parameter: "GST Input Tax Credit (ITC)",
+    value: "18% Credit on CapEx Assets",
+    source: "Central Goods and Services Tax Act 2017, Section 16",
+    citationUrl: "https://cbic-gst.gov.in",
+    notes: "100% claimable tax credit on capital robotics plant, machinery, and software integration against outward GST."
+  },
+  {
+    category: "Tax & Finance",
+    parameter: "Cost of Capital (WACC)",
+    value: "11.5% p.a. over 60 months",
+    source: "Reserve Bank of India Commercial Lending Benchmark & Logistics Asset Leasing",
+    citationUrl: "https://rbi.org.in",
+    notes: "Standard equipment leasing interest rate for Grade-A warehousing automation in India."
+  }
+];
+
 export interface FinancialParameters {
   laborMonthlySalaryINR: number;        // Base monthly salary per manual picker in India (default ₹18,000)
   contractStaffingMarginPct: number;    // TeamLease/Quess third-party staffing agency markup (default 22%)
   festiveLaborAttritionPct: number;     // Diwali/peak seasonal absenteeism & spot-hiring wage premium (default 35%)
-  customRobotUnitCostINR?: number | null; // Editable custom override in INR (e.g. ₹4.5L or ₹9.5L)
+  customRobotUnitCostINR?: number | null; // Editable custom override in INR (e.g. ₹4.8L or ₹8.5L)
   slaPenaltyPerMissedOrderINR: number;  // SLA Penalty Cost per delayed order (default ₹150)
   electricityCostPerKwhINR: number;     // Commercial power tariff (₹8.5 / kWh)
   dgGensetPowerCostINR: number;         // Backup diesel generator & tariff risk blended cost (default ₹28 / kWh)
   warehouseOperatingHoursPerDay: number;// e.g. 16 hours
   daysPerMonth: number;                 // 30 days
+
+  // Institutional Indian Automation Capital & Infrastructure Line Items
+  wmsIntegrationCapexINR: number;       // WMS/ERP API & Fleet Management middleware (default ₹18,00,000)
+  floorAndWifiPrepCapexINR: number;     // Epoxy resurfacing, QR grid fiducials, industrial mesh Wi-Fi (default ₹4,20,000)
+  chargingDockUnitCostINR: number;      // Dual-port opportunity fast charger cost (default ₹3,80,000 per 4 bots)
+  retainedSupervisorMonthlySalaryINR: number; // 1 Automation systems supervisor (default ₹45,000/mo)
+  retainedTechsCount: number;           // Dedicated robotics maintenance techs (default 2 techs)
+  retainedTechMonthlySalaryINR: number; // Monthly wage per tech (default ₹30,000/mo)
+  retainedExceptionHandlersCount: number; // Exception & damaged item resolution handlers (default 2 staff)
+  retainedExceptionHandlerSalaryINR: number; // Monthly wage per exception handler (default ₹22,000/mo)
+  gstRatePct: number;                   // GST rate on capital goods (default 18%, 100% claimable under CGST Sec 16)
+  waccInterestRatePct: number;          // Weighted Average Cost of Capital / equipment financing (default 11.5% p.a.)
+  financingTenureMonths: number;        // Financing tenure (default 60 months)
 }
 
 export interface AutomationDecisionMetrics {
-  totalFleetCapexINR: number;
+  // CapEx breakdown
+  totalFleetCapexINR: number;           // Hardware fleet capex
+  chargingInfraCapexINR: number;        // Docks CapEx (ceil(bots / 4) * dockCost)
+  wmsIntegrationCapexINR: number;       // Middleware/integration CapEx
+  facilityPrepCapexINR: number;         // Floor/Wi-Fi prep CapEx
+  grossCapexINR: number;                // Total Gross CapEx before GST ITC
+  gstInputTaxCreditReclaimedINR: number;// 18% GST input tax credit
+  netCapitalizedCapexINR: number;       // Effective net CapEx basis
+
+  // OpEx & Financing breakdown
   annualFleetMaintenanceINR: number;
+  monthlyEquipmentFinancingINR: number; // Monthly EMI / financing interest at WACC
+  monthlyRetainedStaffCostINR: number;  // Retained supervisor + technicians + exception handlers
+  monthlyAmrMaintenanceCostINR: number;
+  monthlyElectricityCostINR: number;
+  monthlyRobotOpexINR: number;          // Total OpEx = maint + power + retained staff + financing
+
+  // Labor & Savings
   equivalentManualPickers: number;
   effectiveManualPickerCostINR: number; // Base wage + staffing margin + festive attrition bonus
   monthlyManualLaborCostINR: number;
-  monthlyRobotOpexINR: number;
   monthlySlaPenaltySavingsINR: number;
   netMonthlySavingsINR: number;
   paybackPeriodMonths: number;
   threeYearRoiPct: number;
+  fiveYearNetValueINR: number;
+
+  // Throughput & Operational Metrics
   automatedThroughputPerHour: number;
   manualEstimatedThroughputPerHour: number;
   throughputGainPct: number;
@@ -343,6 +485,16 @@ export interface HumanWorker {
   zoneId: string;
 }
 
+export interface ConfidenceStats {
+  min: number;
+  median: number;
+  max: number;
+  mean: number;
+  stdDev: number;
+  ci95Low: number;
+  ci95High: number;
+}
+
 export interface WhatIfMetricRow {
   key: string;
   label: string;
@@ -351,7 +503,7 @@ export interface WhatIfMetricRow {
   delta: number;
   unit: string;
   higherIsBetter: boolean;
-  confidenceRange?: { min: number; median: number; max: number };
+  confidenceRange?: ConfidenceStats;
 }
 
 export interface WhatIfResult {
@@ -360,6 +512,7 @@ export interface WhatIfResult {
   ensembleSeeds: number;
   computeMs: number;
   startTick: number;
+  steadyStateWarmupDiscardTicks: number;
   divergenceTick: number | null;
   firstDivergenceEvent: {
     tick: number;
@@ -370,6 +523,15 @@ export interface WhatIfResult {
   recommendation: string;
   financialImpactINR: number;
   paybackHorizonMonthsDelta: number;
+  monteCarloStats?: Record<string, ConfidenceStats>;
+  manualBaselineComparison?: {
+    simulatedManualPickers: number;
+    manualThroughputPerHour: number;
+    manualDistanceTraveledM: number;
+    manualAisleWaitTicks: number;
+    amrThroughputGainPct: number;
+    amrTravelEfficiencyFactor: number;
+  };
   injectedChanges: {
     surgeMultiplier?: number;
     blockedZones?: string[];
@@ -826,15 +988,28 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
   let rng = createMulberry32(42);
 
   const defaultFinancialParams: FinancialParameters = {
-    laborMonthlySalaryINR: 18000, // ₹18,000/month base wage per manual picker in India
+    laborMonthlySalaryINR: 18000, // ₹18,000/month base wage per manual picker in India (TeamLease 2024-25)
     contractStaffingMarginPct: 22, // 22% TeamLease/Quess third-party agency markup
     festiveLaborAttritionPct: 35, // 35% Diwali/peak seasonal absenteeism & spot-hiring wage premium
-    customRobotUnitCostINR: null, // Default to profile cost (₹4.5L or ₹9.5L)
+    customRobotUnitCostINR: null, // Default to profile cost (₹4.8L or ₹8.5L)
     slaPenaltyPerMissedOrderINR: 150, // ₹150 per delayed order
-    electricityCostPerKwhINR: 8.5, // Commercial tariff
+    electricityCostPerKwhINR: 8.5, // Commercial tariff (BESCOM / MSEDCL HT-2)
     dgGensetPowerCostINR: 28, // Backup diesel generator tariff risk (₹28/kWh)
     warehouseOperatingHoursPerDay: 16,
     daysPerMonth: 30,
+
+    // Institutional Indian Automation Capital & Infrastructure Line Items
+    wmsIntegrationCapexINR: 1800000, // ₹18 Lakhs WMS/ERP API & Fleet Management middleware
+    floorAndWifiPrepCapexINR: 420000, // ₹4.2 Lakhs epoxy resurfacing, 2D QR fiducials, industrial mesh APs
+    chargingDockUnitCostINR: 380000, // ₹3.8 Lakhs per dual-port opportunity fast charger (1 per 4 bots)
+    retainedSupervisorMonthlySalaryINR: 45000, // 1 Automation systems supervisor
+    retainedTechsCount: 2, // 2 Dedicated robotics maintenance techs
+    retainedTechMonthlySalaryINR: 30000,
+    retainedExceptionHandlersCount: 2, // 2 Damaged item & manual exception handlers
+    retainedExceptionHandlerSalaryINR: 22000,
+    gstRatePct: 18, // 18% GST (100% claimable via Input Tax Credit under CGST Act Sec 16)
+    waccInterestRatePct: 11.5, // 11.5% p.a. equipment lease / commercial financing WACC
+    financingTenureMonths: 60, // 5-year tenure
   };
 
   const computeFinancials = (
@@ -845,14 +1020,64 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     overrideZones?: Record<string, WarehouseZone>
   ): AutomationDecisionMetrics => {
     const bots = Object.values(botUnits);
-    const totalCapex =
+    const activeProfileId = (typeof get === "function" && get()?.selectedFleetProfileId) || "ADDVERB_DYNAMO_200";
+
+    const unitCapex =
+      params.customRobotUnitCostINR && params.customRobotUnitCostINR > 0
+        ? params.customRobotUnitCostINR
+        : (profiles[activeProfileId]?.capexCostINR ?? 480000);
+
+    const hardwareFleetCapex =
       params.customRobotUnitCostINR && params.customRobotUnitCostINR > 0
         ? bots.length * params.customRobotUnitCostINR
-        : bots.reduce((sum, b) => sum + (profiles[b.profileId]?.capexCostINR ?? 0), 0);
+        : bots.reduce((sum, b) => sum + (profiles[b.profileId]?.capexCostINR ?? unitCapex), 0);
 
-    const annualMaint = bots.reduce((sum, b) => sum + (profiles[b.profileId]?.annualMaintenanceINR ?? 0), 0);
+    const docksCount = Math.max(1, Math.ceil(bots.length / 4));
+    const chargingInfraCapex = docksCount * (params.chargingDockUnitCostINR ?? 380000);
+    const wmsIntegrationCapex = params.wmsIntegrationCapexINR ?? 1800000;
+    const facilityPrepCapex = params.floorAndWifiPrepCapexINR ?? 420000;
 
-    // Realistic Indian warehouse labor economics:
+    const grossCapex = hardwareFleetCapex + chargingInfraCapex + wmsIntegrationCapex + facilityPrepCapex;
+
+    // GST Input Tax Credit (ITC) under Section 16 of CGST Act (18% reclaimed against output liability)
+    const gstRate = (params.gstRatePct ?? 18) / 100;
+    const gstInputTaxCreditReclaimed = Math.round(grossCapex * (gstRate / (1 + gstRate)));
+    const netCapitalizedCapex = grossCapex - gstInputTaxCreditReclaimed;
+
+    // Monthly equipment financing / WACC amortization (11.5% p.a. over 60 months)
+    const annualWacc = (params.waccInterestRatePct ?? 11.5) / 100;
+    const monthlyWaccRate = annualWacc / 12;
+    const tenureMonths = params.financingTenureMonths ?? 60;
+    const financingFactor =
+      (monthlyWaccRate * Math.pow(1 + monthlyWaccRate, tenureMonths)) /
+      (Math.pow(1 + monthlyWaccRate, tenureMonths) - 1);
+    const monthlyEquipmentFinancing = Math.round(netCapitalizedCapex * financingFactor);
+
+    // Retained human personnel that CANNOT be eliminated in automated warehouse:
+    // 1 Automation Supervisor + 2 Robotics Maintenance Techs + 2 Exception/Damaged Item Handlers
+    const monthlyRetainedStaffCost =
+      (params.retainedSupervisorMonthlySalaryINR ?? 45000) +
+      (params.retainedTechsCount ?? 2) * (params.retainedTechMonthlySalaryINR ?? 30000) +
+      (params.retainedExceptionHandlersCount ?? 2) * (params.retainedExceptionHandlerSalaryINR ?? 22000);
+
+    const annualMaint = bots.reduce((sum, b) => sum + (profiles[b.profileId]?.annualMaintenanceINR ?? 35000), 0);
+    const monthlyAmrMaintenance = Math.round(annualMaint / 12);
+
+    // Blended power cost: 85% commercial grid tariff + 15% backup diesel generator during outages
+    const effectivePowerTariff =
+      (params.electricityCostPerKwhINR || 8.5) * 0.85 + (params.dgGensetPowerCostINR || 28) * 0.15;
+    const monthlyElectricityCost = Math.round(
+      (kpi.totalEnergyKwh / Math.max(0.1, kpi.simTimeSeconds / 3600)) *
+      params.warehouseOperatingHoursPerDay *
+      params.daysPerMonth *
+      effectivePowerTariff
+    );
+
+    // Total Monthly Robot OpEx
+    const totalMonthlyRobotOpex =
+      monthlyAmrMaintenance + monthlyElectricityCost + monthlyRetainedStaffCost + monthlyEquipmentFinancing;
+
+    // Realistic Indian warehouse manual labor economics:
     // Base salary + staffing agency margin (22%) + festive surge/attrition spot hiring bonus (35% during peak surge)
     const isFestive = typeof get === "function" ? Boolean(get()?.isFestiveSurgeActive) : false;
     const agencyMargin = (params.contractStaffingMarginPct ?? 22) / 100;
@@ -865,19 +1090,6 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     const equivalentPickers = Math.round(bots.length * 1.6);
     const monthlyLaborCost = equivalentPickers * effectiveManualPickerCostINR;
 
-    // Blended power cost: 85% commercial grid tariff + 15% backup diesel generator during outages
-    const effectivePowerTariff =
-      (params.electricityCostPerKwhINR || 8.5) * 0.85 + (params.dgGensetPowerCostINR || 28) * 0.15;
-
-    // Robot power consumption + amortized monthly maintenance
-    const monthlyMaintCost = annualMaint / 12;
-    const monthlyPowerCost =
-      (kpi.totalEnergyKwh / Math.max(0.1, kpi.simTimeSeconds / 3600)) *
-      params.warehouseOperatingHoursPerDay *
-      params.daysPerMonth *
-      effectivePowerTariff;
-    const monthlyOpex = monthlyMaintCost + monthlyPowerCost;
-
     // SLA penalty savings: in manual operations, ~5% of orders miss Indian 15-min or 3PL delivery SLA
     const monthlyOrders =
       Math.max(150, kpi.throughputPerHour || bots.length * 28) *
@@ -885,10 +1097,17 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       params.daysPerMonth;
     const monthlySlaPenaltySavings = Math.round(monthlyOrders * 0.045 * (params.slaPenaltyPerMissedOrderINR || 150));
 
-    const netMonthlySavings = Math.max(1000, monthlyLaborCost + monthlySlaPenaltySavings - monthlyOpex);
-    const paybackMonths = Math.max(0.5, Math.round((totalCapex / netMonthlySavings) * 10) / 10);
+    // Net Monthly Savings (Net Cash Benefit)
+    const netMonthlySavings = Math.max(
+      1000,
+      monthlyLaborCost + monthlySlaPenaltySavings - (monthlyAmrMaintenance + monthlyElectricityCost + monthlyRetainedStaffCost)
+    );
+
+    // Payback Period in Months: Net Capitalized CapEx / Net Monthly Operating Savings
+    const paybackMonths = Math.max(0.5, Math.round((netCapitalizedCapex / netMonthlySavings) * 10) / 10);
     const threeYearSavings = netMonthlySavings * 36;
-    const threeYearRoi = Math.round(((threeYearSavings - totalCapex) / Math.max(1, totalCapex)) * 100);
+    const threeYearRoi = Math.round(((threeYearSavings - netCapitalizedCapex) / Math.max(1, netCapitalizedCapex)) * 100);
+    const fiveYearNetValue = Math.round(netMonthlySavings * 60 - netCapitalizedCapex);
 
     // Throughput benchmark (manual human picking benchmark ~25-30 picks/hr vs automated ~50-80 picks/hr)
     const automatedThroughput = kpi.throughputPerHour || Math.round(bots.length * 32);
@@ -911,33 +1130,37 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       }
     });
 
-    // Vendor Oversell Comparison Metrics (OEM sales engineering linear spreadsheet quote)
-    const activeProfileId = (typeof get === "function" && get()?.selectedFleetProfileId) || "LIGHT_PICKER";
-    const unitCapex =
-      params.customRobotUnitCostINR && params.customRobotUnitCostINR > 0
-        ? params.customRobotUnitCostINR
-        : (profiles[activeProfileId]?.capexCostINR ?? 450000);
-
     // Vendor pitch: sizes for peak surge without spatial bottleneck modeling
     const vendorQuotedBots = Math.max(bots.length + 6, Math.round(bots.length * 1.6));
     const vendorInfraCostINR = 600000; // Vendor server rack & charging station markups
     const vendorQuotedCapexINR = vendorQuotedBots * unitCapex + vendorInfraCostINR;
-    const capexSavedByNexusTwinINR = Math.max(0, vendorQuotedCapexINR - totalCapex);
+    const capexSavedByNexusTwinINR = Math.max(0, vendorQuotedCapexINR - grossCapex);
     // Overbuy congestion penalty: putting vendorQuotedBots into narrow 2m aisles drops throughput by 14% to 32%
     const extraBots = vendorQuotedBots - bots.length;
     const overbuyCongestionPenaltyPct = Math.min(38, Math.max(14, Math.round(14 + extraBots * 2.2)));
 
     return {
-      totalFleetCapexINR: totalCapex,
+      totalFleetCapexINR: hardwareFleetCapex,
+      chargingInfraCapexINR: chargingInfraCapex,
+      wmsIntegrationCapexINR: wmsIntegrationCapex,
+      facilityPrepCapexINR: facilityPrepCapex,
+      grossCapexINR: grossCapex,
+      gstInputTaxCreditReclaimedINR: gstInputTaxCreditReclaimed,
+      netCapitalizedCapexINR: netCapitalizedCapex,
       annualFleetMaintenanceINR: annualMaint,
+      monthlyEquipmentFinancingINR: monthlyEquipmentFinancing,
+      monthlyRetainedStaffCostINR: monthlyRetainedStaffCost,
+      monthlyAmrMaintenanceCostINR: monthlyAmrMaintenance,
+      monthlyElectricityCostINR: monthlyElectricityCost,
       equivalentManualPickers: equivalentPickers,
       effectiveManualPickerCostINR,
       monthlyManualLaborCostINR: monthlyLaborCost,
-      monthlyRobotOpexINR: Math.round(monthlyOpex),
+      monthlyRobotOpexINR: Math.round(totalMonthlyRobotOpex),
       monthlySlaPenaltySavingsINR: monthlySlaPenaltySavings,
       netMonthlySavingsINR: Math.round(netMonthlySavings),
       paybackPeriodMonths: paybackMonths,
       threeYearRoiPct: threeYearRoi,
+      fiveYearNetValueINR: fiveYearNetValue,
       automatedThroughputPerHour: automatedThroughput,
       manualEstimatedThroughputPerHour: manualThroughput,
       throughputGainPct: throughputGain,
