@@ -779,11 +779,13 @@ function FacilityScene({
   interactive = true,
   fixedCameraPosition,
   fixedCameraTarget,
+  fleetCountOverride,
 }: {
   controlsRef: React.RefObject<OrbitControlsImpl>;
   interactive?: boolean;
   fixedCameraPosition?: [number, number, number];
   fixedCameraTarget?: [number, number, number];
+  fleetCountOverride?: number;
 }) {
   const gridDimensions = useTwinStore((s) => s.gridDimensions);
   const selectBot = useTwinStore((s) => s.selectBot);
@@ -817,7 +819,7 @@ function FacilityScene({
         <StationNodes />
         <RackSystem />
         <HumanWorkers />
-        <BotFleet />
+        <BotFleet fleetCountOverride={fleetCountOverride} />
 
         {/* Soft Grounding Contact Shadows (Calculated once for 60 FPS performance) */}
         <ContactShadows
@@ -844,6 +846,7 @@ export interface FacilityCanvasProps {
   interactive?: boolean;
   cameraPosition?: [number, number, number];
   cameraTarget?: [number, number, number];
+  fleetCountOverride?: number;
 }
 
 export function FacilityCanvas({
@@ -852,6 +855,7 @@ export function FacilityCanvas({
   interactive = true,
   cameraPosition: customCameraPosition,
   cameraTarget,
+  fleetCountOverride,
 }: FacilityCanvasProps) {
   const controlsRef = useRef<OrbitControlsImpl>(null!);
   const gridDimensions = useTwinStore((s) => s.gridDimensions);
@@ -926,6 +930,7 @@ export function FacilityCanvas({
           interactive={interactive}
           fixedCameraPosition={customCameraPosition}
           fixedCameraTarget={cameraTarget}
+          fleetCountOverride={fleetCountOverride}
         />
       </Canvas>
     </div>

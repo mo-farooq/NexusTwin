@@ -16,7 +16,7 @@ import { useFrame } from "@react-three/fiber";
 import { RoundedBox, Line, Html } from "@react-three/drei";
 import * as THREE from "three";
 import { useTwinStore, type BotUnit } from "../../store/useTwinStore";
-import { cellToWorld } from "../../engine/pathfinder";
+import { cellToWorld, findPathAStar } from "../../engine/pathfinder";
 
 // ─────────────────────────────────────────────────────────────
 // Design System & Palette
@@ -805,17 +805,199 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
 // 3. Primary BotFleet Composite Export
 // ─────────────────────────────────────────────────────────────
 
-export function BotFleet() {
+export interface BotFleetProps {
+  fleetCountOverride?: number;
+}
+
+interface VirtualBotInternal {
+  id: string;
+  position: [number, number, number];
+  headingRad: number;
+  velocity: number;
+  currentCell: [number, number];
+  targetCell: [number, number];
+  path: [number, number][];
+  pathIndex: number;
+  dwellTicks: number;
+  payloadKg: number;
+  isYielding: boolean;
+}
+
+export function BotFleet({ fleetCountOverride }: BotFleetProps = {}) {
   const botUnits = useTwinStore((s) => s.botUnits);
   const selectedBotId = useTwinStore((s) => s.selectedBotId);
   const selectBot = useTwinStore((s) => s.selectBot);
   const showLabels = useTwinStore((s) => s.showLabels);
   const showPaths = useTwinStore((s) => s.showPaths);
   const simulationSpeed = useTwinStore((s) => s.simulationSpeed);
+  const navGrid = useTwinStore((s) => s.navGrid);
+  const tick = useTwinStore((s) => s.tick);
+
+  // Extract traversable aisle cells for virtual bot swarm distribution
+  const walkableCells = useMemo(() => {
+    if (!navGrid || !navGrid.cells) return [];
+    const list: [number, number][] = [];
+    const cols = navGrid.cols;
+    const rows = navGrid.rows;
+    for (let r = 2; r < rows - 2; r++) {
+      for (let c = 2; c < cols - 2; c++) {
+        if (navGrid.cells[r * cols + c] === 0) {
+          list.push([c, r]);
+        }
+      }
+    }
+    return list;
+  }, [navGrid]);
+
+  const virtualBotsRef = useRef<Map<string, VirtualBotInternal>>(new Map());
+  const lastTickRef = useRef(tick);
+
+  // Scale virtual bot fleet when fleetCountOverride is active
+  const renderedBots = useMemo(() => {
+    const baseBots = Object.values(botUnits);
+    if (fleetCountOverride === undefined) {
+      return baseBots;
+    }
+
+    const targetCount = Math.max(1, Math.round(fleetCountOverride));
+    if (targetCount <= baseBots.length) {
+      return baseBots.slice(0, targetCount);
+    }
+
+    if (walkableCells.length === 0) {
+      return baseBots;
+    }
+
+    const tickDelta = Math.max(0, Math.min(10, tick - lastTickRef.current));
+    lastTickRef.current = tick;
+
+    // Congestion scaling: past 64 AMRs, robots begin yielding at cross-aisles
+    const congRate = targetCount <= 56
+      ? 0.094
+      : Math.min(0.55, 0.094 + Math.pow((targetCount - 56) / 64, 1.4) * 0.374);
+
+    const vBotsMap = virtualBotsRef.current;
+    const virtualBotUnits: BotUnit[] = [];
+
+    for (let i = baseBots.length; i < targetCount; i++) {
+      const botId = `BOT-${i < 9 ? "0" + (i + 1) : i + 1}`;
+      let vb = vBotsMap.get(botId);
+
+      if (!vb) {
+        // Disperse virtual bot spawns across distinct warehouse aisles
+        const spawnIdx = (i * 37 + 13) % walkableCells.length;
+        const targetIdx = (i * 79 + 47) % walkableCells.length;
+        const startCell = walkableCells[spawnIdx];
+        const goalCell = walkableCells[targetIdx];
+        const [wx, wz] = cellToWorld(startCell[0], startCell[1], navGrid?.cellSize || 1.0);
+        const initialPath = (navGrid && findPathAStar(navGrid, startCell, goalCell)) || [];
+
+        vb = {
+          id: botId,
+          position: [wx, 0.25, wz],
+          headingRad: (i * 0.785) % (Math.PI * 2),
+          velocity: 1.2,
+          currentCell: startCell,
+          targetCell: goalCell,
+          path: initialPath,
+          pathIndex: 0,
+          dwellTicks: (i * 3) % 10,
+          payloadKg: i % 2 === 0 ? 15 : 0,
+          isYielding: false,
+        };
+        vBotsMap.set(botId, vb);
+      } else if (tickDelta > 0) {
+        // Congestion yield simulation
+        const shouldYield = targetCount > 64 && ((i * 17 + Math.floor(tick / 12)) % 100) < (congRate * 100);
+
+        if (shouldYield) {
+          vb.isYielding = true;
+          vb.velocity = 0;
+        } else {
+          vb.isYielding = false;
+          if (vb.dwellTicks > 0) {
+            vb.dwellTicks -= tickDelta;
+            vb.velocity = 0;
+          } else {
+            const steps = Math.min(tickDelta, 3);
+            for (let s = 0; s < steps; s++) {
+              if (vb.path && vb.pathIndex < vb.path.length) {
+                vb.velocity = 1.2;
+                const nextCell = vb.path[vb.pathIndex];
+                const [nextWx, nextWz] = cellToWorld(nextCell[0], nextCell[1], navGrid?.cellSize || 1.0);
+                const dx = nextWx - vb.position[0];
+                const dz = nextWz - vb.position[2];
+                if (Math.hypot(dx, dz) > 0.01) {
+                  vb.headingRad = Math.atan2(dz, dx);
+                }
+                vb.position = [nextWx, 0.25, nextWz];
+                vb.currentCell = nextCell;
+                vb.pathIndex += 1;
+              } else {
+                // Reached destination: dwell and route to next destination
+                vb.dwellTicks = 8;
+                vb.payloadKg = vb.payloadKg > 0 ? 0 : 15;
+                const nextGoalIdx = (i * 73 + tick * 5) % walkableCells.length;
+                const nextGoal = walkableCells[nextGoalIdx];
+                vb.targetCell = nextGoal;
+                vb.path = (navGrid && findPathAStar(navGrid, vb.currentCell, nextGoal)) || [];
+                vb.pathIndex = 0;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      virtualBotUnits.push({
+        id: vb.id,
+        profileId: "LIGHT_PICKER",
+        position: vb.position,
+        headingRad: vb.headingRad,
+        velocity: vb.velocity,
+        batteryPct: 80 + (i * 5) % 20,
+        status: "ACTIVE",
+        fsmState: vb.isYielding ? "IDLE" : vb.dwellTicks > 0 ? "PICKING" : vb.payloadKg > 0 ? "NAVIGATING_TO_DELIVERY" : "NAVIGATING_TO_PICKUP",
+        healthPct: 98,
+        currentTaskId: null,
+        targetLocationId: null,
+        path: vb.path,
+        pathIndex: vb.pathIndex,
+        currentPayloadKg: vb.payloadKg,
+        stats: {
+          distanceTraveledM: 120,
+          tasksCompleted: 12,
+          energyConsumedWh: 60,
+          busyTicks: 120,
+          idleTicks: 12,
+          waitTicks: 6,
+        },
+        perception: {
+          state: vb.isYielding ? "YIELDING" : "CLEAR",
+          frontObstacleId: null,
+          frontDistM: vb.isYielding ? 1.0 : null,
+          warningProximity: vb.isYielding,
+          yieldsToId: null,
+        },
+        waitTicks: vb.isYielding ? 10 : 0,
+        backingOff: false,
+        resumeGoalCoords: null,
+        resumeTaskId: null,
+        resumeLocationId: null,
+        resumeFsmState: null,
+        safeYieldsCount: 0,
+        isReversing: false,
+        reverseTicks: 0,
+        recentBreadcrumbs: [],
+      });
+    }
+
+    return [...baseBots, ...virtualBotUnits];
+  }, [botUnits, fleetCountOverride, walkableCells, tick, navGrid]);
 
   return (
     <group name="BotFleet">
-      {Object.values(botUnits).map((bot) => (
+      {renderedBots.map((bot) => (
         <SingleBot
           key={bot.id}
           bot={bot}

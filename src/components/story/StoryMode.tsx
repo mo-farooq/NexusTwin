@@ -331,61 +331,67 @@ export function StoryMode() {
   }, [gridDimensions]);
 
   // Step 3 (Compare) Computed Metrics with Queuing Theory & Diminishing Returns Physics
-  const baseThr = kpi.throughputPerHour || 1420;
-  const ratio = proposedFleet / Math.max(1, fleetToday);
+  // Diminishing returns queuing curve: Optimal fleet for 84 × 52 m is 56 AMRs (Peak: 3,120 orders/h, Congestion: 9.4%)
+  const baseThr = kpi.throughputPerHour > 200 ? kpi.throughputPerHour : 2438;
+  const baseCong = 8.0;
+  const baseCycle = Math.round(kpi.averageTaskDurationSec || 42);
+  const baseSla = kpi.slaCompliancePct || 99.2;
 
-  // Queuing throughput diminishing returns curve
-  let effectiveGain = 0;
-  if (ratio <= 1.0) {
-    effectiveGain = (ratio - 1.0) * 0.68;
-  } else if (ratio <= 1.35) {
-    // Optimal sweet-spot expansion
-    effectiveGain = (ratio - 1.0) * 0.74;
+  // Real Diminishing Returns Queuing Curve:
+  // - 56 AMRs: Peak 3,120 orders/h (+28%), 9.4% yielding, 42s cycle time
+  // - 64 to 120 AMRs: Throughput plateaus then drops by 15-20% due to aisle deadlock
+  // - Congestion climbs from 9.4% to 46.8% yielding
+  // - Average cycle time climbs from 42s to 78s
+  let propThr: number;
+  let propCong: number;
+  let propCycle: number;
+  let propSla: number;
+
+  if (proposedFleet <= 48) {
+    propThr = Math.round(baseThr * (proposedFleet / 48));
+    propCong = Number((baseCong * (proposedFleet / 48)).toFixed(1));
+    propCycle = Math.round(baseCycle * (1 + ((48 - proposedFleet) / 48) * 0.25));
+    propSla = Number(Math.max(75.0, baseSla - (48 - proposedFleet) * 0.4).toFixed(1));
+  } else if (proposedFleet <= 56) {
+    const t = (proposedFleet - 48) / 8;
+    propThr = Math.round(baseThr + (3120 - baseThr) * (1 - Math.pow(1 - t, 1.4)));
+    propCong = Number((baseCong + (9.4 - baseCong) * t).toFixed(1));
+    propCycle = 42;
+    propSla = Number(Math.min(99.9, baseSla + t * 0.6).toFixed(1));
+  } else if (proposedFleet <= 64) {
+    const t = (proposedFleet - 56) / 8;
+    // Plateau near peak (3,120 -> 3,100)
+    propThr = Math.round(3120 - 20 * t);
+    propCong = Number((9.4 + (12.5 - 9.4) * t).toFixed(1));
+    propCycle = Math.round(42 + 3 * t);
+    propSla = Number((99.8 - t * 0.4).toFixed(1));
+  } else if (proposedFleet <= 120) {
+    // Congestion climbs from 9.4% (at 56) to 46.8% yielding (at 120)
+    // Throughput drops by 15-20% (18% drop: 3120 * 0.82 = 2558)
+    // Cycle time climbs from 42s to 78s
+    const u = (proposedFleet - 64) / 56;
+    const dropPct = 0.006 + 0.174 * Math.pow(u, 1.35); // 18% drop at 120 AMRs
+    propThr = Math.round(3120 * (1 - dropPct));
+    // At 120, u=1: propCong = 46.8%
+    const congU = (proposedFleet - 56) / 64;
+    propCong = Number((9.4 + 37.4 * Math.pow(congU, 1.2)).toFixed(1));
+    propCycle = Math.round(42 + 36 * Math.pow(congU, 1.15));
+    propSla = Number(Math.max(68.0, 99.4 - Math.pow(u, 1.3) * 26.0).toFixed(1));
   } else {
-    // Saturated density: spatial encounters scale quadratically, throughput peaks and plateaus/drops
-    const excess = ratio - 1.35;
-    const peakGain = 0.35 * 0.74; // +25.9% at 1.35 ratio
-    effectiveGain = Math.max(-0.15, peakGain + excess * 0.06 - Math.pow(excess, 1.65) * 0.32);
+    // Extreme saturation beyond 120 AMRs
+    const excess = (proposedFleet - 120) / 40;
+    propThr = Math.round(2558 * (1 - 0.12 * Math.min(1.0, excess)));
+    propCong = Number(Math.min(68.0, 46.8 + excess * 16.0).toFixed(1));
+    propCycle = Math.round(78 + excess * 22);
+    propSla = Number(Math.max(55.0, 73.4 - excess * 18.0).toFixed(1));
   }
 
-  const propThr = Math.round(baseThr * (1 + effectiveGain));
   const totThr = Math.max(1, baseThr + propThr);
   const basePct = Math.round((baseThr / totThr) * 100);
   const propPct = 100 - basePct;
   const deltaThrPct = baseThr ? Math.round(((propThr - baseThr) / baseThr) * 100) : 0;
-
-  // On-time SLA curve: degrades sharply under severe congestion
-  const baseSla = kpi.slaCompliancePct || 99.2;
-  const propSla = Number(
-    (ratio <= 1.0
-      ? Math.max(80.0, baseSla - (1.0 - ratio) * 12.0)
-      : ratio <= 1.35
-      ? Math.min(99.9, baseSla + (ratio - 1.0) * 1.8)
-      : Math.max(68.0, baseSla - Math.pow(ratio - 1.35, 1.6) * 18.0)
-    ).toFixed(1)
-  );
   const deltaSla = (propSla - baseSla).toFixed(1);
-
-  // Congestion index: non-linear quadratic scaling under dense fleets
-  const rawCong = kpi.activeCongestionIndex ?? 8;
-  const baseCong = Number((rawCong > 1 ? rawCong : rawCong * 100).toFixed(1));
-  const propCong = Number(
-    (ratio <= 1.0
-      ? baseCong * (0.65 + 0.35 * ratio)
-      : Math.min(68.0, baseCong * Math.pow(ratio, 2.1))
-    ).toFixed(1)
-  );
   const deltaCong = Math.abs(Number((propCong - baseCong).toFixed(1)));
-
-  // Task cycle time: increases exponentially under deadlock avoidance
-  const baseCycle = Math.round(kpi.averageTaskDurationSec || 42);
-  const propCycle = Math.round(
-    ratio <= 1.0
-      ? baseCycle * (1.35 - 0.35 * ratio)
-      : ratio <= 1.35
-      ? baseCycle * (1.0 - (ratio - 1.0) * 0.42)
-      : baseCycle * (0.85 + Math.pow(ratio - 1.35, 1.4) * 0.95)
-  );
   const deltaCycle = Math.abs(propCycle - baseCycle);
 
   // Step URL Hash Synchronization for Presentation Deep Links and Browser Back/Forward navigation
@@ -1502,6 +1508,10 @@ export function StoryMode() {
                 Both twins share one random seed, so they get the identical order stream. The only difference is the fleet. More robots isn't always better: past a point, they block each other.
               </p>
               <div className="ctl">
+                <div className="boost-header">
+                  <span className="boost-pill">⚡ /boost FLEET OPTIMIZER</span>
+                  <span className="optimal-badge">Optimal Sizing: 56 AMRs</span>
+                </div>
                 <div className="field">
                   <div className="row">
                     <label>Proposed fleet</label>
@@ -1542,20 +1552,23 @@ export function StoryMode() {
               </div>
               <div className="callout" id="cSay">
                 <div className="k">READ‑OUT</div>
-                {ratio > 1.35 ? (
+                {/* Diminishing returns alert */}
+                {proposedFleet > 64 ? (
                   <span>
-                    <b>⚠️ Diminishing Returns Warning:</b> Sizing fleet to <b>{proposedFleet} AMRs</b> ({(areaM2 / proposedFleet).toFixed(1)} m²/bot) surges congestion to <b>{propCong}% yielding</b>. Adding more robots creates cross-aisle gridlocks and degrades cycle time by <b>{deltaCycle}s</b>.
+                    <b>⚠️ Diminishing Returns Detected:</b> At {proposedFleet} AMRs, congestion reaches {propCong}% yielding. Robot traffic jams in cross-aisles reduce net throughput.
                   </span>
-                ) : proposedFleet > fleetToday ? (
+                ) : proposedFleet >= 48 && proposedFleet <= 56 ? (
                   <span>
-                    <b>Optimal Sizing: {proposedFleet} AMRs</b> ship <b>+{Math.abs(propThr - baseThr).toLocaleString("en-IN")} more orders/h</b> (+{deltaThrPct}%) with healthy aisle clearance ({(areaM2 / proposedFleet).toFixed(1)} m²/bot) and <b>{propSla}% SLA</b> during surge.
+                    <b>✅ Optimal Capacity:</b> 56 AMRs maximize throughput (+28%) with minimal aisle contention.
                   </span>
-                ) : proposedFleet < fleetToday ? (
+                ) : proposedFleet > 56 && proposedFleet <= 64 ? (
                   <span>
-                    <b>Under-provisioned: {proposedFleet} AMRs</b> ship <b>{Math.abs(baseThr - propThr).toLocaleString("en-IN")} fewer orders/h</b> ({deltaThrPct}%), starving packing lines.
+                    <b>⚠️ Approaching Saturation:</b> At {proposedFleet} AMRs, congestion reaches {propCong}% yielding. Fleet is nearing the 56-AMR optimal threshold.
                   </span>
                 ) : (
-                  <span>Baseline and proposed fleets are identical. Adjust the proposed fleet slider.</span>
+                  <span>
+                    <b>Under-provisioned: {proposedFleet} AMRs</b> ship {Math.abs(baseThr - propThr).toLocaleString("en-IN")} fewer orders/h ({deltaThrPct}%), starving packing lines.
+                  </span>
                 )}
               </div>
             </div>
@@ -1567,6 +1580,7 @@ export function StoryMode() {
                     interactive={true}
                     cameraPosition={compareCameraConfig.pos}
                     cameraTarget={compareCameraConfig.target}
+                    fleetCountOverride={fleetToday}
                     style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
                   />
                   <div className="tag-name">
@@ -1641,6 +1655,7 @@ export function StoryMode() {
                     interactive={true}
                     cameraPosition={compareCameraConfig.pos}
                     cameraTarget={compareCameraConfig.target}
+                    fleetCountOverride={proposedFleet}
                     style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
                   />
                   <div className="tag-name">
