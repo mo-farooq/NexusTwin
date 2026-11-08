@@ -160,8 +160,11 @@ export function App() {
       const hash = window.location.hash.toLowerCase();
       const state = useTwinStore.getState();
 
-      if (hash.startsWith("#story")) {
+      if (hash.startsWith("#story") || hash === "" || hash === "#") {
         if (state.appMode !== "STORY") state.setAppMode("STORY");
+        if (hash === "" || hash === "#") {
+          window.history.replaceState(null, "", "#story/build");
+        }
       } else {
         if (state.appMode !== "OPERATOR") state.setAppMode("OPERATOR");
 

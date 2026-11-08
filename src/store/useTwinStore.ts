@@ -1458,7 +1458,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     simulationSpeed: 1,
 
     // View & UI Navigation
-    appMode: "OPERATOR",
+    appMode: "STORY",
     setAppMode: (mode) => set({ appMode: mode }),
     viewMode: (typeof localStorage !== "undefined" && (localStorage.getItem("nt-mode") as "focus" | "full")) || "focus",
     setViewMode: (mode) => {

@@ -11,6 +11,11 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useTwinStore, INSTITUTIONAL_BENCHMARK_CITATIONS } from "../../store/useTwinStore";
 import { FacilityCanvas } from "../canvas/FacilityCanvas";
+import {
+  generateAutoZonedWarehouse,
+  detectWallsFromBlueprint,
+  generateSampleBlueprintDataUrl,
+} from "../../engine/autoZoner";
 
 export function StoryMode() {
   const setAppMode = useTwinStore((s) => s.setAppMode);
@@ -28,6 +33,8 @@ export function StoryMode() {
   const isRunning = useTwinStore((s) => s.isRunning);
   const startSimulation = useTwinStore((s) => s.startSimulation);
   const setSimulationSpeed = useTwinStore((s) => s.setSimulationSpeed);
+  const customBlueprintUrl = useTwinStore((s) => s.customBlueprintUrl);
+  const applyCustomLayout = useTwinStore((s) => s.applyCustomLayout);
 
   const [activeStep, setActiveStep] = useState<0 | 1 | 2 | 3>(0);
   const [speed, setSpeed] = useState<number>(8);
@@ -119,6 +126,25 @@ export function StoryMode() {
   const [rackClusters, setRackClusters] = useState(8);
   const [fleetToday, setFleetToday] = useState(Object.keys(botUnits).length || 48);
 
+  // 01 / BUILD Custom Floorplan upload state
+  const [uploadedBlueprintUrl, setUploadedBlueprintUrl] = useState<string | null>(customBlueprintUrl || null);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const uploadedImageRef = useRef<HTMLImageElement | null>(null);
+
+  // Load image whenever uploadedBlueprintUrl changes
+  useEffect(() => {
+    if (!uploadedBlueprintUrl) {
+      uploadedImageRef.current = null;
+      return;
+    }
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = uploadedBlueprintUrl;
+    img.onload = () => {
+      uploadedImageRef.current = img;
+    };
+  }, [uploadedBlueprintUrl]);
+
   // 01 / BUILD Blueprint layer toggles (matching Dia design)
   const [showRacks, setShowRacks] = useState(true);
   const [showAisles, setShowAisles] = useState(true);
@@ -160,6 +186,9 @@ export function StoryMode() {
 
   // Handle Preset selection (Matching Dia specifications: [40,30,4,12], [84,52,8,48], [140,90,15,120])
   const handlePreset = (preset: "dark" | "hub" | "mega") => {
+    setUploadedBlueprintUrl(null);
+    setUploadedFileName(null);
+    uploadedImageRef.current = null;
     if (preset === "dark") {
       setWidthM(40);
       setDepthM(30);
@@ -176,6 +205,89 @@ export function StoryMode() {
       setRackClusters(15);
       setFleetToday(120);
     }
+  };
+
+  // Handle Drag & Drop / File Upload of CAD Floorplans in Step 1 (Build)
+  const handleFloorplanUpload = (file: File) => {
+    if (!file) return;
+    setUploadedFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target?.result as string;
+      if (!dataUrl) return;
+      setUploadedBlueprintUrl(dataUrl);
+
+      const img = new Image();
+      img.onload = async () => {
+        uploadedImageRef.current = img;
+        const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
+
+        // Derive proportional facility dimensions clamped to realistic warehouse limits
+        let newW = Math.round(widthM);
+        let newD = Math.round(widthM / aspect);
+        if (newD < 30) {
+          newD = 30;
+          newW = Math.min(140, Math.round(newD * aspect));
+        } else if (newD > 90) {
+          newD = 90;
+          newW = Math.min(140, Math.max(36, Math.round(newD * aspect)));
+        }
+        newW = Math.max(36, Math.min(140, newW));
+        newD = Math.max(30, Math.min(90, newD));
+        setWidthM(newW);
+        setDepthM(newD);
+
+        try {
+          const pillars = await detectWallsFromBlueprint(dataUrl, newW, newD, 85);
+          const layout = generateAutoZonedWarehouse({
+            widthMeters: newW,
+            depthMeters: newD,
+            flowType: "I_FLOW",
+            tierCount: 4,
+            pillarCells: pillars,
+            uploadedImageUrl: dataUrl,
+          });
+          applyCustomLayout(layout, dataUrl);
+        } catch (err) {
+          console.warn("Auto-zoner fallback", err);
+        }
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Load sample MSME CAD warehouse blueprint (60x40 m) for instant testing
+  const handleLoadSampleBlueprint = async () => {
+    const sampleUrl = generateSampleBlueprintDataUrl(60, 40);
+    setUploadedBlueprintUrl(sampleUrl);
+    setUploadedFileName("Sample_MSME_Warehouse_CAD_60x40.png");
+    setWidthM(60);
+    setDepthM(40);
+    setRackClusters(6);
+    setFleetToday(24);
+
+    try {
+      const pillars = await detectWallsFromBlueprint(sampleUrl, 60, 40, 85);
+      const layout = generateAutoZonedWarehouse({
+        widthMeters: 60,
+        depthMeters: 40,
+        flowType: "I_FLOW",
+        tierCount: 4,
+        pillarCells: pillars,
+        uploadedImageUrl: sampleUrl,
+      });
+      applyCustomLayout(layout, sampleUrl);
+    } catch (err) {
+      console.warn("Sample CAD auto-zone error", err);
+    }
+  };
+
+  const handleClearFloorplan = () => {
+    setUploadedBlueprintUrl(null);
+    setUploadedFileName(null);
+    uploadedImageRef.current = null;
+    handlePreset("hub");
   };
 
   // Fixed cinematic camera vantage for Step 2 (Stress) matching Dia
@@ -376,6 +488,14 @@ export function StoryMode() {
       // 5. Facility Floor Interior
       ctx.fillStyle = "#163272";
       ctx.fillRect(ox, oy, facilityW, facilityH);
+
+      // Render architectural CAD underlay if custom floorplan blueprint was uploaded
+      if (uploadedImageRef.current && uploadedImageRef.current.complete && uploadedImageRef.current.naturalWidth > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.42;
+        ctx.drawImage(uploadedImageRef.current, ox, oy, facilityW, facilityH);
+        ctx.restore();
+      }
 
       // 6. Minor 4m Grid Lines
       ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
@@ -684,7 +804,7 @@ export function StoryMode() {
 
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, [widthM, depthM, rackClusters, fleetToday, activeStep, showRacks, showAisles, showDocks, showStations]);
+  }, [widthM, depthM, rackClusters, fleetToday, activeStep, showRacks, showAisles, showDocks, showStations, uploadedBlueprintUrl]);
 
   // Financial ROI Payback Calculation with Institutional CapEx/OpEx, GST ITC, & 30-Seed Monte Carlo Spreads
   const financials = useMemo(() => {
@@ -892,6 +1012,76 @@ export function StoryMode() {
                   </button>
                 </div>
 
+                {/* Upload Floorplan Action Row */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <label
+                      className="btn"
+                      style={{
+                        flex: 1,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "8px",
+                        padding: "8px 12px",
+                        height: "36px",
+                        background: uploadedBlueprintUrl ? "rgba(255, 90, 31, 0.1)" : "rgba(18, 24, 38, 0.05)",
+                        border: uploadedBlueprintUrl ? "1.5px solid var(--signal)" : "1.5px dashed var(--hair-2)",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        fontSize: "11.5px",
+                        fontWeight: 700,
+                        color: uploadedBlueprintUrl ? "var(--signal)" : "var(--ink)",
+                        transition: "all 0.15s ease",
+                      }}
+                      title="Upload custom architectural CAD floorplan or blueprint image (PNG/JPG/SVG/JSON)"
+                    >
+                      <svg style={{ width: "15px", height: "15px", stroke: "currentColor", fill: "none" }}>
+                        <use href="#i-upload" />
+                      </svg>
+                      <span>
+                        {uploadedFileName
+                          ? `CAD: ${uploadedFileName.length > 20 ? uploadedFileName.slice(0, 18) + "…" : uploadedFileName}`
+                          : "Upload floorplan"}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*,.svg,.json,.cad"
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) handleFloorplanUpload(e.target.files[0]);
+                        }}
+                      />
+                    </label>
+
+                    {uploadedBlueprintUrl ? (
+                      <button
+                        className="btn ghost"
+                        style={{ height: "36px", padding: "0 10px", fontSize: "11px", color: "var(--red)" }}
+                        onClick={handleClearFloorplan}
+                        title="Clear custom floorplan and restore standard layout"
+                      >
+                        Reset
+                      </button>
+                    ) : (
+                      <button
+                        className="btn ghost"
+                        style={{ height: "36px", padding: "0 10px", fontSize: "11px", color: "var(--ink-2)", whiteSpace: "nowrap" }}
+                        onClick={handleLoadSampleBlueprint}
+                        title="Load sample MSME CAD warehouse blueprint (60×40 m)"
+                      >
+                        Sample CAD
+                      </button>
+                    )}
+                  </div>
+
+                  {uploadedFileName && (
+                    <div style={{ fontSize: "11px", color: "var(--teal)", display: "flex", alignItems: "center", gap: "5px", fontWeight: 600 }}>
+                      <span>✓ Floorplan parsed: {widthM}×{depthM} m · Auto-zoned</span>
+                    </div>
+                  )}
+                </div>
+
                 <div className="field">
                   <div className="row">
                     <label>Width</label>
@@ -963,7 +1153,10 @@ export function StoryMode() {
               <div className="tw bp">
                 <canvas ref={cvBuildRef} style={{ width: "100%", height: "100%" }} />
                 <div className="tag-name">
-                  <i style={{ background: "#FFB08F" }}></i>CAD Blueprint · BLR‑DC‑04 · Rev C
+                  <i style={{ background: uploadedBlueprintUrl ? "#FF5A1F" : "#FFB08F" }}></i>
+                  {uploadedFileName
+                    ? `CAD Blueprint · ${uploadedFileName.length > 22 ? uploadedFileName.slice(0, 20) + "…" : uploadedFileName}`
+                    : "CAD Blueprint · BLR‑DC‑04 · Rev C"}
                 </div>
                 <div className="bp-tools">
                   <button className={showRacks ? "on" : ""} onClick={() => setShowRacks(!showRacks)}>
@@ -978,6 +1171,36 @@ export function StoryMode() {
                   <button className={showStations ? "on" : ""} onClick={() => setShowStations(!showStations)}>
                     <i style={{ background: "#121826", border: "1px solid #fff" }}></i>Station
                   </button>
+                  <label
+                    style={{
+                      height: "30px",
+                      padding: "0 10px",
+                      borderRadius: "8px",
+                      color: uploadedBlueprintUrl ? "#1D3B8A" : "#D6E0FF",
+                      background: uploadedBlueprintUrl ? "#fff" : "transparent",
+                      border: uploadedBlueprintUrl ? "1px solid #fff" : "none",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      cursor: "pointer",
+                    }}
+                    title="Upload floorplan blueprint image"
+                  >
+                    <svg style={{ width: "13px", height: "13px", stroke: "currentColor", fill: "none" }}>
+                      <use href="#i-upload" />
+                    </svg>
+                    <span>Upload floorplan</span>
+                    <input
+                      type="file"
+                      accept="image/*,.svg,.json,.cad"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        if (e.target.files?.[0]) handleFloorplanUpload(e.target.files[0]);
+                      }}
+                    />
+                  </label>
                 </div>
                 <div className="bp-stats">
                   <div>
