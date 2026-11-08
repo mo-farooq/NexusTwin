@@ -58,6 +58,7 @@ export function RackSystem({ forceHeatmapMode }: RackSystemProps) {
   const gridDimensions = useTwinStore((s) => s.gridDimensions);
   const selectedRackId = useTwinStore((s) => s.selectedRackId);
   const selectRack = useTwinStore((s) => s.selectRack);
+  const activeFloor = useTwinStore((s) => s.activeFloor);
 
   const isHeatmapActive = forceHeatmapMode ?? storeHeatmapMode;
 
@@ -171,38 +172,63 @@ export function RackSystem({ forceHeatmapMode }: RackSystemProps) {
         postMeshRef.current.setMatrixAt(postIdx++, dummy.matrix);
       });
 
-      // 2. Shelf Tiers: Beams & Decks
+      // 2. Shelf Tiers: Beams & Decks (Controlled by activeFloor layer view)
       for (let tierIdx = 0; tierIdx < TIER_COUNT; tierIdx++) {
+        const tierLevel = tierIdx + 1;
+        const isTierDeckVisible =
+          activeFloor === "all" ||
+          (activeFloor === 1 && tierLevel <= 2) ||
+          (activeFloor === 2 && tierLevel >= 3);
+        const deckScale = isTierDeckVisible ? 1 : 0.0001;
+
         const tierY = (tierIdx + 1) * tierHeight;
 
         // Front Support Beam
         dummy.position.set(x, tierY, z + DEPTH / 2 - POST_THICKNESS / 2);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(deckScale, deckScale, deckScale);
         dummy.updateMatrix();
         beamMeshRef.current.setMatrixAt(beamIdx++, dummy.matrix);
 
         // Back Support Beam
         dummy.position.set(x, tierY, z - DEPTH / 2 + POST_THICKNESS / 2);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(deckScale, deckScale, deckScale);
         dummy.updateMatrix();
         beamMeshRef.current.setMatrixAt(beamIdx++, dummy.matrix);
 
         // Steel Deck Plate
         dummy.position.set(x, tierY + DECK_THICKNESS / 2, z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(deckScale, deckScale, deckScale);
         dummy.updateMatrix();
         deckMeshRef.current.setMatrixAt(deckIdx++, dummy.matrix);
       }
 
       // 3. Top Yellow Fascia Trim
+      const isFasciaVisible = activeFloor === "all" || activeFloor === 2;
+      const fasciaScale = isFasciaVisible ? 1 : 0.0001;
       dummy.position.set(x, TOTAL_HEIGHT + FASCIA_HEIGHT / 2, z);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(fasciaScale, fasciaScale, fasciaScale);
       dummy.updateMatrix();
       fasciaMeshRef.current.setMatrixAt(sIdx, dummy.matrix);
 
       // 4. Contrast Lip Plate
       dummy.position.set(x, TOTAL_HEIGHT + FASCIA_HEIGHT / 2, z + DEPTH / 2 + 0.025);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(fasciaScale, fasciaScale, fasciaScale);
       dummy.updateMatrix();
       lipMeshRef.current.setMatrixAt(sIdx, dummy.matrix);
 
-      // 5. Inventory Totes & Cartons (8 totes per shelf)
+      // 5. Inventory Totes & Cartons (Dynamic multi-level visibility based on activeFloor)
       for (let tier = 1; tier <= TIER_COUNT; tier++) {
+        const isToteVisible =
+          activeFloor === "all" ||
+          (activeFloor === 1 && tier <= 2) ||
+          (activeFloor === 2 && tier >= 3);
+        const toteScale = isToteVisible ? 1 : 0.0001;
+
         const tierY = (tier - 1) * tierHeight + 0.1;
         const tierData = shelf.tiers?.find((t) => t.level === tier);
 
@@ -211,6 +237,8 @@ export function RackSystem({ forceHeatmapMode }: RackSystemProps) {
           const boxHeight = 0.55;
 
           dummy.position.set(x + offsetX, tierY + boxHeight / 2 + DECK_THICKNESS, z);
+          dummy.rotation.set(0, 0, 0);
+          dummy.scale.set(toteScale, toteScale, toteScale);
           dummy.updateMatrix();
           toteMeshRef.current.setMatrixAt(toteIdx, dummy.matrix);
 
@@ -256,6 +284,7 @@ export function RackSystem({ forceHeatmapMode }: RackSystemProps) {
     FASCIA_HEIGHT,
     COLORS,
     isHeatmapActive,
+    activeFloor,
   ]);
 
   // Selected rack coordinate

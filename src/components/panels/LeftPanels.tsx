@@ -83,6 +83,19 @@ export function FleetOverviewPanel() {
             </div>
           </div>
         </div>
+
+        {/* Fleet List Dispatch Modal Trigger */}
+        <div style={{ marginTop: "12px", borderTop: "1px solid var(--border)", paddingTop: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: "11px", color: "var(--mute)" }}>Registry</span>
+          <button
+            className="lnk"
+            onClick={() => setModal("tasks")}
+            style={{ fontSize: "11px", fontWeight: 700, color: "var(--ink)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+            title="Open Live AMR Fleet Registry & Dispatch Modal"
+          >
+            Fleet List →
+          </button>
+        </div>
       </div>
     </section>
   );

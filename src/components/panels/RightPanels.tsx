@@ -10,7 +10,7 @@
  * - Roadmap Tab: 2026 predictive maintenance, multi-floor AMR, and solar energy milestones
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useTwinStore, type BotUnit } from "../../store/useTwinStore";
 
 const FSM_STATES = [
@@ -32,10 +32,34 @@ export function RightPanels({ asDock }: { asDock?: boolean } = {}) {
   const recentEvents = useTwinStore((s) => s.recentEvents);
   const kpi = useTwinStore((s) => s.kpi);
   const setModal = useTwinStore((s) => s.setModal);
+  const defragmentRacks = useTwinStore((s) => s.defragmentRacks);
+  const defragMessage = useTwinStore((s) => s.defragMessage);
 
   const [mainTab, setMainTab] = useState<"insp" | "ledger" | "road">("insp");
   const [inspSubTab, setInspSubTab] = useState<"bot" | "rack" | "station">("bot");
   const [ledgerSubTab, setLedgerSubTab] = useState<"disp" | "safe">("disp");
+
+  // Synchronize active inspector subtab with 3D selection
+  useEffect(() => {
+    if (selectedRackId) {
+      setMainTab("insp");
+      setInspSubTab("rack");
+    }
+  }, [selectedRackId]);
+
+  useEffect(() => {
+    if (selectedStationId) {
+      setMainTab("insp");
+      setInspSubTab("station");
+    }
+  }, [selectedStationId]);
+
+  useEffect(() => {
+    if (selectedBotId) {
+      setMainTab("insp");
+      setInspSubTab("bot");
+    }
+  }, [selectedBotId]);
 
   const bots = Object.values(botUnits);
   const currentBot: BotUnit | undefined = (selectedBotId && botUnits[selectedBotId]) || bots[0];
@@ -62,8 +86,13 @@ export function RightPanels({ asDock }: { asDock?: boolean } = {}) {
   const shelfKeys = Object.keys(locations).filter((k) => locations[k].type === "SHELF");
   const currentRack = (selectedRackId && locations[selectedRackId]) || locations[shelfKeys[0]];
 
-  // Selected Station details
-  const stationKeys = Object.keys(locations).filter((k) => locations[k].type === "PACK_STATION");
+  // Selected Station details (Packing, Inbound Dock, or Fast Charger)
+  const stationKeys = Object.keys(locations).filter(
+    (k) =>
+      locations[k].type === "PACK_STATION" ||
+      locations[k].type === "INBOUND_DOCK" ||
+      locations[k].type === "CHARGING_DOCK"
+  );
   const currentStation = (selectedStationId && locations[selectedStationId]) || locations[stationKeys[0]];
 
   // Safety events (ACS near-misses and yields)
@@ -275,12 +304,18 @@ export function RightPanels({ asDock }: { asDock?: boolean } = {}) {
                         />
                       </svg>
                     </div>
-                    <div>
+                    <div style={{ flex: 1 }}>
                       <div className="id">{currentRack.id}</div>
                       <div className="prof">
-                        {currentRack.name} · 4‑tier selective pallet rack
+                        {currentRack.name} · {currentRack.zoneId || "Zone A"}
                       </div>
                     </div>
+                  </div>
+
+                  {/* 4-Tier Slotting Capacity Header */}
+                  <div style={{ margin: "10px 0 6px 0", fontSize: "11px", display: "flex", justifyContent: "space-between", color: "var(--mute)" }}>
+                    <span>4-Tier Slotting Capacity</span>
+                    <b style={{ color: "var(--ink)" }}>16 Pallet Slots / 96 Bins</b>
                   </div>
 
                   {/* 4-Tier SKU Breakdown */}
@@ -291,7 +326,7 @@ export function RightPanels({ asDock }: { asDock?: boolean } = {}) {
                         <div>
                           <div className="s">{t.skuName}</div>
                           <div className="m">
-                            pick {t.pickDurationSec.toFixed(1)}s · {t.velocity} velocity
+                            pick {t.pickDurationSec.toFixed(1)}s · {t.level === 1 ? "Fast-Moving (Golden Zone)" : t.level === 4 ? "Bulk Reserve" : `${t.velocity} velocity`}
                           </div>
                         </div>
                         <span className="vel">
@@ -324,6 +359,23 @@ export function RightPanels({ asDock }: { asDock?: boolean } = {}) {
                       Re‑slot score <b style={{ color: "var(--teal)" }}>A</b>
                     </span>
                   </div>
+
+                  {/* 1-Click Defragment Rack Button */}
+                  <div style={{ marginTop: "12px" }}>
+                    <button
+                      className="btn primary"
+                      style={{ width: "100%", padding: "8px 12px", fontSize: "11px", fontWeight: 700, background: "var(--signal)", color: "#0F172A", border: "none", borderRadius: "6px", cursor: "pointer" }}
+                      onClick={() => defragmentRacks()}
+                      title="Rebalance high-velocity SKUs to Level 1 Golden Zone to cut vertical lift latency by 36%"
+                    >
+                      ⚡ Defragment Rack (Re-Slot to L1)
+                    </button>
+                    {defragMessage && (
+                      <div style={{ marginTop: "6px", fontSize: "10px", color: "var(--teal)", lineHeight: 1.3, fontWeight: 600 }}>
+                        ✓ {defragMessage}
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
 
@@ -331,36 +383,58 @@ export function RightPanels({ asDock }: { asDock?: boolean } = {}) {
               {inspSubTab === "station" && currentStation && (
                 <>
                   <div className="insp-head">
-                    <div className="botpic">
+                    <div className="botpic" style={{ background: currentStation.type === "CHARGING_DOCK" ? "var(--teal-soft)" : "var(--paper-2)" }}>
                       <svg viewBox="0 0 24 24" style={{ width: "26px", height: "26px" }}>
-                        <path fill="none" stroke="#fff" strokeWidth="2" d="M3 9h18v11H3zM7 9V5h10v4M9 14h6" />
+                        {currentStation.type === "CHARGING_DOCK" ? (
+                          <path fill="none" stroke="var(--teal)" strokeWidth="2" d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                        ) : (
+                          <path fill="none" stroke="#121826" strokeWidth="2" d="M3 9h18v11H3zM7 9V5h10v4M9 14h6" />
+                        )}
                       </svg>
                     </div>
-                    <div>
+                    <div style={{ flex: 1 }}>
                       <div className="id">{currentStation.id}</div>
-                      <div className="prof">{currentStation.name} · 2 Packing Operators</div>
+                      <div className="prof">
+                        {currentStation.name} · {currentStation.zoneId || "Zone"}
+                      </div>
                     </div>
+                  </div>
+
+                  {/* Station Type */}
+                  <div style={{ margin: "8px 0 10px 0", fontSize: "11.5px" }}>
+                    <span style={{ color: "var(--mute)" }}>Type: </span>
+                    <b style={{ color: "var(--ink)" }}>
+                      {currentStation.type === "INBOUND_DOCK"
+                        ? "Inbound Pallet Bay (Receiving)"
+                        : currentStation.type === "CHARGING_DOCK"
+                        ? "Autonomous Fast-Charging Pad"
+                        : "Packing & Sorting Station"}
+                    </b>
                   </div>
 
                   <div className="tele">
                     <div>
                       <div className="k">Queue depth</div>
                       <div className="v">
-                        {Math.max(1, bots.filter((b) => b.targetLocationId === currentStation.id).length)}
+                        {bots.filter((b) => b.targetLocationId === currentStation.id || (b.fsmState === "DELIVERING" && b.targetLocationId === currentStation.id)).length}
                         <small> bots</small>
                       </div>
                     </div>
                     <div>
-                      <div className="k">Output</div>
+                      <div className="k">Throughput</div>
                       <div className="v">
-                        {Math.round(kpi.throughputPerHour / 3)}
-                        <small> /h</small>
+                        {currentStation.type === "INBOUND_DOCK"
+                          ? "32"
+                          : currentStation.type === "CHARGING_DOCK"
+                          ? "8.5"
+                          : Math.round(kpi.throughputPerHour / Math.max(1, stationKeys.length))}
+                        <small> {currentStation.type === "CHARGING_DOCK" ? "kW" : "/h"}</small>
                       </div>
                     </div>
                   </div>
 
                   <div className="sec" style={{ marginTop: "12px" }}>
-                    Incoming robots
+                    Station Activity
                   </div>
                   {bots
                     .filter((b) => b.targetLocationId === currentStation.id)
@@ -369,17 +443,29 @@ export function RightPanels({ asDock }: { asDock?: boolean } = {}) {
                       <div key={b.id} className="ledger-row" style={{ fontSize: "11px" }}>
                         <span className="mono">{b.id}</span>
                         <span className="mono" style={{ color: "var(--mute)" }}>
-                          ETA {8 + i * 11}s
+                          ETA {8 + i * 11}s · {b.fsmState.replace(/_/g, " ")}
                         </span>
                       </div>
                     ))}
                   {bots.filter((b) => b.targetLocationId === currentStation.id).length === 0 && (
                     <div style={{ color: "var(--mute)", fontSize: "11px", padding: "8px 0" }}>
-                      Queue clear. Ready for next incoming picker.
+                      Queue clear. Ready for next incoming robot.
                     </div>
                   )}
                 </>
               )}
+
+              {/* View Task Queue & Logs button inside Inspector Pane */}
+              <div style={{ marginTop: "16px", borderTop: "1px solid var(--border)", paddingTop: "10px" }}>
+                <button
+                  className="btn"
+                  onClick={() => setModal("tasks")}
+                  style={{ width: "100%", padding: "7px 12px", fontSize: "11px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+                  title="Open Operations Registry & Dispatch Task Queue"
+                >
+                  View Task Queue & Logs
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -434,6 +520,18 @@ export function RightPanels({ asDock }: { asDock?: boolean } = {}) {
                     No dispatch entries recorded yet.
                   </div>
                 )}
+              </div>
+
+              {/* View Task Queue & Logs button inside Ledger Pane */}
+              <div style={{ marginTop: "12px", borderTop: "1px solid var(--border)", paddingTop: "8px" }}>
+                <button
+                  className="btn"
+                  onClick={() => setModal("tasks")}
+                  style={{ width: "100%", padding: "6px 12px", fontSize: "11px", fontWeight: 700 }}
+                  title="Open Operations Registry & Task Queue Modal"
+                >
+                  View Task Queue & Logs
+                </button>
               </div>
             </div>
           </div>

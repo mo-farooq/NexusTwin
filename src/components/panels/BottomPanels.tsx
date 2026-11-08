@@ -28,10 +28,10 @@ export function TaskQueuePanel() {
   return (
     <div className="card">
       <div className="card-h">
-        <span className="t">Dispatch queue</span>
+        <span className="t">Dispatch queue ({totalCount})</span>
         <span className="sp"></span>
-        <button className="lnk" onClick={() => setModal("tasks")}>
-          {totalCount} live tasks
+        <button className="lnk" onClick={() => setModal("tasks")} title="Open Complete Dispatch Registry Modal">
+          View All →
         </button>
       </div>
       <div className="tbl-wrap">
