@@ -658,6 +658,37 @@ input, select, textarea {
   color: #BFDBFE;
 }
 
+.badge-yielding {
+  background: rgba(15, 23, 42, 0.96);
+  border: 2px solid #F59E0B;
+  border-radius: 9999px;
+  padding: 5px 12px;
+  color: #FBBF24;
+  font-size: 11px;
+  font-weight: 800;
+  font-family: 'Inter', -apple-system, sans-serif;
+  letter-spacing: 0.03em;
+  box-shadow: 0 0 18px rgba(245, 158, 11, 0.7), 0 4px 14px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  animation: badgeYieldPulse 1.2s infinite ease-in-out;
+}
+
+@keyframes badgeYieldPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 16px rgba(245, 158, 11, 0.65), 0 4px 12px rgba(0, 0, 0, 0.6);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 24px rgba(245, 158, 11, 0.95), 0 4px 16px rgba(0, 0, 0, 0.7);
+  }
+}
+
 /* ── Right Column: Selected Robot & FPV ─────────────────────────────────────── */
 .robot-head {
   display: flex;

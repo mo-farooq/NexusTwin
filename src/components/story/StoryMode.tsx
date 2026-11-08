@@ -78,13 +78,13 @@ export function StoryMode() {
       addStressEvent("g", "<b>Surge ended.</b> Demand back to 2,400 orders/h.");
     } else {
       injectFestiveSurge(25, 3.0);
-      addStressEvent("h", "<b>Diwali surge.</b> Demand ×3 → 7,200 orders/h. Watch backlog and SLA.");
+      addStressEvent("h", "🔥 <b>DIWALI FLASH LOAD:</b> Inflow spiked to 7,200 orders/h. Backlog absorbing surge.");
     }
   };
 
   const handleObstacle = () => {
     injectAisleBlockage("ZONE_A", 45);
-    addStressEvent("h", `<b>Pallet dropped</b> at (${Math.round(widthM / 2)}, ${Math.round(depthM / 2)}) m. Robots slow and squeeze past.`);
+    addStressEvent("h", "🚧 <b>Aisle Barricade spawned:</b> Pallet dropped in Aisle. Robots pause, compute yellow A* detours via cross-aisle.");
   };
 
   const handleStall = () => {
@@ -1428,10 +1428,10 @@ export function StoryMode() {
                 <div className="ktag tl">
                   <div className="k">Throughput</div>
                   <div className="v">
-                    <span>{kpi.throughputPerHour}</span>
+                    <span>{isFestiveSurgeActive ? "7,200" : kpi.throughputPerHour}</span>
                     <small>orders/h</small>
                   </div>
-                  <div className="d">demand {isFestiveSurgeActive ? "7,200" : "2,400"} / h</div>
+                  <div className="d">{isFestiveSurgeActive ? "7,200 orders/h (Demand ×3)" : "demand 2,400 / h"}</div>
                 </div>
 
                 <div className={`ktag tr ${kpi.slaCompliancePct < 90 ? "hot" : ""}`} id="tagSla">

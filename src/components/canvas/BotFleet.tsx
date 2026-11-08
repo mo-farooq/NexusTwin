@@ -100,10 +100,10 @@ function BotStatusBadge({
       return { label: "🛡️ SIDESTEP", color: "#8B5CF6", bg: "rgba(139, 92, 246, 0.18)" };
     }
     if (perceptionState === "YIELDING") {
-      return { label: "🛡️ YIELDING", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.2)" };
+      return { label: "🛡️ YIELDING (EMPTY ➔ LOADED)", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.25)" };
     }
     if (perceptionState === "HOLDING") {
-      return { label: "🛑 LiDAR HOLD", color: "#EF4444", bg: "rgba(239, 68, 68, 0.2)" };
+      return { label: "🛑 LiDAR HOLD", color: "#EF4444", bg: "rgba(239, 68, 68, 0.25)" };
     }
     if (perceptionState === "SLOWING") {
       return { label: "⚠️ DECEL", color: "#FBBF24", bg: "rgba(251, 191, 36, 0.15)" };
@@ -354,11 +354,14 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
       }
     });
 
-    // Breathing pulse animation for status LED ring (Pulses rapidly in amber during Festive Surge)
+    // Breathing pulse animation for status LED ring (Pulsing amber for yielding, rapid amber for surge)
     if (ledRingRef.current) {
+      const isYielding = bot.perception?.state === "YIELDING" || bot.perception?.state === "HOLDING" || bot.isReversing;
       const isSurge = isFestiveSurgeActive || currentTask?.priority === "FLASH_SURGE";
-      const freq = isSurge ? 9.0 : 3.5;
-      const amp = isSurge ? 0.16 : 0.06;
+      const isLoaded = (bot.currentPayloadKg ?? 0) > 0 || bot.fsmState === "NAVIGATING_TO_DELIVERY";
+
+      const freq = isYielding ? 10.0 : isSurge ? 9.0 : isLoaded ? 4.5 : 3.5;
+      const amp = isYielding ? 0.22 : isSurge ? 0.16 : 0.08;
       const pulse = 1.0 + Math.sin(clock.elapsedTime * freq) * amp;
       ledRingRef.current.scale.set(pulse, pulse, pulse);
     }
@@ -366,7 +369,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
 
   // Calculate remaining continuous A* route in world coordinates
   const isMoving = bot.status === "ACTIVE" && bot.path.length > 0;
-  const showRoute = isSelected || (showPaths && isMoving);
+  const showRoute = isSelected || (showPaths && isMoving) || (hasObstacles && isMoving);
 
   const routePoints = useMemo(() => {
     if (!showRoute || !bot.path || bot.path.length === 0) return null;
@@ -529,6 +532,20 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
           </Html>
         )}
 
+        {/* 2.4 Unmistakable 3D High-Contrast Status Pill for Right-of-Way Yielding */}
+        {(bot.perception?.state === "YIELDING" || bot.perception?.state === "HOLDING" || bot.isReversing) && activeCamera !== "robot" && (
+          <Html
+            position={[0, 1.95, 0]}
+            center
+            distanceFactor={28}
+            zIndexRange={[99, 0]}
+          >
+            <div className="badge-yielding">
+              🛡️ YIELDING (EMPTY ➔ LOADED PRIORITY)
+            </div>
+          </Html>
+        )}
+
         {/* 2.5 Selected Robot Perception Gizmo */}
         {isSelected && <PerceptionGizmo bot={bot} />}
 
@@ -541,10 +558,12 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
           <ringGeometry args={[0.56, 0.72, 36]} />
           <meshBasicMaterial
             color={
-              (isFestiveSurgeActive || currentTask?.priority === "FLASH_SURGE") && bot.status === "ACTIVE"
+              (bot.perception?.state === "YIELDING" || bot.perception?.state === "HOLDING" || bot.isReversing)
                 ? "#F59E0B"
-                : bot.perception?.state === "HOLDING" || bot.perception?.state === "YIELDING"
-                ? "#EF4444"
+                : ((bot.currentPayloadKg ?? 0) > 0 || bot.fsmState === "NAVIGATING_TO_DELIVERY" || bot.fsmState === "DELIVERING")
+                ? "#06B6D4"
+                : (isFestiveSurgeActive || currentTask?.priority === "FLASH_SURGE") && bot.status === "ACTIVE"
+                ? "#F59E0B"
                 : bot.perception?.state === "SLOWING"
                 ? "#F59E0B"
                 : bot.perception?.state === "BACKING_OFF"
@@ -552,7 +571,15 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
                 : statusColor
             }
             transparent
-            opacity={isSelected ? 0.95 : 0.65}
+            opacity={
+              isSelected
+                ? 0.95
+                : (bot.perception?.state === "YIELDING" || bot.perception?.state === "HOLDING" || bot.isReversing)
+                ? 0.95
+                : ((bot.currentPayloadKg ?? 0) > 0 || bot.fsmState === "NAVIGATING_TO_DELIVERY")
+                ? 0.88
+                : 0.65
+            }
             side={THREE.DoubleSide}
           />
         </mesh>

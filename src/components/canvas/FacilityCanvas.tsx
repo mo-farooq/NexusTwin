@@ -279,16 +279,16 @@ function ArchitecturalLighting({ widthM, depthM }: { widthM: number; depthM: num
     <>
       {/* Soft Daylight Ambient - Shifts to warm golden/amber glow during Festive Surge */}
       <ambientLight
-        intensity={isFestiveSurgeActive ? 0.95 : 0.7}
-        color={isFestiveSurgeActive ? "#FED7AA" : "#FFFFFF"}
+        intensity={isFestiveSurgeActive ? 1.15 : 0.7}
+        color={isFestiveSurgeActive ? "#FBBF24" : "#FFFFFF"}
       />
 
       {/* Sky-to-Ground Hemisphere Light */}
       <hemisphereLight
         args={[
-          isFestiveSurgeActive ? "#FDBA74" : "#E0F2FE",
-          isFestiveSurgeActive ? "#FFEDD5" : "#F1F5F9",
-          isFestiveSurgeActive ? 0.65 : 0.45,
+          isFestiveSurgeActive ? "#F59E0B" : "#E0F2FE",
+          isFestiveSurgeActive ? "#FEF3C7" : "#F1F5F9",
+          isFestiveSurgeActive ? 0.85 : 0.45,
         ]}
       />
 
@@ -582,6 +582,38 @@ function ChargingPadsCollection() {
 // 5. 3D Floor Obstacles & Aisle Barricades Collection
 // ─────────────────────────────────────────────────────────────
 
+function FlashingAmberBeacon() {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const lightRef = useRef<THREE.PointLight>(null);
+
+  useFrame(({ clock }) => {
+    // 4Hz flashing amber industrial strobe
+    const strobe = (Math.sin(clock.elapsedTime * 12) + 1) * 0.5;
+    if (meshRef.current) {
+      const mat = meshRef.current.material as THREE.MeshStandardMaterial;
+      if (mat) mat.emissiveIntensity = 0.8 + strobe * 2.8;
+    }
+    if (lightRef.current) {
+      lightRef.current.intensity = 0.5 + strobe * 2.5;
+    }
+  });
+
+  return (
+    <>
+      <mesh ref={meshRef} position={[0, 0.5, 0]}>
+        <sphereGeometry args={[0.07, 16, 16]} />
+        <meshStandardMaterial
+          color="#F59E0B"
+          emissive="#F59E0B"
+          emissiveIntensity={2.5}
+          roughness={0.1}
+        />
+      </mesh>
+      <pointLight ref={lightRef} position={[0, 0.6, 0]} color="#F59E0B" intensity={2.5} distance={4.0} />
+    </>
+  );
+}
+
 function FloorObstaclesCollection() {
   const customObstacles = useTwinStore((s) => s.customObstacles);
   const toggleFloorObstacle = useTwinStore((s) => s.toggleFloorObstacle);
@@ -672,16 +704,7 @@ function FloorObstaclesCollection() {
             </RoundedBox>
 
             {/* Flashing Amber Warning Beacon */}
-            <mesh position={[0, 0.5, 0]}>
-              <sphereGeometry args={[0.06, 12, 12]} />
-              <meshStandardMaterial
-                color="#EF4444"
-                emissive="#EF4444"
-                emissiveIntensity={1.8}
-                roughness={0.1}
-              />
-            </mesh>
-            <pointLight position={[0, 0.6, 0]} color="#F59E0B" intensity={1.5} distance={3.5} />
+            <FlashingAmberBeacon />
 
             {/* Click to remove Pill */}
             {showLabels && (

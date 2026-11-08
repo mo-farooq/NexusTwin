@@ -2185,7 +2185,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     },
 
     injectAisleBlockage: (zoneId, durationSeconds = 45) => {
-      const { zones, customObstacles } = get();
+      const { zones, customObstacles, navGrid, botUnits, activeCongestionMap } = get();
       if (!zones[zoneId]) return;
       const obsCol = zoneId === "ZONE_B" ? 42 : 14;
       const obsRow = 10;
@@ -2193,6 +2193,42 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         ...customObstacles.filter((o) => o.col !== obsCol || o.row !== obsRow),
         { id: `obs-${obsCol}-${obsRow}`, col: obsCol, row: obsRow, label: `Spilled Pallet (${zoneId})` },
       ];
+
+      const newGridCells = new Uint8Array(navGrid.cells);
+      const cellIdx = obsRow * navGrid.cols + obsCol;
+      if (cellIdx >= 0 && cellIdx < newGridCells.length) {
+        newGridCells[cellIdx] = 1;
+      }
+
+      const nextBots = { ...botUnits };
+      const allBlockedKeys = new Set(newObs.map((o) => `${o.col},${o.row}`));
+
+      // Live A* Rerouting: Check if any bot's active path steps on this cell!
+      Object.values(nextBots).forEach((bot) => {
+        if (bot.path && bot.path.length > 0 && bot.fsmState !== "IDLE" && bot.fsmState !== "ERROR") {
+          const remainingSteps = bot.path.slice(bot.pathIndex);
+          const hitsObstacle = remainingSteps.some(([c, r]) => c === obsCol && r === obsRow);
+          if (hitsObstacle) {
+            const startCell = worldToCell(bot.position[0], bot.position[2], navGrid.cellSize);
+            const lastCell = bot.path[bot.path.length - 1];
+            const newPath = findPathAStar(
+              { ...navGrid, cells: newGridCells },
+              startCell,
+              lastCell,
+              { blockedCells: allBlockedKeys, congestionCostMap: activeCongestionMap }
+            );
+            if (newPath && newPath.length > 0) {
+              nextBots[bot.id] = {
+                ...bot,
+                path: newPath,
+                pathIndex: 0,
+                waitTicks: 2, // Visibly pause for a moment before continuing on new detour
+              };
+            }
+          }
+        }
+      });
+
       set({
         zones: {
           ...zones,
@@ -2203,11 +2239,20 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
           },
         },
         customObstacles: newObs,
+        navGrid: { ...navGrid, cells: newGridCells },
+        botUnits: nextBots,
       });
     },
 
     clearInjections: () => {
-      const { botUnits, zones } = get();
+      const { botUnits, zones, navGrid, customObstacles } = get();
+      const newGridCells = new Uint8Array(navGrid.cells);
+      customObstacles.forEach((o) => {
+        const cellIdx = o.row * navGrid.cols + o.col;
+        if (cellIdx >= 0 && cellIdx < newGridCells.length) {
+          newGridCells[cellIdx] = 0; // free
+        }
+      });
       const restoredBots = { ...botUnits };
       Object.keys(restoredBots).forEach((id) => {
         if (restoredBots[id].status === "ERROR") {
@@ -2218,7 +2263,13 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       Object.keys(restoredZones).forEach((zid) => {
         restoredZones[zid] = { ...restoredZones[zid], isBlocked: false, blockedReason: null };
       });
-      set({ botUnits: restoredBots, zones: restoredZones, customObstacles: [] });
+      set({
+        botUnits: restoredBots,
+        zones: restoredZones,
+        customObstacles: [],
+        navGrid: { ...navGrid, cells: newGridCells },
+        isFestiveSurgeActive: false,
+      });
     },
 
     resetSimulation: (newSeed = 42) => {
