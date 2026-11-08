@@ -590,4 +590,5 @@ export function RightPanels({ asDock }: { asDock?: boolean } = {}) {
   );
 }
 
+export const SelectedRobotPanel = RightPanels;
 export default RightPanels;

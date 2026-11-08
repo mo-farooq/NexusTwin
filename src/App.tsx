@@ -41,9 +41,10 @@ const WarehouseBuilderModal = lazy(() =>
 const DecisionSandboxModal = lazy(() =>
   import("./components/hud/DecisionSandboxModal").then((m) => ({ default: m.DecisionSandboxModal }))
 );
-const OperationsTableModal = lazy(() =>
-  import("./components/hud/OperationsTableModal").then((m) => ({ default: m.OperationsTableModal }))
+const TaskDispatchModal = lazy(() =>
+  import("./components/ops/TaskDispatchModal").then((m) => ({ default: m.TaskDispatchModal }))
 );
+const OperationsTableModal = TaskDispatchModal;
 
 const DESIGN_W = 1536;
 const DESIGN_H = 860;
@@ -281,7 +282,7 @@ export function App() {
       {/* Enterprise Modals (Lazy Loaded) */}
       <Suspense fallback={null}>
         <AuditLedgerModal />
-        <OperationsTableModal />
+        {modal === "tasks" && <TaskDispatchModal />}
         <WarehouseBuilderModal />
         <DecisionSandboxModal />
       </Suspense>
