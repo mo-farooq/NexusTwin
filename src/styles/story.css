@@ -96,7 +96,7 @@
 .verdict-card .say{font-size:15px;line-height:1.5;color:#D5D9E2;max-width:520px}
 .verdict-card .say b{color:#fff}
 .stamp{align-self:flex-start;font-family:var(--display);font-size:14px;letter-spacing:.18em;font-weight:700;padding:8px 14px;border-radius:8px;border:2px solid;transform:rotate(-2deg)}
-.stamp.go{color:#3FD0B9;border-color:#3FD0B9}.stamp.maybe{color:#F6D98A;border-color:#F6D98A}.stamp.no{color:#FF8A8A;border-color:#FF8A8A}
+.stamp.go{color:#ffffff;background:#059669;border-color:#059669;box-shadow:0 4px 14px rgba(5,150,105,0.45)}.stamp.maybe{color:#F6D98A;border-color:#F6D98A}.stamp.no{color:#FF8A8A;border-color:#FF8A8A}
 .cash{flex:1;min-height:140px;position:relative}
 .facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .facts div{padding:10px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08)}
