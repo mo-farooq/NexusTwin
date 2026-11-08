@@ -4078,6 +4078,30 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         if (bot.fsmState === "PICKING") {
           const task = bot.currentTaskId ? nextTasks[bot.currentTaskId] : null;
           if (task) {
+            // Determine tier and required physical dwell ticks at 10 Hz clock
+            // Level 1: 2.0s (20 ticks), Level 2: 4.5s (45 ticks), Level 3: 7.5s (75 ticks), Level 4: 11.0s (110 ticks)
+            const tier = task.targetTier ?? 1;
+            const sourceLoc = task.sourceLocId ? locations[task.sourceLocId] : null;
+            const tierInfo = sourceLoc?.tiers?.find((t) => t.level === tier);
+            const durationSec = tierInfo?.pickDurationSec ?? (tier === 4 ? 11.0 : tier === 3 ? 7.5 : tier === 2 ? 4.5 : 2.0);
+            const requiredTicks = Math.round(durationSec * 10);
+
+            if ((bot.waitTicks || 0) < requiredTicks) {
+              // AMR physically dwells while vertical hoist / picker extracts SKU from tier
+              const batteryMultiplier = tierInfo?.batteryMultiplier ?? (tier === 4 ? 2.6 : tier === 3 ? 1.9 : tier === 2 ? 1.4 : 1.0);
+              nextBots[bot.id] = {
+                ...bot,
+                waitTicks: (bot.waitTicks || 0) + 1,
+                velocity: 0,
+                stats: {
+                  ...bot.stats,
+                  busyTicks: bot.stats.busyTicks + 1,
+                  energyConsumedWh: bot.stats.energyConsumedWh + batteryMultiplier * 0.05,
+                },
+              };
+              return;
+            }
+
             // Dynamic Packing Station Load Balancing: Distribute evenly across open stations
             if (task.destLocId && task.destLocId.startsWith("PACK-STATION-")) {
               const packKeys = Object.keys(locations).filter((k) => locations[k].type === "PACK_STATION");
@@ -4127,6 +4151,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               pathIndex: 0,
               isReversing: false,
               reverseTicks: 0,
+              waitTicks: 0,
             };
           }
           return;

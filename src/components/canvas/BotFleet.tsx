@@ -49,6 +49,7 @@ interface BotStatusBadgeProps {
   batteryPct: number;
   isSelected: boolean;
   statusColor: string;
+  fsmState?: string;
   perceptionState?: string;
   warningProximity?: boolean;
   isBackingOff?: boolean;
@@ -62,6 +63,7 @@ function BotStatusBadge({
   batteryPct,
   isSelected,
   statusColor,
+  fsmState,
   perceptionState,
   warningProximity,
   isBackingOff,
@@ -71,6 +73,9 @@ function BotStatusBadge({
   const [hovered, setHovered] = useState(false);
 
   const acBadge = useMemo(() => {
+    if (fsmState === "PICKING") {
+      return { label: "📦 LIFTING SKU", color: "#60A5FA", bg: "rgba(59, 130, 246, 0.28)" };
+    }
     if (isReversing) {
       return { label: "⏪ REVERSING", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.24)" };
     }
@@ -87,7 +92,7 @@ function BotStatusBadge({
       return { label: "⚠️ DECEL", color: "#FBBF24", bg: "rgba(251, 191, 36, 0.15)" };
     }
     return null;
-  }, [perceptionState, isBackingOff, isReversing]);
+  }, [fsmState, perceptionState, isBackingOff, isReversing]);
 
   return (
     <div
@@ -417,6 +422,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
                 batteryPct={bot.batteryPct}
                 isSelected={isSelected}
                 statusColor={statusColor}
+                fsmState={bot.fsmState}
                 perceptionState={bot.perception?.state}
                 warningProximity={bot.perception?.warningProximity}
                 isBackingOff={bot.backingOff}

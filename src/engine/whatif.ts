@@ -598,6 +598,26 @@ export function stepVirtual(v: VirtualTwinState, rng: () => number) {
     if (bot.fsmState === "PICKING") {
       const task = bot.currentTaskId ? v.tasks[bot.currentTaskId] : null;
       if (task) {
+        // Physical vertical hoist & item retrieval dwell duration
+        // Level 1: 2.0s (20 ticks), Level 2: 4.5s (45 ticks), Level 3: 7.5s (75 ticks), Level 4: 11.0s (110 ticks)
+        const tier = task.targetTier ?? 1;
+        const sourceLoc = task.sourceLocId ? v.locations[task.sourceLocId] : null;
+        const tierInfo = sourceLoc?.tiers?.find((t) => t.level === tier);
+        const durationSec = tierInfo?.pickDurationSec ?? (tier === 4 ? 11.0 : tier === 3 ? 7.5 : tier === 2 ? 4.5 : 2.0);
+        const requiredTicks = Math.round(durationSec * 10);
+
+        if ((bot.waitTicks || 0) < requiredTicks) {
+          v.botUnits[id] = {
+            ...bot,
+            waitTicks: (bot.waitTicks || 0) + 1,
+            stats: {
+              ...bot.stats,
+              busyTicks: bot.stats.busyTicks + 1,
+            },
+          };
+          continue;
+        }
+
         const startC = worldToCell(bot.position[0], bot.position[2], v.navGrid.cellSize);
         const goalC = worldToCell(task.destCoords[0], task.destCoords[1], v.navGrid.cellSize);
         const path = findPathAStar(v.navGrid, startC, goalC, {
@@ -611,6 +631,7 @@ export function stepVirtual(v: VirtualTwinState, rng: () => number) {
           targetLocationId: task.destLocId,
           path,
           pathIndex: 0,
+          waitTicks: 0,
         };
       }
       continue;
