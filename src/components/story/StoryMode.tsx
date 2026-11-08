@@ -120,11 +120,11 @@ export function StoryMode() {
     setSimulationSpeed(8 as 1 | 2 | 5 | 10);
   }, []);
 
-  // 01 / BUILD inputs
-  const [widthM, setWidthM] = useState(gridDimensions.widthM || 84);
-  const [depthM, setDepthM] = useState(gridDimensions.depthM || 52);
+  // 01 / BUILD inputs - Default to ★ Regional Hub (84 × 52 m, 48 AMRs)
+  const [widthM, setWidthM] = useState(84);
+  const [depthM, setDepthM] = useState(52);
   const [rackClusters, setRackClusters] = useState(8);
-  const [fleetToday, setFleetToday] = useState(Object.keys(botUnits).length || 48);
+  const [fleetToday, setFleetToday] = useState(48);
 
   // 01 / BUILD Custom Floorplan upload state
   const [uploadedBlueprintUrl, setUploadedBlueprintUrl] = useState<string | null>(customBlueprintUrl || null);
@@ -565,6 +565,61 @@ export function StoryMode() {
       ctx.lineWidth = 0.8;
       ctx.strokeRect(ox + 3, oy + 3, facilityW - 6, facilityH - 6);
 
+      // 8b. Metric Ruler Ticks along North Wall (Top)
+      ctx.strokeStyle = "rgba(157, 180, 255, 0.85)";
+      ctx.fillStyle = "rgba(157, 180, 255, 0.95)";
+      ctx.font = "bold 8px 'JetBrains Mono', monospace";
+      ctx.textAlign = "center";
+      for (let x = 0; x <= widthM; x += 1) {
+        const isMajor = x % 10 === 0 || x === widthM;
+        const isMedium = x % 5 === 0;
+        const tickH = isMajor ? 8 : isMedium ? 5 : 2.5;
+        const [tx, ty] = P(x, 0);
+        ctx.lineWidth = isMajor ? 1.2 : 0.6;
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(tx, ty - tickH);
+        ctx.stroke();
+        if (isMajor && tx > ox + 6 && tx < ox + facilityW - 6) {
+          ctx.fillText(`${x}m`, tx, ty - 10);
+        }
+      }
+
+      // 8c. Metric Ruler Ticks along West Wall (Left)
+      ctx.textAlign = "right";
+      for (let y = 0; y <= depthM; y += 1) {
+        const isMajor = y % 10 === 0 || y === depthM;
+        const isMedium = y % 5 === 0;
+        const tickW = isMajor ? 8 : isMedium ? 5 : 2.5;
+        const [tx, ty] = P(0, y);
+        ctx.lineWidth = isMajor ? 1.2 : 0.6;
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(tx - tickW, ty);
+        ctx.stroke();
+        if (isMajor && ty > oy + 6 && ty < oy + facilityH - 6) {
+          ctx.fillText(`${y}m`, tx - 10, ty + 3);
+        }
+      }
+
+      // 8d. Purple Inbound Staging Zone (Top Edge)
+      const [inX, inY] = P(widthM * 0.12, 0.8);
+      const inW = widthM * 0.76 * s;
+      const inH = Math.min(3.8 * s, (laneTop - 1.0) * s);
+      if (inH > 6) {
+        ctx.fillStyle = "rgba(139, 92, 246, 0.22)";
+        ctx.fillRect(inX, inY, inW, inH);
+        ctx.strokeStyle = "#A78BFA";
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([4, 3]);
+        ctx.strokeRect(inX, inY, inW, inH);
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#C4B5FD";
+        ctx.font = "bold 8px 'JetBrains Mono', monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("PURPLE INBOUND STAGING · 7,200 UNITS/H", inX + inW / 2, inY + inH / 2 + 3);
+      }
+
       // 9. Top & Bottom Express Feeder Lanes (Dashed White Lines)
       ctx.setLineDash([4, 4]);
       ctx.strokeStyle = "rgba(255, 255, 255, 0.32)";
@@ -618,14 +673,27 @@ export function StoryMode() {
             const pw = rw * s;
             const ph = rh * s;
 
-            ctx.fillStyle = "rgba(255, 255, 255, 0.07)";
-            ctx.fillRect(px, py, pw, ph);
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
-            ctx.lineWidth = 1.2;
-            ctx.strokeRect(px, py, pw, ph);
+            // 4-Tier Industrial Yellow Racks with Pareto 80/20 Golden Zone Highlights
+            const isGoldenZone = j === rackRows - 1; // 20% golden-zone bays closest to packing lines
+            if (isGoldenZone) {
+              ctx.fillStyle = "rgba(245, 158, 11, 0.40)";
+              ctx.fillRect(px, py, pw, ph);
+              ctx.strokeStyle = "#FEF08A";
+              ctx.lineWidth = 1.6;
+              ctx.shadowColor = "#F59E0B";
+              ctx.shadowBlur = 8;
+              ctx.strokeRect(px, py, pw, ph);
+              ctx.shadowBlur = 0; // reset glow
+            } else {
+              ctx.fillStyle = "rgba(234, 179, 8, 0.12)";
+              ctx.fillRect(px, py, pw, ph);
+              ctx.strokeStyle = "#EAB308";
+              ctx.lineWidth = 1.2;
+              ctx.strokeRect(px, py, pw, ph);
+            }
 
-            // 3-tier shelf divider lines
-            ctx.strokeStyle = "rgba(157, 180, 255, 0.35)";
+            // 4-tier shelf divider lines
+            ctx.strokeStyle = isGoldenZone ? "rgba(254, 240, 138, 0.75)" : "rgba(250, 204, 21, 0.45)";
             ctx.lineWidth = 0.8;
             for (let t = 1; t <= 3; t++) {
               const ty = py + (ph * t) / 4;
@@ -636,18 +704,25 @@ export function StoryMode() {
             }
 
             // Center structural upright line
-            ctx.strokeStyle = "rgba(147, 197, 253, 0.45)";
+            ctx.strokeStyle = isGoldenZone ? "rgba(254, 240, 138, 0.6)" : "rgba(250, 204, 21, 0.35)";
             ctx.setLineDash([2, 2]);
             ctx.beginPath();
             ctx.moveTo(px + pw / 2, py);
             ctx.lineTo(px + pw / 2, py + ph);
             ctx.stroke();
             ctx.setLineDash([]);
+
+            if (isGoldenZone && pw > 18) {
+              ctx.fillStyle = "#FEF08A";
+              ctx.font = "bold 6.5px 'JetBrains Mono', monospace";
+              ctx.textAlign = "center";
+              ctx.fillText("★ 80% DEMAND", px + pw / 2, py + ph / 2 + 2);
+            }
           }
         }
       }
 
-      // 11. Packing Stations (Bottom Perimeter)
+      // 11. Amber Packing Lines (Bottom Perimeter)
       if (showStations) {
         const ns = Math.max(2, Math.min(6, Math.round(widthM / 20)));
         for (let k = 0; k < ns; k++) {
@@ -656,23 +731,48 @@ export function StoryMode() {
           const pw = 6 * s;
           const ph = 3.6 * s;
 
-          ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+          ctx.fillStyle = "rgba(245, 158, 11, 0.25)";
           ctx.fillRect(px, py, pw, ph);
-          ctx.strokeStyle = "#FFFFFF";
-          ctx.lineWidth = 1.2;
+          ctx.strokeStyle = "#F59E0B";
+          ctx.lineWidth = 1.3;
           ctx.strokeRect(px, py, pw, ph);
 
           ctx.fillStyle = "#121826";
           ctx.fillRect(px + 3, py + 3, Math.max(8, pw * 0.28), ph - 6);
 
-          ctx.fillStyle = "#121826";
-          ctx.font = "bold 9px 'JetBrains Mono', monospace";
+          ctx.fillStyle = "#FBBF24";
+          ctx.font = "bold 8.5px 'JetBrains Mono', monospace";
           ctx.textAlign = "left";
           ctx.fillText(`PK-0${k + 1}`, px + Math.max(12, pw * 0.35), py + ph / 2 + 3);
         }
       }
 
-      // 12. Charging Bays / DC Docks (Left Margin)
+      // 11b. Charcoal Outbound Conveyor Line (Bottom Edge)
+      const [ocX, ocY] = P(widthM * 0.04, depthM - 3.2);
+      const ocW = widthM * 0.92 * s;
+      const ocH = 2.4 * s;
+      ctx.fillStyle = "#1E293B";
+      ctx.fillRect(ocX, ocY, ocW, ocH);
+      ctx.strokeStyle = "#475569";
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(ocX, ocY, ocW, ocH);
+
+      // Roller marks
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.22)";
+      ctx.lineWidth = 0.8;
+      for (let rx = ocX + 6; rx < ocX + ocW - 6; rx += 7) {
+        ctx.beginPath();
+        ctx.moveTo(rx, ocY + 1);
+        ctx.lineTo(rx, ocY + ocH - 1);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "#94A3B8";
+      ctx.font = "bold 7.5px 'JetBrains Mono', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("CHARCOAL OUTBOUND CONVEYOR LINE ──►", ocX + ocW / 2, ocY + ocH / 2 + 2.5);
+
+      // 12. Green EV Charging Bays / DC Docks (Left Margin)
       if (showDocks) {
         const nc = Math.max(2, Math.min(6, Math.round(fleetToday / 10)));
         for (let k = 0; k < nc; k++) {
@@ -681,16 +781,16 @@ export function StoryMode() {
           const pw = 2.4 * s;
           const ph = 2.4 * s;
 
-          ctx.fillStyle = "rgba(157, 180, 255, 0.15)";
+          ctx.fillStyle = "rgba(16, 185, 129, 0.22)";
           ctx.fillRect(px, py, pw, ph);
-          ctx.strokeStyle = "#9DB4FF";
-          ctx.lineWidth = 1;
+          ctx.strokeStyle = "#10B981";
+          ctx.lineWidth = 1.2;
           ctx.strokeRect(px, py, pw, ph);
 
-          ctx.fillStyle = "#9DB4FF";
+          ctx.fillStyle = "#34D399";
           ctx.font = "bold 8px 'JetBrains Mono', monospace";
           ctx.textAlign = "center";
-          ctx.fillText(`DC-${k + 1}`, px + pw / 2, py + ph / 2 + 3);
+          ctx.fillText(`⚡ DC-${k + 1}`, px + pw / 2, py + ph / 2 + 3);
         }
       }
 
@@ -1022,13 +1122,13 @@ export function StoryMode() {
               <div className="ctl">
                 <div className="seg" id="preset">
                   <button className={isDarkPreset ? "on" : ""} onClick={() => handlePreset("dark")}>
-                    Dark store
+                    Dark Store (40 × 30 m)
                   </button>
                   <button className={isHubPreset ? "on" : ""} onClick={() => handlePreset("hub")}>
-                    Hub
+                    ★ Regional Hub (84 × 52 m)
                   </button>
                   <button className={isMegaPreset ? "on" : ""} onClick={() => handlePreset("mega")}>
-                    Mega
+                    Mega DC (140 × 90 m)
                   </button>
                 </div>
 
@@ -1172,6 +1272,13 @@ export function StoryMode() {
             <div className="canvas-area">
               <div className="tw bp">
                 <canvas ref={cvBuildRef} style={{ width: "100%", height: "100%" }} />
+
+                {/* Pareto 80/20 Demand Velocity Chip */}
+                <div className="demand-chip">
+                  <span className="dot pulse-yellow" />
+                  <b>Pareto 80/20 Velocity:</b> 80% order volume concentrated in 20% golden-zone bays
+                </div>
+
                 <div className="tag-name">
                   <i style={{ background: uploadedBlueprintUrl ? "#FF5A1F" : "#FFB08F" }}></i>
                   {uploadedFileName
@@ -1180,16 +1287,16 @@ export function StoryMode() {
                 </div>
                 <div className="bp-tools">
                   <button className={showRacks ? "on" : ""} onClick={() => setShowRacks(!showRacks)}>
-                    <i style={{ background: "#fff" }}></i>Racks
+                    <i style={{ background: "#EAB308" }}></i>Yellow Racks
                   </button>
                   <button className={showAisles ? "on" : ""} onClick={() => setShowAisles(!showAisles)}>
                     <i style={{ background: "#FFB08F" }}></i>One‑way aisle
                   </button>
                   <button className={showDocks ? "on" : ""} onClick={() => setShowDocks(!showDocks)}>
-                    <i style={{ background: "#9DB4FF" }}></i>DC bay
+                    <i style={{ background: "#10B981" }}></i>Green DC bay
                   </button>
                   <button className={showStations ? "on" : ""} onClick={() => setShowStations(!showStations)}>
-                    <i style={{ background: "#121826", border: "1px solid #fff" }}></i>Station
+                    <i style={{ background: "#F59E0B" }}></i>Amber Station
                   </button>
                   <label
                     style={{
