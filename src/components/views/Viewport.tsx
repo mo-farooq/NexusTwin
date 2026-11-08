@@ -14,8 +14,10 @@ import { useTwinStore } from "../../store/useTwinStore";
 import { FacilityCanvas } from "../canvas/FacilityCanvas";
 import { MapView2D } from "./MapView2D";
 import { InspectorDock } from "../hud/InspectorDock";
+import { useRollingFps } from "../../engine/useRollingFps";
 
 export function Viewport() {
+  const fps = useRollingFps();
   const viewTab = useTwinStore((s) => s.viewTab);
   const setViewTab = useTwinStore((s) => s.setViewTab);
   const showPaths = useTwinStore((s) => s.showPaths);
@@ -332,7 +334,7 @@ export function Viewport() {
           <i style={{ background: "var(--red)" }}></i>Fault
         </span>
         <span className="mono dim">
-          <b>16.6ms</b> · A* <b>0.42ms</b> · <b>{totalBots}</b> agents
+          <b>{fps} FPS</b> · 10 Hz TICK · A* <b>0.42ms</b> · <b>{totalBots}</b> agents
         </span>
       </div>
 

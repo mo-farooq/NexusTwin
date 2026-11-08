@@ -218,6 +218,8 @@ export interface BotUnit {
   isReversing?: boolean;
   reverseTicks?: number;
   recentBreadcrumbs?: GridCell[];
+  pickDwellTicksRemaining?: number;
+  pickDwellTotalTicks?: number;
 }
 
 export type TaskPriority = "LOW" | "NORMAL" | "HIGH" | "FLASH_SURGE";
@@ -2815,6 +2817,8 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               if (bot.fsmState === "NAVIGATING_TO_PICKUP") {
                 const activeTask = bot.currentTaskId ? nextTasks[bot.currentTaskId] : null;
                 if (activeTask) activeTask.status = "IN_PROGRESS";
+                const targetTier = activeTask?.targetTier ?? 1;
+                const dwellTicks = targetTier === 4 ? 110 : targetTier === 3 ? 75 : targetTier === 2 ? 45 : 20;
                 nextBots[bot.id] = {
                   ...bot,
                   fsmState: "PICKING",
@@ -2822,6 +2826,8 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                   path: [],
                   pathIndex: 0,
                   waitTicks: 0,
+                  pickDwellTicksRemaining: dwellTicks,
+                  pickDwellTotalTicks: dwellTicks,
                   velocity: 0,
                 };
                 return;
@@ -3422,6 +3428,8 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             if (bot.fsmState === "NAVIGATING_TO_PICKUP") {
               const activeTask = bot.currentTaskId ? nextTasks[bot.currentTaskId] : null;
               if (activeTask) activeTask.status = "IN_PROGRESS";
+              const targetTier = activeTask?.targetTier ?? 1;
+              const dwellTicks = targetTier === 4 ? 110 : targetTier === 3 ? 75 : targetTier === 2 ? 45 : 20;
               nextBots[bot.id] = {
                 ...bot,
                 fsmState: "PICKING",
@@ -3429,6 +3437,8 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                 path: [],
                 pathIndex: 0,
                 waitTicks: 0,
+                pickDwellTicksRemaining: dwellTicks,
+                pickDwellTotalTicks: dwellTicks,
                 velocity: 0,
               };
               return;
@@ -3949,6 +3959,8 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
             if (bot.fsmState === "NAVIGATING_TO_PICKUP") {
               const activeTask = bot.currentTaskId ? nextTasks[bot.currentTaskId] : null;
               if (activeTask) activeTask.status = "IN_PROGRESS";
+              const targetTier = activeTask?.targetTier ?? 1;
+              const dwellTicks = targetTier === 4 ? 110 : targetTier === 3 ? 75 : targetTier === 2 ? 45 : 20;
 
               nextBots[bot.id] = {
                 ...bot,
@@ -3960,6 +3972,8 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                 currentPayloadKg: activeTask ? activeTask.payloadKg : 20,
                 batteryPct: newBatteryPct,
                 waitTicks: 0,
+                pickDwellTicksRemaining: dwellTicks,
+                pickDwellTotalTicks: dwellTicks,
                 perception: {
                   state: "CLEAR",
                   frontObstacleId: null,
@@ -4078,19 +4092,27 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         if (bot.fsmState === "PICKING") {
           const task = bot.currentTaskId ? nextTasks[bot.currentTaskId] : null;
           if (task) {
-            // Determine tier and required physical dwell ticks at 10 Hz clock
-            // Level 1: 2.0s (20 ticks), Level 2: 4.5s (45 ticks), Level 3: 7.5s (75 ticks), Level 4: 11.0s (110 ticks)
+            // Determine tier and required physical dwell ticks at 10 Hz clock:
+            // Tier 1: 20 ticks (2.0s)
+            // Tier 2: 45 ticks (4.5s)
+            // Tier 3: 75 ticks (7.5s)
+            // Tier 4: 110 ticks (11.0s)
             const tier = task.targetTier ?? 1;
             const sourceLoc = task.sourceLocId ? locations[task.sourceLocId] : null;
             const tierInfo = sourceLoc?.tiers?.find((t) => t.level === tier);
-            const durationSec = tierInfo?.pickDurationSec ?? (tier === 4 ? 11.0 : tier === 3 ? 7.5 : tier === 2 ? 4.5 : 2.0);
-            const requiredTicks = Math.round(durationSec * 10);
+            const requiredTicks = tier === 4 ? 110 : tier === 3 ? 75 : tier === 2 ? 45 : 20;
+            const currentRemaining =
+              bot.pickDwellTicksRemaining !== undefined && (bot.waitTicks || 0) > 0
+                ? bot.pickDwellTicksRemaining
+                : requiredTicks - (bot.waitTicks || 0);
 
-            if ((bot.waitTicks || 0) < requiredTicks) {
+            if (currentRemaining > 0) {
               // AMR physically dwells while vertical hoist / picker extracts SKU from tier
               const batteryMultiplier = tierInfo?.batteryMultiplier ?? (tier === 4 ? 2.6 : tier === 3 ? 1.9 : tier === 2 ? 1.4 : 1.0);
               nextBots[bot.id] = {
                 ...bot,
+                pickDwellTicksRemaining: currentRemaining - 1,
+                pickDwellTotalTicks: requiredTicks,
                 waitTicks: (bot.waitTicks || 0) + 1,
                 velocity: 0,
                 stats: {
@@ -4145,6 +4167,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
 
             nextBots[bot.id] = {
               ...bot,
+              pickDwellTicksRemaining: 0,
               fsmState: "NAVIGATING_TO_DELIVERY",
               targetLocationId: task.destLocId,
               path: path ?? [],

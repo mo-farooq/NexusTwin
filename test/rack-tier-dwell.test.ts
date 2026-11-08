@@ -53,12 +53,14 @@ describe("Ground Truth Simulation Math: Rack Tier Lift & Physical Dwell", () => 
     // Still picking because 15 < 20 ticks
     expect(currentBot.fsmState).toBe("PICKING");
     expect(currentBot.waitTicks).toBe(15);
+    expect(currentBot.pickDwellTicksRemaining).toBe(5);
 
     // Step 10 more ticks (total 25 ticks > 20 ticks) -> should complete pick & transition to NAVIGATING_TO_DELIVERY
     useTwinStore.getState().stepSimulation(10);
     state = useTwinStore.getState();
     currentBot = state.botUnits[botId];
     expect(currentBot.fsmState).toBe("NAVIGATING_TO_DELIVERY");
+    expect(currentBot.pickDwellTicksRemaining).toBe(0);
 
     // 2. Test Level 4 pick dwell (requires 110 ticks at 10 Hz / 11.0s)
     useTwinStore.setState({
@@ -100,6 +102,7 @@ describe("Ground Truth Simulation Math: Rack Tier Lift & Physical Dwell", () => 
     // Must STILL be in PICKING state because Level 4 requires 110 ticks!
     expect(currentBot.fsmState).toBe("PICKING");
     expect(currentBot.waitTicks).toBe(50);
+    expect(currentBot.pickDwellTicksRemaining).toBe(60);
 
     // Step another 50 ticks (total 100 ticks, still < 110 ticks)
     for (let i = 0; i < 5; i++) useTwinStore.getState().stepSimulation(10);
@@ -107,11 +110,13 @@ describe("Ground Truth Simulation Math: Rack Tier Lift & Physical Dwell", () => 
     currentBot = state.botUnits[botId];
     expect(currentBot.fsmState).toBe("PICKING");
     expect(currentBot.waitTicks).toBe(100);
+    expect(currentBot.pickDwellTicksRemaining).toBe(10);
 
     // Step final 20 ticks (total 120 ticks >= 110 ticks) -> now transitions to NAVIGATING_TO_DELIVERY
     useTwinStore.getState().stepSimulation(20);
     state = useTwinStore.getState();
     currentBot = state.botUnits[botId];
     expect(currentBot.fsmState).toBe("NAVIGATING_TO_DELIVERY");
+    expect(currentBot.pickDwellTicksRemaining).toBe(0);
   });
 });

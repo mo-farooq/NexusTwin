@@ -165,9 +165,27 @@ export function TaskOverviewPanel() {
 export function SystemStatusPanel() {
   const conveyors = useTwinStore((s) => s.conveyors);
   const kpi = useTwinStore((s) => s.kpi);
+  const locations = useTwinStore((s) => s.locations);
+  const botUnits = useTwinStore((s) => s.botUnits);
+  const isRunning = useTwinStore((s) => s.isRunning);
 
   const isConveyorJammed = conveyors.some((c) => c.isJammed);
   const hasAcsViolations = (kpi.safetyViolationCount || 0) > 0;
+
+  // DC Charging Pads: Wire to actual dock occupancy (occupied / total)
+  const chargingDocks = Object.values(locations).filter((l) => l.type === "CHARGING_DOCK");
+  const totalDocks = chargingDocks.length || 8;
+  const occupiedDocks = Object.values(botUnits).filter((b) => b.status === "CHARGING" || b.fsmState === "CHARGING").length;
+  const isDockFull = occupiedDocks >= totalDocks;
+
+  // Network Mesh: Wire to simulation tick stability
+  const errorBots = Object.values(botUnits).filter((b) => b.status === "ERROR");
+  const meshColor = !isRunning ? "var(--mute)" : errorBots.length > 0 ? "var(--amber)" : "var(--signal)";
+  const meshStatus = !isRunning
+    ? "Standby · 0 Hz"
+    : errorBots.length > 0
+    ? `Degraded · ${errorBots.length} fault`
+    : "100% sync · 10 Hz";
 
   const systems = [
     { name: "A* Grid & Aisle Loops", status: "Nominal", color: "var(--signal)" },
@@ -176,8 +194,16 @@ export function SystemStatusPanel() {
       status: isConveyorJammed ? "Jammed" : "2.4 m/s",
       color: isConveyorJammed ? "var(--amber)" : "var(--signal)",
     },
-    { name: "EV Fast Chargers (8 Pad)", status: "480 V · OK", color: "var(--signal)" },
-    { name: "Mesh Comms & Telemetry", status: "8 ms latency", color: "var(--signal)" },
+    {
+      name: "DC Charging Pads",
+      status: `${occupiedDocks} / ${totalDocks} occupied`,
+      color: isDockFull ? "var(--amber)" : "var(--signal)",
+    },
+    {
+      name: "Network Mesh",
+      status: meshStatus,
+      color: meshColor,
+    },
     {
       name: "LiDAR Safety ACS Radar",
       status: hasAcsViolations ? "ACS Alert" : "0 Breaches",
@@ -185,12 +211,14 @@ export function SystemStatusPanel() {
     },
   ];
 
+  const nominalCount = systems.filter((s) => s.color === "var(--signal)").length;
+
   return (
     <section className="card">
       <div className="card-h">
         <span className="t">Systems</span>
         <span className="sp"></span>
-        <span className="lnk">5 / 5 nominal</span>
+        <span className="lnk">{nominalCount} / {systems.length} nominal</span>
       </div>
       <div className="card-b">
         <div className="health">

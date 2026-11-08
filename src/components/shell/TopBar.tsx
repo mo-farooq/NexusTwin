@@ -11,8 +11,10 @@
 
 import React, { useEffect, useState } from "react";
 import { useTwinStore } from "../../store/useTwinStore";
+import { useRollingFps } from "../../engine/useRollingFps";
 
 export function TopBar() {
+  const fps = useRollingFps();
   const isRunning = useTwinStore((s) => s.isRunning);
   const simulationSpeed = useTwinStore((s) => s.simulationSpeed);
   const tick = useTwinStore((s) => s.tick);
@@ -72,7 +74,7 @@ export function TopBar() {
         </span>
         <span className="sep"></span>
         <span className="m" title="10 Hz discrete clock · render FPS · simulation tick">
-          <b id="fps">60</b> FPS · tick <b id="tick">{tick.toLocaleString("en-IN")}</b>
+          <b id="fps">{fps}</b> FPS · tick <b id="tick">{tick.toLocaleString("en-IN")}</b>
         </span>
       </div>
 

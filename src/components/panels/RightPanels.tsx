@@ -239,6 +239,9 @@ export function RightPanels({ asDock }: { asDock?: boolean } = {}) {
                     </div>
                   </div>
 
+                  {/* Dynamic 3D Tracking Viewport (Live Sensor Vision) */}
+                  <LiveCameraPanel bot={currentBot} />
+
                   {/* Animated LiDAR Radar Scanner Widget */}
                   {nearestObstacle && nearestObstacle.bot && (
                     <div className="radar">
@@ -587,6 +590,144 @@ export function RightPanels({ asDock }: { asDock?: boolean } = {}) {
     <aside className="col r">
       {cardContent}
     </aside>
+  );
+}
+
+export function LiveCameraPanel({ bot }: { bot?: BotUnit }) {
+  const selectedBotId = useTwinStore((s) => s.selectedBotId);
+  const botUnits = useTwinStore((s) => s.botUnits);
+  const activeBot = bot || (selectedBotId ? botUnits[selectedBotId] : Object.values(botUnits)[0]);
+  const [camIndex, setCamIndex] = useState(0);
+
+  if (!activeBot) return null;
+
+  const headingDeg = Math.round(((activeBot.headingRad * 180) / Math.PI + 360) % 360);
+  const isMoving = activeBot.velocity > 0.05;
+  const isHolding = activeBot.perception?.state === "HOLDING" || activeBot.perception?.state === "YIELDING";
+
+  const cameras = [
+    { id: `${activeBot.id}-FPV`, label: "LiDAR Tracking Viewport" },
+    { id: "CCTV-AISLE", label: "Aisle Tracking Cam" },
+    { id: "TOP-ORTHO", label: "Orthographic Bird's-Eye" },
+  ];
+  const currentCam = cameras[camIndex];
+
+  // SVG Tactical Viewport: 220 x 120
+  const cx = 110;
+  const cy = 60;
+  const headingRad = activeBot.headingRad;
+
+  // Vector end for heading indicator (length 28px)
+  const vectorLen = 28;
+  const vecX = cx + Math.cos(headingRad) * vectorLen;
+  const vecY = cy + Math.sin(headingRad) * vectorLen;
+
+  // Proximity cone arc: 270 degrees centered along headingRad
+  const coneRadius = 45;
+  const leftAngle = headingRad - (Math.PI * 0.75);
+  const rightAngle = headingRad + (Math.PI * 0.75);
+  const leftX = cx + Math.cos(leftAngle) * coneRadius;
+  const leftY = cy + Math.sin(leftAngle) * coneRadius;
+  const rightX = cx + Math.cos(rightAngle) * coneRadius;
+  const rightY = cy + Math.sin(rightAngle) * coneRadius;
+
+  return (
+    <div className="cam-panel" style={{ marginTop: "12px", background: "var(--paper-2)", borderRadius: "8px", border: "1px solid var(--border)", overflow: "hidden" }}>
+      {/* Header bar */}
+      <div style={{ padding: "6px 10px", background: "#0F172A", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10B981", boxShadow: "0 0 6px #10B981" }} />
+          <span style={{ fontSize: "10px", fontWeight: 700, color: "#F8FAFC", fontFamily: "var(--mono)", letterSpacing: "0.04em" }}>
+            LIVE FPV TRACK
+          </span>
+          <span style={{ fontSize: "9px", color: "#64748B", fontFamily: "var(--mono)" }}>· 18ms</span>
+        </div>
+        <div style={{ display: "flex", gap: "4px" }}>
+          {cameras.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setCamIndex(i)}
+              style={{
+                width: "7px",
+                height: "7px",
+                borderRadius: "50%",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+                background: camIndex === i ? "#38BDF8" : "#334155",
+              }}
+              title={cameras[i].label}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Real-time Dynamic Tactical Viewport (SVG) */}
+      <div style={{ position: "relative", width: "100%", height: "120px", background: "radial-gradient(ellipse at 50% 50%, #0D1B2A 0%, #050B14 100%)", overflow: "hidden" }}>
+        <svg viewBox="0 0 220 120" style={{ width: "100%", height: "100%", display: "block" }}>
+          <defs>
+            <radialGradient id="camConeGrad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#38BDF8" stopOpacity={isHolding ? "0.35" : "0.2"} />
+              <stop offset="100%" stopColor="#38BDF8" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+
+          {/* Grid lines */}
+          <line x1="0" y1="60" x2="220" y2="60" stroke="#1E293B" strokeWidth="0.8" strokeDasharray="3 3" />
+          <line x1="110" y1="0" x2="110" y2="120" stroke="#1E293B" strokeWidth="0.8" strokeDasharray="3 3" />
+          <circle cx="110" cy="60" r="22" fill="none" stroke="#1E293B" strokeWidth="0.8" />
+          <circle cx="110" cy="60" r="46" fill="none" stroke="#1E293B" strokeWidth="0.6" strokeDasharray="2 2" />
+
+          {/* Proximity / LiDAR Cone (270° Field of View) */}
+          <path
+            d={`M ${cx} ${cy} L ${leftX} ${leftY} A ${coneRadius} ${coneRadius} 0 1 1 ${rightX} ${rightY} Z`}
+            fill={isHolding ? "rgba(239, 68, 68, 0.2)" : "url(#camConeGrad)"}
+            stroke={isHolding ? "#EF4444" : "#38BDF8"}
+            strokeWidth="0.8"
+            strokeDasharray={isHolding ? "none" : "2 2"}
+          />
+
+          {/* Directional Heading Vector Arrow */}
+          <line
+            x1={cx}
+            y1={cy}
+            x2={vecX}
+            y2={vecY}
+            stroke={isHolding ? "#EF4444" : "#F8CB46"}
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <circle cx={vecX} cy={vecY} r="2.5" fill={isHolding ? "#EF4444" : "#F8CB46"} />
+
+          {/* Selected Robot Body Marker (Facing Heading) */}
+          <g transform={`translate(${cx}, ${cy}) rotate(${(headingRad * 180) / Math.PI})`}>
+            {/* Robot chassis */}
+            <rect x="-9" y="-7" width="18" height="14" rx="2.5" fill="#1E293B" stroke="#38BDF8" strokeWidth="1.2" />
+            {/* Front bumper LED */}
+            <line x1="9" y1="-4" x2="9" y2="4" stroke="#F8CB46" strokeWidth="2" strokeLinecap="round" />
+            {/* Center core */}
+            <circle cx="0" cy="0" r="2.5" fill={isMoving ? "#10B981" : "#F8CB46"} />
+          </g>
+
+          {/* Reticle brackets */}
+          <path d="M 8 8 L 8 16 M 8 8 L 16 8" stroke="#475569" strokeWidth="1" fill="none" />
+          <path d="M 212 8 L 212 16 M 212 8 L 204 8" stroke="#475569" strokeWidth="1" fill="none" />
+          <path d="M 8 112 L 8 104 M 8 112 L 16 112" stroke="#475569" strokeWidth="1" fill="none" />
+          <path d="M 212 112 L 212 104 M 212 112 L 204 112" stroke="#475569" strokeWidth="1" fill="none" />
+        </svg>
+
+        {/* Telemetry overlay */}
+        <div style={{ position: "absolute", top: "5px", left: "8px", fontSize: "9px", color: "#94A3B8", fontFamily: "var(--mono)", pointerEvents: "none" }}>
+          <div>POS: <b style={{ color: "#F8FAFC" }}>{activeBot.position[0].toFixed(1)}, {activeBot.position[2].toFixed(1)}m</b></div>
+          <div>HDG: <b style={{ color: "#F8CB46" }}>{headingDeg}°</b> · SPD: <b style={{ color: isMoving ? "#10B981" : "#94A3B8" }}>{activeBot.velocity.toFixed(2)}m/s</b></div>
+        </div>
+
+        <div style={{ position: "absolute", bottom: "5px", right: "8px", fontSize: "9px", color: "#64748B", fontFamily: "var(--mono)", textAlign: "right", pointerEvents: "none" }}>
+          <div>ACS: <b style={{ color: isHolding ? "#EF4444" : "#10B981" }}>{activeBot.perception?.state || "CLEAR"}</b></div>
+          <div>FOV: <b>270° · ISO 3691-4</b></div>
+        </div>
+      </div>
+    </div>
   );
 }
 

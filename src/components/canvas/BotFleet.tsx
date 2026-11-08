@@ -54,6 +54,9 @@ interface BotStatusBadgeProps {
   warningProximity?: boolean;
   isBackingOff?: boolean;
   isReversing?: boolean;
+  targetTier?: number;
+  pickDwellTicksRemaining?: number;
+  pickDwellTotalTicks?: number;
   onClick: () => void;
 }
 
@@ -68,13 +71,27 @@ function BotStatusBadge({
   warningProximity,
   isBackingOff,
   isReversing,
+  targetTier,
+  pickDwellTicksRemaining,
+  pickDwellTotalTicks,
   onClick,
 }: BotStatusBadgeProps) {
   const [hovered, setHovered] = useState(false);
 
   const acBadge = useMemo(() => {
     if (fsmState === "PICKING") {
-      return { label: "📦 LIFTING SKU", color: "#60A5FA", bg: "rgba(59, 130, 246, 0.28)" };
+      const tier = targetTier ?? 1;
+      const total = pickDwellTotalTicks || (tier === 4 ? 110 : tier === 3 ? 75 : tier === 2 ? 45 : 20);
+      const rem = pickDwellTicksRemaining ?? total;
+      const frac = Math.max(0, Math.min(1, (total - rem) / total));
+      const filled = Math.min(6, Math.max(0, Math.round(frac * 6)));
+      const bar = "█".repeat(filled) + "░".repeat(6 - filled);
+      const sec = (rem / 10).toFixed(1);
+      return {
+        label: `Lifting Tier ${tier} [${bar}] ${sec}s`,
+        color: "#60A5FA",
+        bg: "rgba(59, 130, 246, 0.28)",
+      };
     }
     if (isReversing) {
       return { label: "⏪ REVERSING", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.24)" };
@@ -237,6 +254,16 @@ interface SingleBotProps {
 
 function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulationSpeed }: SingleBotProps) {
   const activeCamera = useTwinStore((s) => s.activeCamera);
+  const currentTask = useTwinStore((s) => bot.currentTaskId ? s.tasks[bot.currentTaskId] : null);
+  const targetTier = currentTask?.targetTier ?? 1;
+  const isPicking = bot.fsmState === "PICKING";
+  const totalTicks = bot.pickDwellTotalTicks || (targetTier === 4 ? 110 : targetTier === 3 ? 75 : targetTier === 2 ? 45 : 20);
+  const remainingTicks = bot.pickDwellTicksRemaining !== undefined ? bot.pickDwellTicksRemaining : Math.max(0, totalTicks - (bot.waitTicks || 0));
+  const progressFraction = Math.max(0, Math.min(1, (totalTicks - remainingTicks) / totalTicks));
+  const remainingSec = (remainingTicks / 10).toFixed(1);
+  const filledBlocks = Math.min(6, Math.max(0, Math.round(progressFraction * 6)));
+  const asciiBar = "█".repeat(filledBlocks) + "░".repeat(6 - filledBlocks);
+
   const [hovered, setHovered] = useState(false);
   const groupRef = useRef<THREE.Group>(null!);
   const wheelRefs = useRef<Array<THREE.Group | null>>([]);
@@ -427,6 +454,9 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
                 warningProximity={bot.perception?.warningProximity}
                 isBackingOff={bot.backingOff}
                 isReversing={bot.isReversing}
+                targetTier={targetTier}
+                pickDwellTicksRemaining={remainingTicks}
+                pickDwellTotalTicks={totalTicks}
                 onClick={onSelect}
               />
             ) : (
@@ -441,6 +471,55 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
                 {bot.id}
               </div>
             )}
+          </Html>
+        )}
+
+        {/* High-visibility Vertical Rack Lift Latency Dwell Progress Bar */}
+        {isPicking && activeCamera !== "robot" && (
+          <Html
+            position={[0, 1.85, 0]}
+            center
+            distanceFactor={28}
+            zIndexRange={[30, 0]}
+          >
+            <div
+              style={{
+                background: "rgba(15, 23, 42, 0.94)",
+                border: "1.5px solid #38BDF8",
+                borderRadius: "8px",
+                padding: "4px 10px",
+                boxShadow: "0 0 16px rgba(56, 189, 248, 0.55), 0 4px 12px rgba(0,0,0,0.4)",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "3px",
+                whiteSpace: "nowrap",
+                pointerEvents: "none",
+                fontFamily: "'JetBrains Mono', monospace, sans-serif",
+              }}
+            >
+              <div style={{ fontSize: "11px", fontWeight: 800, color: "#38BDF8", letterSpacing: "0.02em" }}>
+                Lifting Tier {targetTier} <span style={{ color: "#F8CB46" }}>[{asciiBar}]</span> <span style={{ color: "#F8FAFC" }}>{remainingSec}s</span>
+              </div>
+              <div
+                style={{
+                  width: "100%",
+                  height: "4px",
+                  background: "#1E293B",
+                  borderRadius: "2px",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${Math.round(progressFraction * 100)}%`,
+                    height: "100%",
+                    background: "linear-gradient(90deg, #38BDF8 0%, #F8CB46 100%)",
+                    transition: "width 0.1s linear",
+                  }}
+                />
+              </div>
+            </div>
           </Html>
         )}
 
