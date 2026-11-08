@@ -180,17 +180,28 @@ function InboundPortalNode({ position }: { position: [number, number, number] })
 
 export function ZoneSections() {
   const zones = useTwinStore((s) => s.zones);
+  const gridDimensions = useTwinStore((s) => s.gridDimensions);
+  const { widthM, depthM } = gridDimensions;
 
   const zoneList = useMemo(() => Object.values(zones), [zones]);
 
   return (
     <group>
       {zoneList.map((z) => {
-        const [x0, z0, x1, z1] = z.bounds;
-        const width = Math.max(1, x1 - x0 + 1);
-        const depth = Math.max(1, z1 - z0 + 1);
-        const midX = (x0 + x1 + 1) / 2;
-        const midZ = (z0 + z1 + 1) / 2;
+        const rawX0 = Math.min(z.bounds[0], z.bounds[2]);
+        const rawX1 = Math.max(z.bounds[0], z.bounds[2]);
+        const rawZ0 = Math.min(z.bounds[1], z.bounds[3]);
+        const rawZ1 = Math.max(z.bounds[1], z.bounds[3]);
+
+        const x0 = Math.max(1, Math.min(widthM - 2, rawX0));
+        const x1 = Math.max(x0 + 1, Math.min(widthM - 1, rawX1));
+        const z0 = Math.max(1, Math.min(depthM - 2, rawZ0));
+        const z1 = Math.max(z0 + 1, Math.min(depthM - 1, rawZ1));
+
+        const width = Math.max(1, x1 - x0);
+        const depth = Math.max(1, z1 - z0);
+        const midX = (x0 + x1) / 2;
+        const midZ = (z0 + z1) / 2;
 
         const meta =
           SECTION_METAS[z.id] || {

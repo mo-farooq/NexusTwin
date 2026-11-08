@@ -724,7 +724,7 @@ export function WarehouseBuilderModal() {
                 </div>
                 <input
                   type="range"
-                  min="20"
+                  min="16"
                   max="80"
                   step="2"
                   value={widthM}
@@ -741,7 +741,7 @@ export function WarehouseBuilderModal() {
                 </div>
                 <input
                   type="range"
-                  min="20"
+                  min="16"
                   max="60"
                   step="2"
                   value={depthM}

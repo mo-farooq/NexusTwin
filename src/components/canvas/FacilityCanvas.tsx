@@ -135,8 +135,10 @@ function CameraRig({
       targetLerpGoal.current = new THREE.Vector3(cx, 0.2, cz);
       cameraPositionGoal.current = new THREE.Vector3(cx - 28, 32, cz + 32);
     } else if (activeCamera === "pack") {
-      targetLerpGoal.current = new THREE.Vector3(44, 0.2, 31);
-      cameraPositionGoal.current = new THREE.Vector3(44, 15, 45);
+      const packX = Math.min(widthM - 3.0, widthM * 0.75);
+      const packZ = Math.min(depthM - 3.0, depthM * 0.75);
+      targetLerpGoal.current = new THREE.Vector3(packX, 0.2, packZ);
+      cameraPositionGoal.current = new THREE.Vector3(packX, Math.max(12, depthM * 0.4), packZ + Math.max(10, depthM * 0.35));
     } else if (activeCamera === "full") {
       targetLerpGoal.current = new THREE.Vector3(cx, 0.2, cz);
       cameraPositionGoal.current = new THREE.Vector3(cx - 38, 44, cz + 44);
@@ -377,21 +379,30 @@ function FloorAndTransitLanes({ widthM, depthM }: { widthM: number; depthM: numb
     return tex;
   }, []);
 
-  // Main transit corridors across picking aisles and packing arteries
+  // Main transit corridors dynamically scaled to facility footprint
   const transitCorridors = useMemo(() => {
+    const marginX = Math.max(1.8, Math.min(4.0, widthM * 0.08));
+    const marginZ = Math.max(1.8, Math.min(4.0, depthM * 0.1));
+    const minX = marginX;
+    const maxX = Math.max(minX + 3.0, widthM - marginX);
+    const topZ = marginZ;
+    const botZ = Math.max(topZ + 3.0, depthM - marginZ);
+    const midX = widthM / 2;
+    const feederZ = Math.max(topZ + 2.0, Math.min(botZ - 2.0, depthM * 0.68));
+
     return [
       // Main central north-south thoroughfare
-      { start: [30.0, 6.0], end: [30.0, 36.0], width: 1.2 },
+      { start: [midX, topZ], end: [midX, botZ], width: Math.min(1.2, Math.max(0.6, widthM * 0.04)) },
       // Top cross-dock artery
-      { start: [4.0, 6.5], end: [56.0, 6.5], width: 1.0 },
+      { start: [minX, topZ], end: [maxX, topZ], width: Math.min(1.0, Math.max(0.5, depthM * 0.035)) },
       // Packing feeder artery
-      { start: [4.0, 26.5], end: [56.0, 26.5], width: 1.0 },
+      { start: [minX, feederZ], end: [maxX, feederZ], width: Math.min(1.0, Math.max(0.5, depthM * 0.035)) },
       // West boundary express lane
-      { start: [4.0, 6.5], end: [4.0, 36.0], width: 0.8 },
+      { start: [minX, topZ], end: [minX, botZ], width: Math.min(0.8, Math.max(0.4, widthM * 0.03)) },
       // East boundary dispatch lane
-      { start: [56.0, 6.5], end: [56.0, 36.0], width: 0.8 },
+      { start: [maxX, topZ], end: [maxX, botZ], width: Math.min(0.8, Math.max(0.4, widthM * 0.03)) },
     ];
-  }, []);
+  }, [widthM, depthM]);
 
   // Memoize transit lane configurations and textures once
   const preparedCorridors = useMemo(() => {

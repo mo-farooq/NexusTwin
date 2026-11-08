@@ -188,11 +188,19 @@ function WorkstationNode({ station, isSelected, onSelect }: WorkstationNodeProps
 
 export function StationNodes() {
   const locations = useTwinStore((s) => s.locations);
+  const gridDimensions = useTwinStore((s) => s.gridDimensions);
+  const { widthM, depthM } = gridDimensions;
   const selectedStationId = useTwinStore((s) => s.selectedStationId);
   const selectStation = useTwinStore((s) => s.selectStation);
 
+  // Strictly filter out any workstations that lie outside the facility bounds
   const activeWorkstations = Object.values(locations).filter(
-    (l) => l.type === "PACK_STATION" || l.type === "INBOUND_DOCK"
+    (l) =>
+      (l.type === "PACK_STATION" || l.type === "INBOUND_DOCK") &&
+      l.coords[0] >= 0.5 &&
+      l.coords[0] <= widthM - 0.5 &&
+      l.coords[1] >= 0.5 &&
+      l.coords[1] <= depthM - 0.5
   );
 
   return (

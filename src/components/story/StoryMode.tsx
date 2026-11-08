@@ -290,6 +290,26 @@ export function StoryMode() {
     handlePreset("hub");
   };
 
+  // Synchronize 3D Digital Twin when Build phase dimensions change
+  useEffect(() => {
+    if (uploadedBlueprintUrl) return; // Keep user CAD floorplan if uploaded
+
+    // Only update if grid dimensions actually differ from widthM/depthM
+    if (gridDimensions.widthM === widthM && gridDimensions.depthM === depthM) return;
+
+    const timer = setTimeout(() => {
+      const layout = generateAutoZonedWarehouse({
+        widthMeters: widthM,
+        depthMeters: depthM,
+        flowType: widthM <= 45 ? "U_FLOW" : "I_FLOW",
+        tierCount: 4,
+      });
+      applyCustomLayout(layout, null);
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [widthM, depthM, uploadedBlueprintUrl, gridDimensions.widthM, gridDimensions.depthM, applyCustomLayout]);
+
   // Fixed cinematic camera vantage for Step 2 (Stress) matching Dia
   const stressCameraConfig = useMemo(() => {
     const W = gridDimensions.widthM;

@@ -137,12 +137,30 @@ function SingleConveyor({ conveyor, simulationSpeed }: SingleConveyorProps) {
 export function ConveyorSystem() {
   const conveyors = useTwinStore((s) => s.conveyors);
   const simulationSpeed = useTwinStore((s) => s.simulationSpeed);
+  const gridDimensions = useTwinStore((s) => s.gridDimensions);
+  const { widthM, depthM } = gridDimensions;
 
   if (!conveyors || conveyors.length === 0) return null;
 
+  // Filter out invalid, zero/negative-length, or out-of-bounds conveyor lines
+  const validConveyors = conveyors.filter(
+    (c) =>
+      c.lengthM > 0.4 &&
+      c.startCoords[0] >= 0 &&
+      c.startCoords[0] <= widthM &&
+      c.startCoords[1] >= 0 &&
+      c.startCoords[1] <= depthM &&
+      c.endCoords[0] >= 0 &&
+      c.endCoords[0] <= widthM &&
+      c.endCoords[1] >= 0 &&
+      c.endCoords[1] <= depthM
+  );
+
+  if (validConveyors.length === 0) return null;
+
   return (
     <group>
-      {conveyors.map((conv) => (
+      {validConveyors.map((conv) => (
         <SingleConveyor key={conv.id} conveyor={conv} simulationSpeed={simulationSpeed} />
       ))}
     </group>

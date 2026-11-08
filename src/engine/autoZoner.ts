@@ -326,8 +326,8 @@ export async function detectWallsFromBlueprint(
  */
 export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLayout {
   const { widthMeters, depthMeters, flowType, tierCount = 4, uploadedImageUrl } = params;
-  const cols = Math.max(20, Math.min(80, Math.round(widthMeters)));
-  const rows = Math.max(20, Math.min(60, Math.round(depthMeters)));
+  const cols = Math.max(16, Math.min(150, Math.round(widthMeters)));
+  const rows = Math.max(16, Math.min(100, Math.round(depthMeters)));
 
   const dimensions: GridDimensions = {
     cols,
@@ -375,18 +375,18 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
     // I_FLOW: West (Inbound) ➔ Center (Racks) ➔ East (Outbound)
     // ════════════════════════════════════════════════════════════
 
-    const inboundMaxCol = Math.max(3, Math.floor(cols * 0.14));
-    const storageMinCol = inboundMaxCol + 3;
-    const storageMaxCol = Math.floor(cols * 0.76);
-    const packingCol = storageMaxCol + 3;
-    const outboundCol = cols - 3;
+    const inboundMaxCol = Math.max(2, Math.min(4, Math.floor(cols * 0.12)));
+    const outboundCol = cols - 2;
+    const packingCol = Math.max(inboundMaxCol + 6, Math.min(outboundCol - 3, Math.floor(cols * 0.78)));
+    const storageMinCol = inboundMaxCol + 2;
+    const storageMaxCol = Math.max(storageMinCol + 3, packingCol - 3);
 
     // 1. INBOUND_RECEIVING (Purple #8B5CF6)
     zones["ZONE_INBOUND"] = {
       id: "ZONE_INBOUND",
       name: "Inbound Receiving Section · Staging Pallets",
       color: "#8B5CF6",
-      bounds: [2, 3, inboundMaxCol, rows - 4],
+      bounds: [1, 3, Math.max(2, inboundMaxCol), rows - 4],
       botCount: 0,
       congestionScore: 0.05,
       isBlocked: false,
@@ -395,19 +395,19 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
     };
 
     // Inbound Docks / Pallet Staging Portals
-    const inboundCount = Math.max(2, Math.floor(rows / 14));
+    const inboundCount = Math.max(1, Math.min(4, Math.floor((rows - 6) / 8)));
     for (let d = 1; d <= inboundCount; d++) {
       const dockId = `INBOUND-DOCK-${d}`;
-      const dRow = Math.floor((rows / (inboundCount + 1)) * d);
+      const dRow = Math.floor(3 + ((rows - 6) / (inboundCount + 1)) * d);
       locations[dockId] = {
         id: dockId,
         name: `Inbound Pallet Bay 0${d}`,
         type: "INBOUND_DOCK",
         zoneId: "ZONE_INBOUND",
-        coords: [2.5, dRow + 0.5],
+        coords: [2.0, dRow + 0.5],
         accessPoint: [inboundMaxCol, dRow + 0.5],
       };
-      setGridRect(navGrid, 1, dRow - 1, 2, dRow + 1, 1); // dock fixture
+      setGridRect(navGrid, 1, Math.max(1, dRow - 1), 2, Math.min(rows - 2, dRow + 1), 1);
     }
 
     // 2. STORAGE_RACKS (Blinkit Yellow #F8CB46)
@@ -431,7 +431,7 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
       rackAisleCount++;
 
       // North bank
-      for (let r = 5; r <= midRow - 3; r += 3) {
+      for (let r = 5; r <= midRow - 2; r += 3) {
         setGridRect(navGrid, c, r, c + 1, r + 1, 1);
         const shelfId = `SHELF-${String(shelfSeq++).padStart(3, "0")}`;
         const tiers: ShelfTier[] = [];
@@ -486,7 +486,7 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
     }
 
     // 3. CHARGING_DOCKS (Operational Green #0C831F)
-    const chargerCount = Math.max(2, Math.min(10, Math.floor(cols / 7)));
+    const chargerCount = Math.max(2, Math.min(8, Math.floor((storageMaxCol - storageMinCol) / 3)));
     zones["ZONE_CHARGING"] = {
       id: "ZONE_CHARGING",
       name: "Autonomous EV Fast-Charging Bay",
@@ -525,12 +525,12 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
     }
 
     // 4. PACKING_STATIONS (Amber #F59E0B)
-    const packCount = Math.max(1, Math.min(6, Math.floor(rows / 9)));
+    const packCount = Math.max(1, Math.min(5, Math.floor((rows - 8) / 6)));
     zones["ZONE_PACKING"] = {
       id: "ZONE_PACKING",
       name: "Packing & Automated Sorting Section",
       color: "#F59E0B",
-      bounds: [packingCol - 1, 5, packingCol + 3, rows - 6],
+      bounds: [packingCol - 1, 4, packingCol + 2, rows - 5],
       botCount: 0,
       congestionScore: 0.18,
       isBlocked: false,
@@ -540,8 +540,8 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
 
     for (let p = 1; p <= packCount; p++) {
       const packId = `PACK-STATION-${p}`;
-      const pRow = Math.floor((rows / (packCount + 1)) * p);
-      setGridRect(navGrid, packingCol, pRow - 1, packingCol + 2, pRow + 1, 1);
+      const pRow = Math.floor(4 + ((rows - 8) / (packCount + 1)) * p);
+      setGridRect(navGrid, packingCol, pRow - 1, Math.min(cols - 2, packingCol + 2), pRow + 1, 1);
 
       locations[packId] = {
         id: packId,
@@ -552,13 +552,16 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
         accessPoint: [packingCol - 1.5, pRow],
       };
 
-      // 5. OUTBOUND_CONVEYORS (Charcoal #1C1C1C) Connecting Packing Station to Outbound Wall
+      // 5. OUTBOUND_CONVEYORS
+      const convStart = packingCol + 2.0;
+      const convEnd = outboundCol;
+      const convLen = Math.max(1, Math.round(convEnd - convStart));
       conveyors.push({
         id: `CONV-${p}`,
         name: `Express Roller Conveyor ${p}`,
-        startCoords: [packingCol + 2.5, pRow],
-        endCoords: [outboundCol, pRow],
-        lengthM: Math.round(outboundCol - (packingCol + 2.5)),
+        startCoords: [convStart, pRow],
+        endCoords: [convEnd, pRow],
+        lengthM: convLen,
         speedMps: 1.5,
         isJammed: false,
       });
@@ -581,7 +584,7 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
       id: "ZONE_OUTBOUND",
       name: "Outbound Dispatch & Shipping Lines",
       color: "#1C1C1C",
-      bounds: [packingCol + 4, 3, cols - 2, rows - 4],
+      bounds: [Math.min(cols - 3, packingCol + 2), 3, cols - 1, rows - 4],
       botCount: 0,
       congestionScore: 0.08,
       isBlocked: false,
@@ -594,7 +597,7 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
     // U_FLOW: North-West (Inbound) ➔ Center/East (Racks) ➔ South-West (Outbound)
     // ════════════════════════════════════════════════════════════
 
-    const westWidth = Math.max(5, Math.floor(cols * 0.28));
+    const westWidth = Math.max(4, Math.min(8, Math.floor(cols * 0.28)));
     const midRow = Math.floor(rows * 0.48);
 
     // 1. INBOUND_RECEIVING (North-West Quadrant)
@@ -602,7 +605,7 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
       id: "ZONE_INBOUND",
       name: "Inbound Receiving Section · Staging Pallets",
       color: "#8B5CF6",
-      bounds: [2, 3, westWidth, midRow - 2],
+      bounds: [2, 3, westWidth, Math.max(4, midRow - 2)],
       botCount: 0,
       congestionScore: 0.05,
       isBlocked: false,
@@ -610,18 +613,19 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
       sectionType: "INBOUND",
     };
 
-    for (let d = 1; d <= 2; d++) {
+    const inbCount = Math.max(1, Math.min(3, Math.floor((midRow - 4) / 4)));
+    for (let d = 1; d <= inbCount; d++) {
       const dockId = `INBOUND-DOCK-${d}`;
-      const dRow = 4 + (d - 1) * 6;
+      const dRow = Math.floor(3 + ((midRow - 5) / (inbCount + 1)) * d);
       locations[dockId] = {
         id: dockId,
         name: `Inbound Pallet Bay 0${d}`,
         type: "INBOUND_DOCK",
         zoneId: "ZONE_INBOUND",
-        coords: [3.0, dRow],
+        coords: [2.5, dRow],
         accessPoint: [westWidth, dRow],
       };
-      setGridRect(navGrid, 1, dRow - 1, 2, dRow + 1, 1);
+      setGridRect(navGrid, 1, Math.max(1, dRow - 1), 2, Math.min(rows - 2, dRow + 1), 1);
     }
 
     // 2. PACKING & OUTBOUND (South-West Quadrant)
@@ -641,7 +645,7 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
       id: "ZONE_OUTBOUND",
       name: "Outbound Dispatch & Shipping Lines",
       color: "#1C1C1C",
-      bounds: [1, midRow + 4, 3, rows - 5],
+      bounds: [1, midRow + 3, 3, rows - 4],
       botCount: 0,
       congestionScore: 0.06,
       isBlocked: false,
@@ -649,10 +653,11 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
       sectionType: "OUTBOUND",
     };
 
-    for (let p = 1; p <= 3; p++) {
+    const packCount = Math.max(1, Math.min(3, Math.floor((rows - midRow - 5) / 4)));
+    for (let p = 1; p <= packCount; p++) {
       const packId = `PACK-STATION-${p}`;
-      const pRow = midRow + 4 + (p - 1) * 5;
-      setGridRect(navGrid, westWidth - 3, pRow - 1, westWidth - 1, pRow + 1, 1);
+      const pRow = Math.floor(midRow + 2 + ((rows - midRow - 4) / (packCount + 1)) * p);
+      setGridRect(navGrid, Math.max(1, westWidth - 3), pRow - 1, westWidth - 1, pRow + 1, 1);
 
       locations[packId] = {
         id: packId,
@@ -664,12 +669,13 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
       };
 
       // Roller conveyor line from packing station to West dock wall
+      const convLen = Math.max(1, Math.round(westWidth - 3.5));
       conveyors.push({
         id: `CONV-${p}`,
         name: `U-Flow Conveyor ${p}`,
-        startCoords: [westWidth - 3.5, pRow],
-        endCoords: [2.5, pRow],
-        lengthM: Math.round(westWidth - 6),
+        startCoords: [westWidth - 2.5, pRow],
+        endCoords: [2.0, pRow],
+        lengthM: convLen,
         speedMps: 1.5,
         isJammed: false,
       });
@@ -793,6 +799,16 @@ export function generateAutoZonedWarehouse(params: AutoZonerParams): AutoZonedLa
 
   const recommendedFleetSize = sizingResult.recommendedFleetSize;
   const estimatedThroughput = Math.round(recommendedFleetSize * 28.5);
+
+  // Normalize & clamp all zone bounds strictly within [1, cols - 1] and [1, rows - 1]
+  Object.values(zones).forEach((zone) => {
+    const [x0, z0, x1, z1] = zone.bounds;
+    const minX = Math.max(1, Math.min(x0, x1, cols - 2));
+    const maxX = Math.max(minX + 1, Math.min(Math.max(x0, x1), cols - 1));
+    const minZ = Math.max(1, Math.min(z0, z1, rows - 2));
+    const maxZ = Math.max(minZ + 1, Math.min(Math.max(z0, z1), rows - 1));
+    zone.bounds = [minX, minZ, maxX, maxZ];
+  });
 
   return {
     dimensions,

@@ -682,18 +682,48 @@ function createDefaultLayout(dimensions: GridDimensions): {
   zones: Record<string, WarehouseZone>;
   locations: Record<string, WarehouseLocation>;
   chargingDocks: Record<string, ChargingDock>;
+  conveyors: ConveyorSegment[];
   elevators: Record<string, ElevatorNode>;
   initialBotUnits: Record<string, BotUnit>;
 } {
   const { cols, rows, cellSize } = dimensions;
   const navGrid = createEmptyNavGrid(cols, rows, cellSize);
 
+  // Dynamically compute quad split lines clamped within facility dimensions
+  const splitX = Math.floor(cols * 0.5);
+  const splitY = Math.floor(rows * 0.65);
+
+  const zoneABounds: [number, number, number, number] = [
+    2,
+    5,
+    Math.max(4, splitX - 2),
+    Math.max(6, splitY - 2),
+  ];
+  const zoneBBounds: [number, number, number, number] = [
+    Math.min(cols - 4, splitX + 2),
+    5,
+    Math.max(splitX + 4, cols - 3),
+    Math.max(6, splitY - 2),
+  ];
+  const zoneCBounds: [number, number, number, number] = [
+    2,
+    Math.min(rows - 4, splitY + 2),
+    Math.max(4, splitX - 2),
+    Math.max(splitY + 4, rows - 3),
+  ];
+  const zoneDBounds: [number, number, number, number] = [
+    Math.min(cols - 4, splitX + 2),
+    Math.min(rows - 4, splitY + 2),
+    Math.max(splitX + 4, cols - 3),
+    Math.max(splitY + 4, rows - 3),
+  ];
+
   const zones: Record<string, WarehouseZone> = {
     ZONE_A: {
       id: "ZONE_A",
       name: "Zone A · Express FMCG (Dark Store)",
       color: "#3b82f6",
-      bounds: [3, 8, 28, 25],
+      bounds: zoneABounds,
       botCount: 0,
       congestionScore: 0.0,
       isBlocked: false,
@@ -703,7 +733,7 @@ function createDefaultLayout(dimensions: GridDimensions): {
       id: "ZONE_B",
       name: "Zone B · Ambient Storage",
       color: "#8b5cf6",
-      bounds: [32, 8, 57, 25],
+      bounds: zoneBBounds,
       botCount: 0,
       congestionScore: 0.0,
       isBlocked: false,
@@ -713,7 +743,7 @@ function createDefaultLayout(dimensions: GridDimensions): {
       id: "ZONE_C",
       name: "Zone C · Bulk & Case Reserve",
       color: "#10b981",
-      bounds: [3, 27, 28, 36],
+      bounds: zoneCBounds,
       botCount: 0,
       congestionScore: 0.0,
       isBlocked: false,
@@ -723,7 +753,7 @@ function createDefaultLayout(dimensions: GridDimensions): {
       id: "ZONE_D",
       name: "Zone D · Packing & Dispatch Line",
       color: "#f59e0b",
-      bounds: [32, 27, 57, 36],
+      bounds: zoneDBounds,
       botCount: 0,
       congestionScore: 0.0,
       isBlocked: false,
@@ -733,17 +763,23 @@ function createDefaultLayout(dimensions: GridDimensions): {
 
   const locations: Record<string, WarehouseLocation> = {};
 
-  // Build storage racks in Zone A & Zone B
-  const buildRackAisle = (zoneId: string, startCol: number, startRow: number, numAisles: number, racksPerAisle: number) => {
-    for (let a = 0; a < numAisles; a++) {
-      const r = startRow + a * 4;
-      for (let b = 0; b < racksPerAisle; b++) {
-        const c = startCol + b * 4;
+  // Build storage racks dynamically inside Zone A & Zone B
+  const buildRackAisle = (
+    zoneId: string,
+    minC: number,
+    maxC: number,
+    minR: number,
+    maxR: number
+  ) => {
+    let aisleIndex = 1;
+    for (let r = minR; r + 1 <= maxR; r += 3) {
+      let bayIndex = 1;
+      for (let c = minC; c + 2 <= maxC; c += 3) {
         // 2x1 rack footprint
         setGridRect(navGrid, c, r, c + 2, r + 1, 1);
 
-        const locId = `SHELF-${zoneId}-${a + 1}-${b + 1}`;
-        const isAisleTopHeavy = (a + b) % 2 === 0;
+        const locId = `SHELF-${zoneId}-${aisleIndex}-${bayIndex}`;
+        const isAisleTopHeavy = (aisleIndex + bayIndex) % 2 === 0;
         const tiers: ShelfTier[] = [
           {
             level: 4,
@@ -777,41 +813,49 @@ function createDefaultLayout(dimensions: GridDimensions): {
 
         locations[locId] = {
           id: locId,
-          name: `Rack ${zoneId.replace("ZONE_", "")} Aisle ${a + 1} Bay ${b + 1}`,
+          name: `Rack ${zoneId.replace("ZONE_", "")} Aisle ${aisleIndex} Bay ${bayIndex}`,
           type: "SHELF",
           zoneId,
           coords: [c + 1.0, r + 0.5],
-          accessPoint: [c + 1.0, r - 0.5], // Access from aisle
+          accessPoint: [c + 1.0, Math.max(1, r - 0.5)],
           tiers,
         };
+        bayIndex++;
       }
+      aisleIndex++;
     }
   };
 
-  buildRackAisle("ZONE_A", 5, 10, 4, 5);
-  buildRackAisle("ZONE_B", 34, 10, 4, 5);
+  buildRackAisle("ZONE_A", 4, splitX - 3, 6, splitY - 3);
+  if (cols >= 28) {
+    buildRackAisle("ZONE_B", splitX + 3, cols - 4, 6, splitY - 3);
+  }
 
-  // Packing Stations in Zone D
-  for (let p = 1; p <= 3; p++) {
+  // Packing Stations dynamically placed in Zone D
+  const packWidth = cols - (splitX + 2);
+  const packCount = Math.max(1, Math.min(3, Math.floor(packWidth / 6)));
+  const pRow = Math.min(rows - 3, Math.max(splitY + 2, rows - 5));
+  for (let p = 1; p <= packCount; p++) {
     const packId = `PACK-STATION-${p}`;
-    const pCol = 36 + (p - 1) * 7;
-    const pRow = 32;
-    setGridRect(navGrid, pCol, pRow, pCol + 3, pRow + 2, 1);
+    const pCol = Math.floor((splitX + 2) + ((packWidth - 2) / (packCount + 1)) * p);
+    setGridRect(navGrid, pCol - 1, pRow - 1, Math.min(cols - 2, pCol + 1), pRow + 1, 1);
 
     locations[packId] = {
       id: packId,
       name: `Packing Station 0${p}`,
       type: "PACK_STATION",
       zoneId: "ZONE_D",
-      coords: [pCol + 1.5, pRow + 1.0],
-      accessPoint: [pCol + 1.5, pRow - 1.0],
+      coords: [pCol + 0.5, pRow + 0.5],
+      accessPoint: [pCol + 0.5, Math.max(1, pRow - 1.0)],
     };
   }
 
-  // Inbound Docks at top perimeter
-  for (let d = 1; d <= 2; d++) {
+  // Inbound Docks at top perimeter (strictly within [2, splitX - 2])
+  const inbSpan = Math.max(4, splitX - 3);
+  const inbCount = Math.max(1, Math.min(2, Math.floor(inbSpan / 8)));
+  for (let d = 1; d <= inbCount; d++) {
     const dockId = `INBOUND-DOCK-${d}`;
-    const dCol = 14 + (d - 1) * 24;
+    const dCol = Math.floor(2 + (inbSpan / (inbCount + 1)) * d);
     const dRow = 2;
     locations[dockId] = {
       id: dockId,
@@ -823,18 +867,20 @@ function createDefaultLayout(dimensions: GridDimensions): {
     };
   }
 
-  // Charging Docks at bottom perimeter
+  // Charging Docks at bottom perimeter (Zone C, strictly within [2, splitX - 2])
   const chargingDocks: Record<string, ChargingDock> = {};
-  for (let ch = 1; ch <= 6; ch++) {
+  const chgSpan = Math.max(3, splitX - 3);
+  const chgCount = Math.max(1, Math.min(6, Math.floor(chgSpan / 3)));
+  const chgRow = Math.max(splitY + 2, rows - 3);
+  for (let ch = 1; ch <= chgCount; ch++) {
     const chgId = `CHG-DOCK-0${ch}`;
-    const col = 8 + (ch - 1) * 3;
-    const row = 38;
-    setGridRect(navGrid, col, row, col, row, 1); // Charger base
+    const col = Math.floor(2 + ((chgSpan - 1) / Math.max(1, chgCount)) * (ch - 1));
+    setGridRect(navGrid, col, chgRow, col, chgRow, 1); // Charger base
 
     chargingDocks[chgId] = {
       id: chgId,
-      coords: [col + 0.5, row + 0.5],
-      accessPoint: [col + 0.5, row - 1.0],
+      coords: [col + 0.5, chgRow + 0.5],
+      accessPoint: [col + 0.5, Math.max(1, chgRow - 1.0)],
       isOccupied: false,
       occupantBotId: null,
       powerKw: 7.5,
@@ -845,10 +891,31 @@ function createDefaultLayout(dimensions: GridDimensions): {
       name: `Fast Charger 0${ch}`,
       type: "CHARGING_DOCK",
       zoneId: "ZONE_C",
-      coords: [col + 0.5, row + 0.5],
-      accessPoint: [col + 0.5, row - 1.0],
+      coords: [col + 0.5, chgRow + 0.5],
+      accessPoint: [col + 0.5, Math.max(1, chgRow - 1.0)],
     };
   }
+
+  // Conveyors connecting packing stations to eastern dispatch
+  const conveyors: ConveyorSegment[] = [];
+  Object.values(locations)
+    .filter((l) => l.type === "PACK_STATION")
+    .forEach((packLoc, idx) => {
+      const startX = packLoc.coords[0] + 1.0;
+      const endX = cols - 2.0;
+      const len = Math.max(1, Math.round(endX - startX));
+      if (len >= 1 && startX < endX) {
+        conveyors.push({
+          id: `CONV-0${idx + 1}`,
+          name: `Express Pack Line ${idx + 1}`,
+          startCoords: [startX, packLoc.coords[1]],
+          endCoords: [endX, packLoc.coords[1]],
+          lengthM: len,
+          speedMps: 1.5,
+          isJammed: false,
+        });
+      }
+    });
 
   // Freight Elevators (Removed for unobstructed single-level automated layout)
   const elevators: Record<string, ElevatorNode> = {};
@@ -924,7 +991,7 @@ function createDefaultLayout(dimensions: GridDimensions): {
   }
 
   const aisleFlowMap = buildAisleFlowMap(navGrid);
-  return { navGrid, aisleFlowMap, zones, locations, chargingDocks, elevators, initialBotUnits };
+  return { navGrid, aisleFlowMap, zones, locations, chargingDocks, conveyors, elevators, initialBotUnits };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1568,26 +1635,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
 
     // Blueprint Upload & Auto-Zoning Studio
     customBlueprintUrl: null,
-    conveyors: [
-      {
-        id: "CONV-01",
-        name: "Express Pack-to-Dock Line 1",
-        startCoords: [39.0, 32.0],
-        endCoords: [57.0, 32.0],
-        lengthM: 18,
-        speedMps: 1.5,
-        isJammed: false,
-      },
-      {
-        id: "CONV-02",
-        name: "Express Pack-to-Dock Line 2",
-        startCoords: [46.0, 32.0],
-        endCoords: [57.0, 32.0],
-        lengthM: 11,
-        speedMps: 1.5,
-        isJammed: false,
-      },
-    ],
+    conveyors: initialLayout.conveyors,
     isBuilderModalOpen: false,
     openBuilderModal: () => set({ isBuilderModalOpen: true }),
     closeBuilderModal: () => set({ isBuilderModalOpen: false }),
@@ -1797,14 +1845,67 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       const nextPeople = generateHumanWorkers(layout.navGrid, layout.dimensions);
       const nextFlowMap = buildAisleFlowMap(layout.navGrid);
 
+      const widthM = layout.dimensions.widthM;
+      const depthM = layout.dimensions.depthM;
+
+      // Sanitize locations: strictly clamp/drop any out of bounds
+      const sanitizedLocations: Record<string, WarehouseLocation> = {};
+      Object.entries(layout.locations || {}).forEach(([id, loc]) => {
+        if (!loc || !loc.coords) return;
+        const [x, z] = loc.coords;
+        if (x >= 0.5 && x <= widthM - 0.5 && z >= 0.5 && z <= depthM - 0.5) {
+          sanitizedLocations[id] = loc;
+        }
+      });
+
+      // Sanitize charging docks
+      const sanitizedChargingDocks: Record<string, ChargingDock> = {};
+      Object.entries(layout.chargingDocks || {}).forEach(([id, dock]) => {
+        if (!dock || !dock.coords) return;
+        const [x, z] = dock.coords;
+        if (x >= 0.5 && x <= widthM - 0.5 && z >= 0.5 && z <= depthM - 0.5) {
+          sanitizedChargingDocks[id] = dock;
+        }
+      });
+
+      // Sanitize conveyors: drop invalid or out-of-bounds
+      const sanitizedConveyors = (layout.conveyors || []).filter((c) => {
+        if (!c || !c.startCoords || !c.endCoords) return false;
+        const [x1, z1] = c.startCoords;
+        const [x2, z2] = c.endCoords;
+        const len = Math.hypot(x2 - x1, z2 - z1);
+        if (len <= 0.4) return false;
+        return (
+          x1 >= 0.5 && x1 <= widthM - 0.5 &&
+          z1 >= 0.5 && z1 <= depthM - 0.5 &&
+          x2 >= 0.5 && x2 <= widthM - 0.5 &&
+          z2 >= 0.5 && z2 <= depthM - 0.5
+        );
+      });
+
+      // Sanitize zones: normalize and clamp bounds
+      const sanitizedZones: Record<string, WarehouseZone> = {};
+      Object.entries(layout.zones || {}).forEach(([zid, zone]) => {
+        if (!zone || !zone.bounds) return;
+        const [x0, z0, x1, z1] = zone.bounds;
+        const minX = Math.max(1, Math.min(x0, x1, widthM - 2));
+        const maxX = Math.max(minX + 1, Math.min(Math.max(x0, x1), widthM - 1));
+        const minZ = Math.max(1, Math.min(z0, z1, depthM - 2));
+        const maxZ = Math.max(minZ + 1, Math.min(Math.max(z0, z1), depthM - 1));
+        sanitizedZones[zid] = {
+          ...zone,
+          bounds: [minX, minZ, maxX, maxZ],
+        };
+      });
+
       set({
         gridDimensions: layout.dimensions,
         navGrid: layout.navGrid,
         aisleFlowMap: nextFlowMap,
-        zones: layout.zones,
-        locations: layout.locations,
-        chargingDocks: layout.chargingDocks,
-        conveyors: layout.conveyors,
+        zones: sanitizedZones,
+        locations: sanitizedLocations,
+        chargingDocks: sanitizedChargingDocks,
+        conveyors: sanitizedConveyors,
         customBlueprintUrl: blueprintUrl || layout.blueprintUrl || null,
         botUnits: nextBots,
         people: nextPeople,
@@ -2120,7 +2221,9 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
 
     resetSimulation: (newSeed = 42) => {
       rng = createMulberry32(newSeed);
-      const layout = createDefaultLayout(initialDimensions);
+      const currentDims = get().gridDimensions || initialDimensions;
+      const layout = createDefaultLayout(currentDims);
+      const totalCells = currentDims.cols * currentDims.rows;
       const kpi = { ...initialKpi, tick: 0 };
       const decisionMetrics = computeFinancials(
         layout.initialBotUnits,
@@ -2133,9 +2236,11 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         tick: 0,
         isRunning: false,
         navGrid: layout.navGrid,
+        aisleFlowMap: layout.aisleFlowMap,
         zones: layout.zones,
         locations: layout.locations,
         chargingDocks: layout.chargingDocks,
+        conveyors: layout.conveyors,
         elevators: layout.elevators,
         botUnits: layout.initialBotUnits,
         fleetSummary: computeFleetSummary(layout.initialBotUnits),
@@ -2144,8 +2249,8 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
         selectedStationId: null,
         tasks: {},
         taskSequence: 1000,
-        trafficDensityMap: new Float32Array(totalGridCells),
-        activeCongestionMap: new Float32Array(totalGridCells),
+        trafficDensityMap: new Float32Array(totalCells),
+        activeCongestionMap: new Float32Array(totalCells),
         kpi,
         decisionMetrics,
       });
