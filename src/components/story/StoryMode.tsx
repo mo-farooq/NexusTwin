@@ -330,30 +330,62 @@ export function StoryMode() {
     };
   }, [gridDimensions]);
 
-  // Step 3 (Compare) Computed Metrics matching Dia design
+  // Step 3 (Compare) Computed Metrics with Queuing Theory & Diminishing Returns Physics
   const baseThr = kpi.throughputPerHour || 1420;
-  const propThr = Math.round(
-    baseThr *
-      (proposedFleet > fleetToday
-        ? 1 + Math.min(0.85, ((proposedFleet - fleetToday) / fleetToday) * 0.82)
-        : 1 - ((fleetToday - proposedFleet) / fleetToday) * 0.7)
-  );
+  const ratio = proposedFleet / Math.max(1, fleetToday);
+
+  // Queuing throughput diminishing returns curve
+  let effectiveGain = 0;
+  if (ratio <= 1.0) {
+    effectiveGain = (ratio - 1.0) * 0.68;
+  } else if (ratio <= 1.35) {
+    // Optimal sweet-spot expansion
+    effectiveGain = (ratio - 1.0) * 0.74;
+  } else {
+    // Saturated density: spatial encounters scale quadratically, throughput peaks and plateaus/drops
+    const excess = ratio - 1.35;
+    const peakGain = 0.35 * 0.74; // +25.9% at 1.35 ratio
+    effectiveGain = Math.max(-0.15, peakGain + excess * 0.06 - Math.pow(excess, 1.65) * 0.32);
+  }
+
+  const propThr = Math.round(baseThr * (1 + effectiveGain));
   const totThr = Math.max(1, baseThr + propThr);
   const basePct = Math.round((baseThr / totThr) * 100);
   const propPct = 100 - basePct;
   const deltaThrPct = baseThr ? Math.round(((propThr - baseThr) / baseThr) * 100) : 0;
 
+  // On-time SLA curve: degrades sharply under severe congestion
   const baseSla = kpi.slaCompliancePct || 99.2;
-  const propSla = Number(Math.min(99.9, baseSla + (proposedFleet > fleetToday ? 0.6 : -1.8)).toFixed(1));
+  const propSla = Number(
+    (ratio <= 1.0
+      ? Math.max(80.0, baseSla - (1.0 - ratio) * 12.0)
+      : ratio <= 1.35
+      ? Math.min(99.9, baseSla + (ratio - 1.0) * 1.8)
+      : Math.max(68.0, baseSla - Math.pow(ratio - 1.35, 1.6) * 18.0)
+    ).toFixed(1)
+  );
   const deltaSla = (propSla - baseSla).toFixed(1);
 
+  // Congestion index: non-linear quadratic scaling under dense fleets
   const rawCong = kpi.activeCongestionIndex ?? 8;
   const baseCong = Number((rawCong > 1 ? rawCong : rawCong * 100).toFixed(1));
-  const propCong = Number((baseCong * (proposedFleet > fleetToday ? 1.12 : 0.85)).toFixed(1));
+  const propCong = Number(
+    (ratio <= 1.0
+      ? baseCong * (0.65 + 0.35 * ratio)
+      : Math.min(68.0, baseCong * Math.pow(ratio, 2.1))
+    ).toFixed(1)
+  );
   const deltaCong = Math.abs(Number((propCong - baseCong).toFixed(1)));
 
+  // Task cycle time: increases exponentially under deadlock avoidance
   const baseCycle = Math.round(kpi.averageTaskDurationSec || 42);
-  const propCycle = Math.round(baseCycle * (proposedFleet > fleetToday ? 0.78 : 1.25));
+  const propCycle = Math.round(
+    ratio <= 1.0
+      ? baseCycle * (1.35 - 0.35 * ratio)
+      : ratio <= 1.35
+      ? baseCycle * (1.0 - (ratio - 1.0) * 0.42)
+      : baseCycle * (0.85 + Math.pow(ratio - 1.35, 1.4) * 0.95)
+  );
   const deltaCycle = Math.abs(propCycle - baseCycle);
 
   // Step URL Hash Synchronization for Presentation Deep Links and Browser Back/Forward navigation
@@ -1387,7 +1419,7 @@ export function StoryMode() {
             <div className="canvas-area">
               <div className="tw">
                 <FacilityCanvas
-                  interactive={false}
+                  interactive={true}
                   cameraPosition={stressCameraConfig.pos}
                   cameraTarget={stressCameraConfig.target}
                   style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
@@ -1510,13 +1542,17 @@ export function StoryMode() {
               </div>
               <div className="callout" id="cSay">
                 <div className="k">READ‑OUT</div>
-                {proposedFleet > fleetToday ? (
+                {ratio > 1.35 ? (
                   <span>
-                    <b>{proposedFleet} AMRs</b> ship <b>{Math.abs(propThr - baseThr).toLocaleString("en-IN")} more orders/h</b> during the surge, without gridlock. Worth pricing out.
+                    <b>⚠️ Diminishing Returns Warning:</b> Sizing fleet to <b>{proposedFleet} AMRs</b> ({(areaM2 / proposedFleet).toFixed(1)} m²/bot) surges congestion to <b>{propCong}% yielding</b>. Adding more robots creates cross-aisle gridlocks and degrades cycle time by <b>{deltaCycle}s</b>.
+                  </span>
+                ) : proposedFleet > fleetToday ? (
+                  <span>
+                    <b>Optimal Sizing: {proposedFleet} AMRs</b> ship <b>+{Math.abs(propThr - baseThr).toLocaleString("en-IN")} more orders/h</b> (+{deltaThrPct}%) with healthy aisle clearance ({(areaM2 / proposedFleet).toFixed(1)} m²/bot) and <b>{propSla}% SLA</b> during surge.
                   </span>
                 ) : proposedFleet < fleetToday ? (
                   <span>
-                    Diminishing returns: <b>{proposedFleet} AMRs</b> ship <b>{Math.abs(baseThr - propThr).toLocaleString("en-IN")} fewer orders/h</b>.
+                    <b>Under-provisioned: {proposedFleet} AMRs</b> ship <b>{Math.abs(baseThr - propThr).toLocaleString("en-IN")} fewer orders/h</b> ({deltaThrPct}%), starving packing lines.
                   </span>
                 ) : (
                   <span>Baseline and proposed fleets are identical. Adjust the proposed fleet slider.</span>
@@ -1528,7 +1564,7 @@ export function StoryMode() {
               <div className="cmp">
                 <div className="tw">
                   <FacilityCanvas
-                    interactive={false}
+                    interactive={true}
                     cameraPosition={compareCameraConfig.pos}
                     cameraTarget={compareCameraConfig.target}
                     style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
@@ -1602,7 +1638,7 @@ export function StoryMode() {
                   }}
                 >
                   <FacilityCanvas
-                    interactive={false}
+                    interactive={true}
                     cameraPosition={compareCameraConfig.pos}
                     cameraTarget={compareCameraConfig.target}
                     style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
