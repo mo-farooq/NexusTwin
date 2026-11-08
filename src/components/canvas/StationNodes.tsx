@@ -108,7 +108,7 @@ function WorkstationNode({ station, isSelected, onSelect }: WorkstationNodeProps
     <group position={[x, 0, z]}>
       {/* Clickable <Html distanceFactor={40}> Floating Status Pill */}
       {(showLabels || isSelected) && (
-        <Html position={[0, 2.7, 0]} center distanceFactor={40} zIndexRange={[10, 0]}>
+        <Html position={[0, 2.7, 0]} center distanceFactor={40} zIndexRange={[isSelected ? 85 : 12, 0]}>
           <StatusPill
             label={station.name}
             subtext={isPacking ? "READY (58 picks/hr)" : "RECEIVING"}

@@ -267,26 +267,36 @@ function CameraRig({
 
 function ArchitecturalLighting({ widthM, depthM }: { widthM: number; depthM: number }) {
   const { scene, gl } = useThree();
+  const isFestiveSurgeActive = useTwinStore((s) => s.isFestiveSurgeActive);
 
   useEffect(() => {
     (window as unknown as { __threeRenderer: THREE.WebGLRenderer }).__threeRenderer = gl;
-    scene.background = new THREE.Color(COLORS.BACKGROUND);
-    scene.fog = new THREE.Fog(COLORS.BACKGROUND, 90, 220);
-  }, [scene, gl]);
+    scene.background = new THREE.Color(isFestiveSurgeActive ? "#0B1528" : COLORS.BACKGROUND);
+    scene.fog = new THREE.Fog(isFestiveSurgeActive ? "#0B1528" : COLORS.BACKGROUND, 90, 220);
+  }, [scene, gl, isFestiveSurgeActive]);
 
   return (
     <>
-      {/* Soft Daylight Ambient */}
-      <ambientLight intensity={0.7} color="#FFFFFF" />
+      {/* Soft Daylight Ambient - Shifts to warm golden/amber glow during Festive Surge */}
+      <ambientLight
+        intensity={isFestiveSurgeActive ? 0.95 : 0.7}
+        color={isFestiveSurgeActive ? "#FED7AA" : "#FFFFFF"}
+      />
 
       {/* Sky-to-Ground Hemisphere Light */}
-      <hemisphereLight args={["#E0F2FE", "#F1F5F9", 0.45]} />
+      <hemisphereLight
+        args={[
+          isFestiveSurgeActive ? "#FDBA74" : "#E0F2FE",
+          isFestiveSurgeActive ? "#FFEDD5" : "#F1F5F9",
+          isFestiveSurgeActive ? 0.65 : 0.45,
+        ]}
+      />
 
       {/* Primary Warm Sun Light (Isometric Cast) */}
       <directionalLight
         position={[widthM * 0.45, 50, depthM * 0.25]}
-        intensity={1.35}
-        color="#FFFBEB"
+        intensity={isFestiveSurgeActive ? 1.6 : 1.35}
+        color={isFestiveSurgeActive ? "#FFEDD5" : "#FFFBEB"}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-bias={-0.0003}
@@ -301,8 +311,8 @@ function ArchitecturalLighting({ widthM, depthM }: { widthM: number; depthM: num
       {/* Subtle Cool Fill Light */}
       <directionalLight
         position={[-widthM * 0.3, 30, -depthM * 0.3]}
-        intensity={0.3}
-        color="#BAE6FD"
+        intensity={isFestiveSurgeActive ? 0.45 : 0.3}
+        color={isFestiveSurgeActive ? "#FCD34D" : "#BAE6FD"}
       />
     </>
   );
@@ -578,6 +588,33 @@ function FloorObstaclesCollection() {
   const cellSize = useTwinStore((s) => s.navGrid.cellSize);
   const showLabels = useTwinStore((s) => s.showLabels);
 
+  // Procedural OSHA Yellow & Black Diagonal Striped Hazard Decal
+  const hazardTexture = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.fillStyle = "#FACC15"; // Industrial Safety Yellow
+    ctx.fillRect(0, 0, 128, 128);
+    ctx.fillStyle = "#0F172A"; // Contrasting Slate Dark
+    for (let i = -128; i < 256; i += 32) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i + 16, 0);
+      ctx.lineTo(i + 16 + 128, 128);
+      ctx.lineTo(i + 128, 128);
+      ctx.closePath();
+      ctx.fill();
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(2, 2);
+    return texture;
+  }, []);
+
   return (
     <group>
       {customObstacles.map((obs) => {
@@ -593,10 +630,24 @@ function FloorObstaclesCollection() {
               toggleFloorObstacle(obs.col, obs.row);
             }}
           >
+            {/* Bold Striped Hazard Floor Decal (OSHA Diagonal Stripes) */}
+            {hazardTexture && (
+              <mesh rotation-x={-Math.PI / 2} position={[0, 0.022, 0]}>
+                <planeGeometry args={[1.35, 1.35]} />
+                <meshBasicMaterial map={hazardTexture} transparent opacity={0.92} />
+              </mesh>
+            )}
+
+            {/* Pulsing Outer Hazard Border Ribbon */}
+            <mesh rotation-x={-Math.PI / 2} position={[0, 0.025, 0]}>
+              <ringGeometry args={[0.68, 0.74, 32]} />
+              <meshBasicMaterial color="#DC2626" transparent opacity={0.9} />
+            </mesh>
+
             {/* Base warning mat */}
-            <mesh rotation-x={-Math.PI / 2} position={[0, 0.02, 0]}>
-              <planeGeometry args={[0.9, 0.9]} />
-              <meshBasicMaterial color="#DC2626" transparent opacity={0.4} />
+            <mesh rotation-x={-Math.PI / 2} position={[0, 0.026, 0]}>
+              <planeGeometry args={[0.95, 0.95]} />
+              <meshBasicMaterial color="#DC2626" transparent opacity={0.35} />
             </mesh>
 
             {/* Heavy Barricade Stand / Legs */}

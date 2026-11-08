@@ -180,6 +180,7 @@ function InboundPortalNode({ position }: { position: [number, number, number] })
 
 export function ZoneSections() {
   const zones = useTwinStore((s) => s.zones);
+  const isFestiveSurgeActive = useTwinStore((s) => s.isFestiveSurgeActive);
   const gridDimensions = useTwinStore((s) => s.gridDimensions);
   const { widthM, depthM } = gridDimensions;
 
@@ -262,6 +263,60 @@ export function ZoneSections() {
             {(z.id === "ZONE_INBOUND" || z.sectionType === "INBOUND") && (
               <InboundPortalNode position={[x0 + 1.2, 0, (z0 + z1) / 2]} />
             )}
+
+            {/* 5. 3D Floating Neon Banner for Festive Surge above Inbound Zone */}
+            {isFestiveSurgeActive &&
+              (z.id === "ZONE_INBOUND" || z.sectionType === "INBOUND" || z.id.includes("INBOUND")) && (
+                <Html
+                  position={[midX, 5.2, (z0 + z1) / 2]}
+                  center
+                  distanceFactor={38}
+                  zIndexRange={[99, 0]}
+                >
+                  <div
+                    style={{
+                      background:
+                        "linear-gradient(135deg, rgba(220, 38, 38, 0.96), rgba(217, 119, 6, 0.96))",
+                      border: "2px solid #FDE047",
+                      borderRadius: "10px",
+                      padding: "8px 18px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      boxShadow:
+                        "0 0 35px rgba(239, 68, 68, 0.85), 0 0 15px rgba(253, 224, 71, 0.7), 0 8px 24px rgba(0,0,0,0.5)",
+                      userSelect: "none",
+                      whiteSpace: "nowrap",
+                      fontFamily: "'Inter', -apple-system, sans-serif",
+                    }}
+                  >
+                    <span style={{ fontSize: "20px" }}>🔥</span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: 900,
+                          color: "#FFFFFF",
+                          letterSpacing: "0.06em",
+                          textShadow: "0 2px 4px rgba(0,0,0,0.5)",
+                        }}
+                      >
+                        FESTIVE SURGE: 3X LOAD ACTIVE
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "10.5px",
+                          fontWeight: 700,
+                          color: "#FEF08A",
+                          letterSpacing: "0.02em",
+                        }}
+                      >
+                        Inbound Pallet Rate: 7,200 units/h · Priority Dispatch
+                      </div>
+                    </div>
+                  </div>
+                </Html>
+              )}
           </group>
         );
       })}

@@ -254,6 +254,9 @@ interface SingleBotProps {
 
 function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulationSpeed }: SingleBotProps) {
   const activeCamera = useTwinStore((s) => s.activeCamera);
+  const isFestiveSurgeActive = useTwinStore((s) => s.isFestiveSurgeActive);
+  const customObstacles = useTwinStore((s) => s.customObstacles);
+  const hasObstacles = customObstacles.length > 0;
   const currentTask = useTwinStore((s) => bot.currentTaskId ? s.tasks[bot.currentTaskId] : null);
   const targetTier = currentTask?.targetTier ?? 1;
   const isPicking = bot.fsmState === "PICKING";
@@ -351,9 +354,12 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
       }
     });
 
-    // Breathing pulse animation for status LED ring
+    // Breathing pulse animation for status LED ring (Pulses rapidly in amber during Festive Surge)
     if (ledRingRef.current) {
-      const pulse = 1.0 + Math.sin(clock.elapsedTime * 3.5) * 0.06;
+      const isSurge = isFestiveSurgeActive || currentTask?.priority === "FLASH_SURGE";
+      const freq = isSurge ? 9.0 : 3.5;
+      const amp = isSurge ? 0.16 : 0.06;
+      const pulse = 1.0 + Math.sin(clock.elapsedTime * freq) * amp;
       ledRingRef.current.scale.set(pulse, pulse, pulse);
     }
   });
@@ -387,18 +393,18 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
 
   return (
     <>
-      {/* 1. Floor Navigation Route Line (Dashed #F8CB46) */}
+      {/* 1. Floor Navigation Route Line (Highlighted in bright yellow #FFE600 when rerouted around barricades) */}
       {routePoints && routePoints.length > 1 && (
         <group>
           <Line
             points={routePoints}
-            color={BOT_THEME.ACCENT_YELLOW}
-            lineWidth={isSelected ? 3.0 : 2.0}
+            color={hasObstacles ? "#FFE600" : BOT_THEME.ACCENT_YELLOW}
+            lineWidth={hasObstacles ? (isSelected ? 4.5 : 3.5) : (isSelected ? 3.0 : 2.0)}
             dashed
             dashSize={0.6}
             gapSize={0.3}
             transparent
-            opacity={isSelected ? 0.95 : 0.65}
+            opacity={hasObstacles ? 1.0 : (isSelected ? 0.95 : 0.65)}
           />
           {/* Destination Target Marker */}
           {destinationPoint && (
@@ -408,9 +414,9 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
             >
               <ringGeometry args={[0.35, 0.52, 24]} />
               <meshBasicMaterial
-                color={BOT_THEME.ACCENT_YELLOW}
+                color={hasObstacles ? "#FFE600" : BOT_THEME.ACCENT_YELLOW}
                 transparent
-                opacity={0.8}
+                opacity={hasObstacles ? 0.95 : 0.8}
               />
             </mesh>
           )}
@@ -440,7 +446,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
             position={[0, 1.25, 0]}
             center
             distanceFactor={32}
-            zIndexRange={[15, 0]}
+            zIndexRange={[isSelected ? 90 : 15, 0]}
           >
             {isSelected ? (
               <BotStatusBadge
@@ -535,7 +541,9 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
           <ringGeometry args={[0.56, 0.72, 36]} />
           <meshBasicMaterial
             color={
-              bot.perception?.state === "HOLDING" || bot.perception?.state === "YIELDING"
+              (isFestiveSurgeActive || currentTask?.priority === "FLASH_SURGE") && bot.status === "ACTIVE"
+                ? "#F59E0B"
+                : bot.perception?.state === "HOLDING" || bot.perception?.state === "YIELDING"
                 ? "#EF4444"
                 : bot.perception?.state === "SLOWING"
                 ? "#F59E0B"
