@@ -60,27 +60,36 @@ export function WarehouseBuilderModal() {
   const applyCustomLayout = useTwinStore((s) => s.applyCustomLayout);
 
   // Layout parameters
-  const [widthM, setWidthM] = useState(60);
-  const [depthM, setDepthM] = useState(40);
+  const [widthM, setWidthM] = useState(84);
+  const [depthM, setDepthM] = useState(52);
   const [flowType, setFlowType] = useState<FlowType>("I_FLOW");
   const [tierCount, setTierCount] = useState<2 | 3 | 4>(4);
 
   // ── Indian Facility Archetypes & Operational Priors ───────────
-  type IndianArchetype = "ZEPTO_DARKSTORE" | "BHIWANDI_3PL" | "PEENYA_MSME";
-  const [selectedArchetype, setSelectedArchetype] = useState<IndianArchetype | null>("BHIWANDI_3PL");
-  const [avgBasketSize, setAvgBasketSize] = useState<number>(6.5);
-  const [targetSlaText, setTargetSlaText] = useState<string>("Same-Day Dispatch");
-  const [skuParetoPct, setSkuParetoPct] = useState<number>(70);
-  const [gridPowerLimitKw, setGridPowerLimitKw] = useState<number>(45);
+  type IndianArchetype = "REGIONAL_HUB_84X52" | "ZEPTO_DARKSTORE" | "BHIWANDI_3PL" | "PEENYA_MSME";
+  const [selectedArchetype, setSelectedArchetype] = useState<IndianArchetype | null>("REGIONAL_HUB_84X52");
+  const [avgBasketSize, setAvgBasketSize] = useState<number>(5.8);
+  const [targetSlaText, setTargetSlaText] = useState<string>("Same-Day Dispatch (4h)");
+  const [skuParetoPct, setSkuParetoPct] = useState<number>(75);
+  const [gridPowerLimitKw, setGridPowerLimitKw] = useState<number>(65);
 
   const applyArchetype = (arch: IndianArchetype) => {
     setSelectedArchetype(arch);
-    let nextW = 60;
-    let nextD = 40;
+    let nextW = 84;
+    let nextD = 52;
     let nextFlow: FlowType = "I_FLOW";
     let nextTiers: 2 | 3 | 4 = 4;
 
-    if (arch === "ZEPTO_DARKSTORE") {
+    if (arch === "REGIONAL_HUB_84X52") {
+      nextW = 84;
+      nextD = 52;
+      nextFlow = "I_FLOW";
+      nextTiers = 4;
+      setAvgBasketSize(5.8);
+      setTargetSlaText("Same-Day Dispatch (4h)");
+      setSkuParetoPct(75);
+      setGridPowerLimitKw(65);
+    } else if (arch === "ZEPTO_DARKSTORE") {
       nextW = 20;
       nextD = 16;
       nextFlow = "U_FLOW";
@@ -197,6 +206,48 @@ export function WarehouseBuilderModal() {
 
   // Zoom level for Studio canvas viewport (Fit, 75%, 100%)
   const [zoomLevel, setZoomLevel] = useState<"fit" | "75" | "100">("100");
+
+  // Studio Blueprint Layer Toggles (matching Story Mode Build standards)
+  const [showZonesLayer, setShowZonesLayer] = useState(true);
+  const [showRacksLayer, setShowRacksLayer] = useState(true);
+  const [showParetoLayer, setShowParetoLayer] = useState(true);
+  const [showAmrKinematics, setShowAmrKinematics] = useState(true);
+
+  // Exact scale calculation shared by CSS transform and mouse interaction layer
+  const canvasScale = useMemo(() => {
+    if (zoomLevel === "fit") {
+      return Number(Math.min(1, 680 / (widthM * 16), 460 / (depthM * 16)).toFixed(3));
+    }
+    if (zoomLevel === "75") return 0.75;
+    return 1.0;
+  }, [zoomLevel, widthM, depthM]);
+
+  // Circulating 2D AMRs for Studio preview
+  const previewAmrs = useMemo(() => {
+    if (!activeLayout) return [];
+    const aisles: number[] = [];
+    const seenX = new Set<number>();
+    Object.values(activeLayout.locations).forEach((loc) => {
+      if (loc.type === "SHELF") {
+        const ax = Math.round(loc.coords[0]);
+        if (!seenX.has(ax)) {
+          seenX.add(ax);
+          aisles.push(ax);
+        }
+      }
+    });
+    aisles.sort((a, b) => a - b);
+    const count = Math.min(24, Math.max(4, Math.floor(activeLayout.summary.recommendedFleetSize || 12)));
+    const list: Array<{ id: string; x: number; y: number; isUp: boolean }> = [];
+    for (let i = 0; i < count; i++) {
+      const a = aisles.length > 0 ? aisles[i % aisles.length] : 4 + (i * 4);
+      const isUp = i % 2 === 0;
+      const progress = ((i * 0.23) + (i % 3) * 0.1) % 0.8;
+      const y = Math.round(6 + progress * (depthM - 12));
+      list.push({ id: `AMR-${i + 1}`, x: a + 0.8, y, isUp });
+    }
+    return list;
+  }, [activeLayout, depthM]);
 
   // Global mouseup listener so dragging never gets stuck outside canvas
   useEffect(() => {
@@ -591,6 +642,47 @@ export function WarehouseBuilderModal() {
                   1-Click Indian Facility Archetypes:
                 </span>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {/* Archetype 0: Regional Mega Hub (Story Mode Demo 84x52m) */}
+                  <button
+                    onClick={() => applyArchetype("REGIONAL_HUB_84X52")}
+                    style={{
+                      padding: "10px 12px",
+                      background: selectedArchetype === "REGIONAL_HUB_84X52" ? "#FEF3C7" : "#F8FAFC",
+                      border: selectedArchetype === "REGIONAL_HUB_84X52" ? "2px solid #D97706" : "1px solid #E2E8F0",
+                      borderRadius: "10px",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 800, color: "#0F172A" }}>
+                        ★ Regional Mega Logistics Hub (Story Demo)
+                      </span>
+                      <span style={{ fontSize: "9px", fontWeight: 800, color: "#92400E", background: "#FDE68A", padding: "1px 6px", borderRadius: "4px" }}>
+                        NOVEX 84×52M
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "10px", color: "#64748B", marginTop: "2px" }}>
+                      47,000 sq ft (84m × 52m) · 48–56 AMRs · 8 Picking Aisles
+                    </div>
+                    <div
+                      style={{
+                        marginTop: "5px",
+                        fontSize: "9px",
+                        fontWeight: 700,
+                        color: "#92400E",
+                        background: "#FEF3C7",
+                        padding: "3px 6px",
+                        borderRadius: "5px",
+                        lineHeight: 1.3,
+                        border: "1px solid #FDE68A",
+                      }}
+                    >
+                      Priors: Avg Basket: 5.8 items | Target SLA: Same-Day (4h) | SKU Pareto: Top 15% = 75% volume | Grid Load: 65 kW
+                    </div>
+                  </button>
+
                   {/* Archetype 1: Urban Quick-Commerce */}
                   <button
                     onClick={() => applyArchetype("ZEPTO_DARKSTORE")}
@@ -725,7 +817,7 @@ export function WarehouseBuilderModal() {
                 <input
                   type="range"
                   min="16"
-                  max="80"
+                  max="140"
                   step="2"
                   value={widthM}
                   onChange={(e) => setWidthM(Number(e.target.value))}
@@ -742,7 +834,7 @@ export function WarehouseBuilderModal() {
                 <input
                   type="range"
                   min="16"
-                  max="60"
+                  max="90"
                   step="2"
                   value={depthM}
                   onChange={(e) => setDepthM(Number(e.target.value))}
