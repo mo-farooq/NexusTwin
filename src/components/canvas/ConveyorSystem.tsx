@@ -123,9 +123,8 @@ function SingleConveyor({ conveyor, simulationSpeed }: SingleConveyorProps) {
       {/* 5. Jam / Warning Beacon if jammed */}
       {isJammed && (
         <group position={[0, 0.8, 0]}>
-          <pointLight color="#EF4444" intensity={2} distance={3} />
           <mesh>
-            <sphereGeometry args={[0.08, 12, 12]} />
+            <sphereGeometry args={[0.09, 12, 12]} />
             <meshBasicMaterial color="#EF4444" />
           </mesh>
         </group>

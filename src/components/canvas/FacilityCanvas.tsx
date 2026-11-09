@@ -584,7 +584,6 @@ function ChargingPadsCollection() {
 
 function FlashingAmberBeacon() {
   const meshRef = useRef<THREE.Mesh>(null);
-  const lightRef = useRef<THREE.PointLight>(null);
 
   useFrame(({ clock }) => {
     // 4Hz flashing amber industrial strobe
@@ -593,24 +592,18 @@ function FlashingAmberBeacon() {
       const mat = meshRef.current.material as THREE.MeshStandardMaterial;
       if (mat) mat.emissiveIntensity = 0.8 + strobe * 2.8;
     }
-    if (lightRef.current) {
-      lightRef.current.intensity = 0.5 + strobe * 2.5;
-    }
   });
 
   return (
-    <>
-      <mesh ref={meshRef} position={[0, 0.5, 0]}>
-        <sphereGeometry args={[0.07, 16, 16]} />
-        <meshStandardMaterial
-          color="#F59E0B"
-          emissive="#F59E0B"
-          emissiveIntensity={2.5}
-          roughness={0.1}
-        />
-      </mesh>
-      <pointLight ref={lightRef} position={[0, 0.6, 0]} color="#F59E0B" intensity={2.5} distance={4.0} />
-    </>
+    <mesh ref={meshRef} position={[0, 0.5, 0]}>
+      <sphereGeometry args={[0.07, 16, 16]} />
+      <meshStandardMaterial
+        color="#F59E0B"
+        emissive="#F59E0B"
+        emissiveIntensity={2.5}
+        roughness={0.1}
+      />
+    </mesh>
   );
 }
 
@@ -662,49 +655,71 @@ function FloorObstaclesCollection() {
               toggleFloorObstacle(obs.col, obs.row);
             }}
           >
-            {/* Bold Striped Hazard Floor Decal (OSHA Diagonal Stripes) */}
-            {hazardTexture && (
-              <mesh rotation-x={-Math.PI / 2} position={[0, 0.022, 0]}>
-                <planeGeometry args={[1.35, 1.35]} />
-                <meshBasicMaterial map={hazardTexture} transparent opacity={0.92} />
-              </mesh>
+            {obs.label === "Wall Pillar" ? (
+              <group>
+                {/* Structural Square Concrete/Steel Warehouse Column */}
+                <mesh position={[0, 2.0, 0]}>
+                  <boxGeometry args={[0.7, 4.0, 0.7]} />
+                  <meshStandardMaterial color="#475569" roughness={0.7} metalness={0.2} />
+                </mesh>
+                {/* High-visibility yellow safety foot base */}
+                <mesh position={[0, 0.25, 0]}>
+                  <boxGeometry args={[0.78, 0.5, 0.78]} />
+                  <meshStandardMaterial color="#F59E0B" roughness={0.4} metalness={0.1} />
+                </mesh>
+                {/* Floor hazard ring */}
+                <mesh rotation-x={-Math.PI / 2} position={[0, 0.02, 0]}>
+                  <ringGeometry args={[0.42, 0.55, 16]} />
+                  <meshBasicMaterial color="#334155" transparent opacity={0.6} />
+                </mesh>
+              </group>
+            ) : (
+              <>
+                {/* Bold Striped Hazard Floor Decal (OSHA Diagonal Stripes) */}
+                {hazardTexture && (
+                  <mesh rotation-x={-Math.PI / 2} position={[0, 0.022, 0]}>
+                    <planeGeometry args={[1.35, 1.35]} />
+                    <meshBasicMaterial map={hazardTexture} transparent opacity={0.92} />
+                  </mesh>
+                )}
+
+                {/* Pulsing Outer Hazard Border Ribbon */}
+                <mesh rotation-x={-Math.PI / 2} position={[0, 0.025, 0]}>
+                  <ringGeometry args={[0.68, 0.74, 32]} />
+                  <meshBasicMaterial color="#DC2626" transparent opacity={0.9} />
+                </mesh>
+
+                {/* Base warning mat */}
+                <mesh rotation-x={-Math.PI / 2} position={[0, 0.026, 0]}>
+                  <planeGeometry args={[0.95, 0.95]} />
+                  <meshBasicMaterial color="#DC2626" transparent opacity={0.35} />
+                </mesh>
+
+                {/* Heavy Barricade Stand / Legs */}
+                <mesh position={[-0.32, 0.25, 0]}>
+                  <cylinderGeometry args={[0.03, 0.03, 0.5, 8]} />
+                  <meshStandardMaterial color="#1E293B" metalness={0.8} roughness={0.3} />
+                </mesh>
+                <mesh position={[0.32, 0.25, 0]}>
+                  <cylinderGeometry args={[0.03, 0.03, 0.5, 8]} />
+                  <meshStandardMaterial color="#1E293B" metalness={0.8} roughness={0.3} />
+                </mesh>
+
+                {/* Yellow-Black Warning Board */}
+                <RoundedBox args={[0.75, 0.24, 0.06]} radius={0.02} smoothness={4} position={[0, 0.32, 0]}>
+                  <meshStandardMaterial
+                    color="#F59E0B"
+                    roughness={0.4}
+                    metalness={0.2}
+                    emissive="#F59E0B"
+                    emissiveIntensity={0.25}
+                  />
+                </RoundedBox>
+
+                {/* Flashing Amber Warning Beacon */}
+                <FlashingAmberBeacon />
+              </>
             )}
-
-            {/* Pulsing Outer Hazard Border Ribbon */}
-            <mesh rotation-x={-Math.PI / 2} position={[0, 0.025, 0]}>
-              <ringGeometry args={[0.68, 0.74, 32]} />
-              <meshBasicMaterial color="#DC2626" transparent opacity={0.9} />
-            </mesh>
-
-            {/* Base warning mat */}
-            <mesh rotation-x={-Math.PI / 2} position={[0, 0.026, 0]}>
-              <planeGeometry args={[0.95, 0.95]} />
-              <meshBasicMaterial color="#DC2626" transparent opacity={0.35} />
-            </mesh>
-
-            {/* Heavy Barricade Stand / Legs */}
-            <mesh position={[-0.32, 0.25, 0]}>
-              <cylinderGeometry args={[0.03, 0.03, 0.5, 8]} />
-              <meshStandardMaterial color="#1E293B" metalness={0.8} roughness={0.3} />
-            </mesh>
-            <mesh position={[0.32, 0.25, 0]}>
-              <cylinderGeometry args={[0.03, 0.03, 0.5, 8]} />
-              <meshStandardMaterial color="#1E293B" metalness={0.8} roughness={0.3} />
-            </mesh>
-
-            {/* Yellow-Black Warning Board */}
-            <RoundedBox args={[0.75, 0.24, 0.06]} radius={0.02} smoothness={4} position={[0, 0.32, 0]}>
-              <meshStandardMaterial
-                color="#F59E0B"
-                roughness={0.4}
-                metalness={0.2}
-                emissive="#F59E0B"
-                emissiveIntensity={0.25}
-              />
-            </RoundedBox>
-
-            {/* Flashing Amber Warning Beacon */}
-            <FlashingAmberBeacon />
 
             {/* Click to remove Pill */}
             {showLabels && (

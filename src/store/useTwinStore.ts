@@ -1466,6 +1466,44 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     initialLayout.zones
   );
 
+  const getInitialUrlState = () => {
+    if (typeof window === "undefined") {
+      return {
+        appMode: "STORY" as "OPERATOR" | "STORY",
+        isBuilderModalOpen: false,
+        isSandboxModalOpen: false,
+        modal: null as "audit" | "tasks" | null,
+      };
+    }
+    const hash = window.location.hash.toLowerCase();
+    const isOperatorRoute =
+      hash.startsWith("#operator") ||
+      hash.includes("studio") ||
+      hash.includes("builder") ||
+      hash.includes("sandbox") ||
+      hash.includes("roi") ||
+      hash.includes("audit") ||
+      hash.includes("ledger") ||
+      hash.includes("operations") ||
+      hash.includes("tasks") ||
+      hash.includes("table");
+
+    const isBuilder = hash.includes("studio") || hash.includes("builder");
+    const isSandbox = hash.includes("sandbox") || hash.includes("roi");
+    let initialModal: "audit" | "tasks" | null = null;
+    if (hash.includes("audit") || hash.includes("ledger")) initialModal = "audit";
+    if (hash.includes("operations") || hash.includes("tasks") || hash.includes("table")) initialModal = "tasks";
+
+    return {
+      appMode: (isOperatorRoute ? "OPERATOR" : "STORY") as "OPERATOR" | "STORY",
+      isBuilderModalOpen: isBuilder,
+      isSandboxModalOpen: isSandbox,
+      modal: initialModal,
+    };
+  };
+
+  const initialUrlState = getInitialUrlState();
+
   return {
     gridDimensions: initialDimensions,
     navGrid: initialLayout.navGrid,
@@ -1484,7 +1522,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     layoutPreset: "DARK_STORE",
 
     // Sandbox & Chaos state
-    isSandboxModalOpen: false,
+    isSandboxModalOpen: initialUrlState.isSandboxModalOpen,
     isObstaclePlacementActive: false,
     customObstacles: [],
     isFestiveSurgeActive: false,
@@ -1527,7 +1565,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     simulationSpeed: 1,
 
     // View & UI Navigation
-    appMode: "STORY",
+    appMode: initialUrlState.appMode,
     setAppMode: (mode) => set({ appMode: mode }),
     viewMode: (typeof localStorage !== "undefined" && (localStorage.getItem("nt-mode") as "focus" | "full")) || "focus",
     setViewMode: (mode) => {
@@ -1546,7 +1584,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     activeCamera: "iso",
     activeTool: "sel",
     drawer: null,
-    modal: null,
+    modal: initialUrlState.modal,
 
     // Real-time Event Ledger & Alerts
     recentEvents: initialEvents,
@@ -1638,7 +1676,7 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
     // Blueprint Upload & Auto-Zoning Studio
     customBlueprintUrl: null,
     conveyors: initialLayout.conveyors,
-    isBuilderModalOpen: false,
+    isBuilderModalOpen: initialUrlState.isBuilderModalOpen,
     openBuilderModal: () => set({ isBuilderModalOpen: true }),
     closeBuilderModal: () => set({ isBuilderModalOpen: false }),
 
