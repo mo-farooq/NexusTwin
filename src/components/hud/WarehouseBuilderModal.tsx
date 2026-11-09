@@ -1167,7 +1167,75 @@ export function WarehouseBuilderModal() {
               </div>
 
               {/* Zoom & Reset Toolbar Controls */}
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                {/* Layer Visibility Toggles */}
+                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  <button
+                    onClick={() => setShowZonesLayer((v) => !v)}
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      border: showZonesLayer ? "1px solid #38BDF8" : "1px solid #CBD5E1",
+                      background: showZonesLayer ? "rgba(56, 189, 248, 0.12)" : "#FFFFFF",
+                      color: showZonesLayer ? "#0284C7" : "#64748B",
+                      fontSize: "10.5px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                    title="Toggle 5 Functional Operational Zones"
+                  >
+                    {showZonesLayer ? "✓ Zones" : "Zones"}
+                  </button>
+                  <button
+                    onClick={() => setShowRacksLayer((v) => !v)}
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      border: showRacksLayer ? "1px solid #F59E0B" : "1px solid #CBD5E1",
+                      background: showRacksLayer ? "rgba(245, 158, 11, 0.12)" : "#FFFFFF",
+                      color: showRacksLayer ? "#B45309" : "#64748B",
+                      fontSize: "10.5px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                    title="Toggle Storage Rack Fixtures"
+                  >
+                    {showRacksLayer ? "✓ Racks" : "Racks"}
+                  </button>
+                  <button
+                    onClick={() => setShowParetoLayer((v) => !v)}
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      border: showParetoLayer ? "1px solid #10B981" : "1px solid #CBD5E1",
+                      background: showParetoLayer ? "rgba(16, 185, 129, 0.12)" : "#FFFFFF",
+                      color: showParetoLayer ? "#059669" : "#64748B",
+                      fontSize: "10.5px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                    title="Toggle 80/20 Pareto Demand Concentration Hotspots"
+                  >
+                    {showParetoLayer ? "🔥 80/20 Pareto" : "Pareto"}
+                  </button>
+                  <button
+                    onClick={() => setShowAmrKinematics((v) => !v)}
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      border: showAmrKinematics ? "1px solid #8B5CF6" : "1px solid #CBD5E1",
+                      background: showAmrKinematics ? "rgba(139, 92, 246, 0.12)" : "#FFFFFF",
+                      color: showAmrKinematics ? "#6D28D9" : "#64748B",
+                      fontSize: "10.5px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                    title="Toggle 2D AMR Kinematic Simulation"
+                  >
+                    {showAmrKinematics ? "🤖 2D AMRs" : "AMRs"}
+                  </button>
+                </div>
+
                 {/* Canvas Zoom Controls */}
                 <div style={{ display: "flex", alignItems: "center", gap: "4px", background: "#F1F5F9", padding: "2px 6px", borderRadius: "8px", border: "1px solid #CBD5E1" }}>
                   <span style={{ fontSize: "10px", fontWeight: 700, color: "#64748B" }}>Zoom:</span>
@@ -1233,7 +1301,7 @@ export function WarehouseBuilderModal() {
                   boxShadow: "0 12px 30px rgba(0, 0, 0, 0.12)",
                   overflow: "hidden",
                   cursor: "crosshair",
-                  transform: `scale(${zoomLevel === "fit" ? Math.min(1, 680 / (widthM * 16), 460 / (depthM * 16)).toFixed(2) : zoomLevel === "75" ? "0.75" : "1"})`,
+                  transform: `scale(${canvasScale})`,
                   transformOrigin: "center center",
                   transition: "transform 0.15s ease",
                 }}
@@ -1304,7 +1372,8 @@ export function WarehouseBuilderModal() {
                   ))}
 
                   {/* Render 5 Functional Operational Zones */}
-                  {activeLayout &&
+                  {showZonesLayer &&
+                    activeLayout &&
                     Object.values(activeLayout.zones).map((z) => {
                       const [x0, z0, x1, z1] = z.bounds;
                       return (
@@ -1340,43 +1409,44 @@ export function WarehouseBuilderModal() {
                   {activeLayout && (
                     <>
                       {/* Racks */}
-                      {Object.values(activeLayout.locations)
-                        .filter((l) => {
-                          if (l.type !== "SHELF") return false;
-                          const c = Math.floor(l.coords[0]);
-                          const r = Math.floor(l.coords[1]);
-                          return !customPaints[`${c},${r}`] && !customPaints[`${c - 1},${r}`];
-                        })
-                        .map((shelf) => (
-                          <g key={shelf.id}>
-                            <rect
-                              x={(shelf.coords[0] - 1.0) * 16}
-                              y={(shelf.coords[1] - 1.0) * 16}
-                              width="32"
-                              height="16"
-                              fill="#0F2B48"
-                              stroke="#FFFFFF"
-                              strokeWidth="1.2"
-                              rx="2"
-                            />
-                            <line
-                              x1={(shelf.coords[0] - 1.0) * 16}
-                              y1={(shelf.coords[1] - 0.5) * 16}
-                              x2={(shelf.coords[0] + 1.0) * 16}
-                              y2={(shelf.coords[1] - 0.5) * 16}
-                              stroke="#F8CB46"
-                              strokeWidth="0.8"
-                            />
-                            <line
-                              x1={(shelf.coords[0] - 1.0) * 16}
-                              y1={(shelf.coords[1] + 0.5) * 16}
-                              x2={(shelf.coords[0] + 1.0) * 16}
-                              y2={(shelf.coords[1] + 0.5) * 16}
-                              stroke="#F8CB46"
-                              strokeWidth="0.8"
-                            />
-                          </g>
-                        ))}
+                      {showRacksLayer &&
+                        Object.values(activeLayout.locations)
+                          .filter((l) => {
+                            if (l.type !== "SHELF") return false;
+                            const c = Math.floor(l.coords[0]);
+                            const r = Math.floor(l.coords[1]);
+                            return !customPaints[`${c},${r}`] && !customPaints[`${c - 1},${r}`];
+                          })
+                          .map((shelf) => (
+                            <g key={shelf.id}>
+                              <rect
+                                x={(shelf.coords[0] - 1.0) * 16}
+                                y={(shelf.coords[1] - 1.0) * 16}
+                                width="32"
+                                height="16"
+                                fill="#0F2B48"
+                                stroke="#FFFFFF"
+                                strokeWidth="1.2"
+                                rx="2"
+                              />
+                              <line
+                                x1={(shelf.coords[0] - 1.0) * 16}
+                                y1={(shelf.coords[1] - 0.5) * 16}
+                                x2={(shelf.coords[0] + 1.0) * 16}
+                                y2={(shelf.coords[1] - 0.5) * 16}
+                                stroke="#F8CB46"
+                                strokeWidth="0.8"
+                              />
+                              <line
+                                x1={(shelf.coords[0] - 1.0) * 16}
+                                y1={(shelf.coords[1] + 0.5) * 16}
+                                x2={(shelf.coords[0] + 1.0) * 16}
+                                y2={(shelf.coords[1] + 0.5) * 16}
+                                stroke="#F8CB46"
+                                strokeWidth="0.8"
+                              />
+                            </g>
+                          ))}
 
                       {/* Inbound Docks */}
                       {Object.values(activeLayout.locations)
@@ -1468,6 +1538,93 @@ export function WarehouseBuilderModal() {
                     </>
                   )}
 
+                  {/* 80/20 Golden Zone / Pareto Demand Heat Overlay */}
+                  {showParetoLayer && activeLayout && (
+                    <g>
+                      <rect
+                        x={widthM * 16 * 0.18}
+                        y={depthM * 16 * 0.22}
+                        width={widthM * 16 * 0.64}
+                        height={depthM * 16 * 0.52}
+                        fill="#F59E0B"
+                        fillOpacity="0.18"
+                        stroke="#F59E0B"
+                        strokeWidth="2"
+                        strokeDasharray="6 3"
+                        rx="8"
+                      />
+                      <rect
+                        x={widthM * 16 * 0.18 + 8}
+                        y={depthM * 16 * 0.22 + 8}
+                        width="230"
+                        height="22"
+                        fill="#78350F"
+                        fillOpacity="0.85"
+                        rx="4"
+                      />
+                      <text
+                        x={widthM * 16 * 0.18 + 14}
+                        y={depthM * 16 * 0.22 + 23}
+                        fill="#FEF3C7"
+                        fontSize="11"
+                        fontWeight="800"
+                        fontFamily="'JetBrains Mono', monospace"
+                      >
+                        ★ 80/20 GOLDEN ZONE (75% VELOCITY)
+                      </text>
+                    </g>
+                  )}
+
+                  {/* 2D AMR Kinematic Flow Visualization (Circulating Preview Fleet) */}
+                  {showAmrKinematics &&
+                    previewAmrs.map((amr) => {
+                      const px = amr.x * 16;
+                      const py = amr.y * 16;
+                      return (
+                        <g key={amr.id}>
+                          <circle
+                            cx={px}
+                            cy={py}
+                            r="11"
+                            fill="none"
+                            stroke="#00FFFF"
+                            strokeWidth="1.2"
+                            strokeDasharray="3 2"
+                            opacity="0.7"
+                          />
+                          <rect
+                            x={px - 8}
+                            y={py - 8}
+                            width="16"
+                            height="16"
+                            rx="3"
+                            fill="#0891B2"
+                            stroke="#00FFFF"
+                            strokeWidth="1.5"
+                          />
+                          <polygon
+                            points={
+                              amr.isUp
+                                ? `${px},${py - 5} ${px - 4},${py + 3} ${px + 4},${py + 3}`
+                                : `${px},${py + 5} ${px - 4},${py - 3} ${px + 4},${py - 3}`
+                            }
+                            fill="#FFFFFF"
+                          />
+                          <text
+                            x={px}
+                            y={py + 16}
+                            fill="#00FFFF"
+                            fontSize="8"
+                            fontWeight="800"
+                            textAnchor="middle"
+                            fontFamily="'JetBrains Mono', monospace"
+                          >
+                            {amr.id}
+                          </text>
+                        </g>
+                      );
+                    })}
+
                   {/* Render Manual Custom Paints */}
                   {Object.entries(customPaints).map(([coord, brush]) => {
                     const [c, r] = coord.split(",").map(Number);
@@ -1533,9 +1690,8 @@ export function WarehouseBuilderModal() {
                   style={{ position: "absolute", inset: 0 }}
                   onMouseMove={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
-                    const scale = zoomLevel === "fit" ? Math.min(1, 680 / (widthM * 16), 460 / (depthM * 16)) : zoomLevel === "75" ? 0.75 : 1.0;
-                    const c = Math.floor((e.clientX - rect.left) / (16 * scale));
-                    const r = Math.floor((e.clientY - rect.top) / (16 * scale));
+                    const c = Math.floor((e.clientX - rect.left) / (16 * canvasScale));
+                    const r = Math.floor((e.clientY - rect.top) / (16 * canvasScale));
                     if (c >= 0 && c < widthM && r >= 0 && r < depthM) {
                       setHoverCoord([c, r]);
                       if (isMouseDown || e.buttons === 1) paintCell(c, r);
@@ -1544,9 +1700,8 @@ export function WarehouseBuilderModal() {
                   onMouseDown={(e) => {
                     setIsMouseDown(true);
                     const rect = e.currentTarget.getBoundingClientRect();
-                    const scale = zoomLevel === "fit" ? Math.min(1, 680 / (widthM * 16), 460 / (depthM * 16)) : zoomLevel === "75" ? 0.75 : 1.0;
-                    const c = Math.floor((e.clientX - rect.left) / (16 * scale));
-                    const r = Math.floor((e.clientY - rect.top) / (16 * scale));
+                    const c = Math.floor((e.clientX - rect.left) / (16 * canvasScale));
+                    const r = Math.floor((e.clientY - rect.top) / (16 * canvasScale));
                     if (c >= 0 && c < widthM && r >= 0 && r < depthM) {
                       paintCell(c, r);
                     }
