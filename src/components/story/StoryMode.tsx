@@ -1268,7 +1268,6 @@ export function StoryMode() {
               setDrawer(activeDrawer === "whatif" ? null : "whatif");
             }}
             style={{
-              marginRight: "6px",
               fontSize: "11px",
               padding: "5px 10px",
               display: "inline-flex",
@@ -1280,6 +1279,8 @@ export function StoryMode() {
               border: "1px solid #0369A1",
               borderRadius: "6px",
               cursor: "pointer",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
             }}
             title="Fast-forward clone simulation with multi-seed ensemble (Shortcut: W)"
           >
@@ -1296,7 +1297,6 @@ export function StoryMode() {
               setDrawer(activeDrawer === "copilot" ? null : "copilot");
             }}
             style={{
-              marginRight: "6px",
               fontSize: "11px",
               padding: "5px 10px",
               display: "inline-flex",
@@ -1308,6 +1308,8 @@ export function StoryMode() {
               border: "1px solid #334155",
               borderRadius: "6px",
               cursor: "pointer",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
             }}
             title="Ask Grounded AI Operations Copilot (Shortcut: C)"
           >
@@ -1317,23 +1319,25 @@ export function StoryMode() {
           </button>
 
           <button
-            className="hbtn ghost"
+            className="hbtn ghost btn-tour"
             onClick={() => {
               setShowTourModal(true);
               setTourStep(0);
             }}
-            style={{ marginRight: "6px", fontSize: "11px", padding: "5px 10px" }}
+            style={{ fontSize: "11px", padding: "5px 9px", whiteSpace: "nowrap", flexShrink: 0 }}
           >
-            🎯 30s Guided Tour
+            <span className="tour-full">🎯 30s Guided Tour</span>
+            <span className="tour-short">🎯 Tour</span>
           </button>
           <button
-            className="hbtn ghost"
+            className="hbtn ghost btn-benchmarks"
             onClick={() => setShowCitationsModal(true)}
-            style={{ marginRight: "6px", fontSize: "11px", padding: "5px 10px" }}
+            style={{ fontSize: "11px", padding: "5px 9px", whiteSpace: "nowrap", flexShrink: 0 }}
           >
-            📚 Sourced Benchmarks
+            <span className="benchmarks-full">📚 Sourced Benchmarks</span>
+            <span className="benchmarks-short">📚 Benchmarks</span>
           </button>
-          <div className="transport" id="speed">
+          <div className="transport" id="speed" style={{ flexShrink: 0 }}>
             <button className={speed === 4 ? "on" : ""} onClick={() => setSpeed(4)}>
               4×
             </button>
@@ -1350,6 +1354,7 @@ export function StoryMode() {
               window.location.hash = "#operator";
               setAppMode("OPERATOR");
             }}
+            style={{ whiteSpace: "nowrap", flexShrink: 0 }}
           >
             Operator view →
           </button>
