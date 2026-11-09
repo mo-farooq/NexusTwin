@@ -415,9 +415,9 @@ export function CopilotDrawer() {
     let replyMsg: ChatMessage | null = null;
 
     try {
-      // 1. Attempt to call Vercel /api/copilot with 8s timeout
+      // 1. Attempt to call Vercel /api/copilot with 15s timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       const resp = await fetch("/api/copilot", {
         method: "POST",
@@ -443,9 +443,14 @@ export function CopilotDrawer() {
             openSandboxModal,
             injectFestiveSurge,
           });
+          const modelBadge = data.model?.includes("3.5")
+            ? "✨ Gemini 3.5 Flash"
+            : data.model
+            ? `✨ ${data.model}`
+            : "✨ Gemini Flash";
           replyMsg = {
             role: "ai",
-            sourceBadge: "✨ Gemini 2.0 Flash",
+            sourceBadge: modelBadge,
             text: parsed.text,
             citations: parsed.citations,
             actions: parsed.actions,
@@ -493,7 +498,7 @@ export function CopilotDrawer() {
               border: `1px solid ${customApiKey ? "#A7F3D0" : "#BFDBFE"}`,
             }}
           >
-            {customApiKey ? "BYOK Gemini" : "Gemini 2.0 / SCADA"}
+            {customApiKey ? "BYOK Gemini" : "Gemini / SCADA"}
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>

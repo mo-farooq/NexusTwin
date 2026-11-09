@@ -112,8 +112,14 @@ GUIDELINES:
       },
     };
 
-    // Try Gemini 2.0 Flash first, fallback to 1.5 Flash
-    const models = ["gemini-2.0-flash", "gemini-1.5-flash"];
+    // Try modern Gemini models with multi-model fallback for maximum key compatibility
+    const models = [
+      "gemini-3.5-flash-lite",
+      "gemini-3.5-flash",
+      "gemini-flash-latest",
+      "gemini-2.5-flash-lite",
+      "gemini-1.5-flash",
+    ];
     let lastError = null;
 
     for (const model of models) {
