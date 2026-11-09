@@ -594,9 +594,8 @@ export function RightPanels({ asDock }: { asDock?: boolean } = {}) {
 }
 
 export function LiveCameraPanel({ bot }: { bot?: BotUnit }) {
-  const selectedBotId = useTwinStore((s) => s.selectedBotId);
-  const botUnits = useTwinStore((s) => s.botUnits);
-  const activeBot = bot || (selectedBotId ? botUnits[selectedBotId] : Object.values(botUnits)[0]);
+  const selectedBot = useTwinStore((s) => s.botUnits[s.selectedBotId || "BOT-01"]);
+  const activeBot = bot || selectedBot;
   const [camIndex, setCamIndex] = useState(0);
 
   if (!activeBot) return null;

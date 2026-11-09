@@ -13,11 +13,32 @@ import React, { useEffect, useState } from "react";
 import { useTwinStore } from "../../store/useTwinStore";
 import { useRollingFps } from "../../engine/useRollingFps";
 
-export function TopBar() {
+function TopBarClock() {
   const fps = useRollingFps();
+  const tick = useTwinStore((s) => s.tick);
+
+  const totalSec = Math.floor(tick * 0.1);
+  const hrs = String(14 + Math.floor(totalSec / 3600)).padStart(2, "0");
+  const mins = String(22 + Math.floor((totalSec % 3600) / 60)).padStart(2, "0");
+  const secs = String(totalSec % 60).padStart(2, "0");
+  const clockStr = `${hrs}:${mins}:${secs}`;
+
+  return (
+    <>
+      <span className="clock" id="clock">
+        {clockStr}
+      </span>
+      <span className="sep"></span>
+      <span className="m" title="10 Hz discrete clock · render FPS · simulation tick">
+        <b id="fps">{fps}</b> FPS · tick <b id="tick">{tick.toLocaleString("en-IN")}</b>
+      </span>
+    </>
+  );
+}
+
+export function TopBar() {
   const isRunning = useTwinStore((s) => s.isRunning);
   const simulationSpeed = useTwinStore((s) => s.simulationSpeed);
-  const tick = useTwinStore((s) => s.tick);
   const appMode = useTwinStore((s) => s.appMode);
   const setAppMode = useTwinStore((s) => s.setAppMode);
   const viewMode = useTwinStore((s) => s.viewMode);
@@ -32,16 +53,6 @@ export function TopBar() {
   const setDrawer = useTwinStore((s) => s.setDrawer);
   const activeDrawer = useTwinStore((s) => s.drawer);
   const defragMessage = useTwinStore((s) => s.defragMessage);
-
-  const [clockStr, setClockStr] = useState("14:22:08");
-
-  useEffect(() => {
-    const totalSec = Math.floor(tick * 0.1);
-    const hrs = String(14 + Math.floor(totalSec / 3600)).padStart(2, "0");
-    const mins = String(22 + Math.floor((totalSec % 3600) / 60)).padStart(2, "0");
-    const secs = String(totalSec % 60).padStart(2, "0");
-    setClockStr(`${hrs}:${mins}:${secs}`);
-  }, [tick]);
 
   return (
     <header className="hdr">
@@ -63,19 +74,13 @@ export function TopBar() {
         </div>
       </div>
 
-      {/* 2. Simulation Engine Telemetry */}
+      {/* 2. Simulation Engine Telemetry (Decoupled micro-component) */}
       <div className="engine">
         <span className={`live ${isRunning ? "" : "paused"}`} id="liveBadge">
           <i></i>
           {isRunning ? "LIVE" : "PAUSED"}
         </span>
-        <span className="clock" id="clock">
-          {clockStr}
-        </span>
-        <span className="sep"></span>
-        <span className="m" title="10 Hz discrete clock · render FPS · simulation tick">
-          <b id="fps">{fps}</b> FPS · tick <b id="tick">{tick.toLocaleString("en-IN")}</b>
-        </span>
+        <TopBarClock />
       </div>
 
       <div style={{ flex: 1 }} />

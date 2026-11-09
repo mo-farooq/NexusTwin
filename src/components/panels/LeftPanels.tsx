@@ -103,11 +103,7 @@ export function FleetOverviewPanel() {
 
 export function TaskOverviewPanel() {
   const kpi = useTwinStore((s) => s.kpi);
-  const tasks = useTwinStore((s) => s.tasks);
-
-  const ongoing = Object.values(tasks).filter(
-    (t) => t.status === "IN_PROGRESS" || t.status === "ASSIGNED"
-  ).length;
+  const inFlightTasks = useTwinStore((s) => s.fleetSummary.inFlightTasks);
 
   const targetHourly = 1200;
   const throughput = kpi.throughputPerHour || 0;
@@ -154,7 +150,7 @@ export function TaskOverviewPanel() {
           </div>
           <div>
             <div className="k-sm">In flight</div>
-            <div className="v num">{ongoing}</div>
+            <div className="v num">{inFlightTasks}</div>
           </div>
         </div>
       </div>
@@ -166,25 +162,25 @@ export function SystemStatusPanel() {
   const conveyors = useTwinStore((s) => s.conveyors);
   const kpi = useTwinStore((s) => s.kpi);
   const locations = useTwinStore((s) => s.locations);
-  const botUnits = useTwinStore((s) => s.botUnits);
+  const fleetSummary = useTwinStore((s) => s.fleetSummary);
   const isRunning = useTwinStore((s) => s.isRunning);
 
   const isConveyorJammed = conveyors.some((c) => c.isJammed);
   const hasAcsViolations = (kpi.safetyViolationCount || 0) > 0;
 
-  // DC Charging Pads: Wire to actual dock occupancy (occupied / total)
+  // DC Charging Pads: Wire to actual dock occupancy from fleetSummary
   const chargingDocks = Object.values(locations).filter((l) => l.type === "CHARGING_DOCK");
   const totalDocks = chargingDocks.length || 8;
-  const occupiedDocks = Object.values(botUnits).filter((b) => b.status === "CHARGING" || b.fsmState === "CHARGING").length;
+  const occupiedDocks = fleetSummary.charging;
   const isDockFull = occupiedDocks >= totalDocks;
 
   // Network Mesh: Wire to simulation tick stability
-  const errorBots = Object.values(botUnits).filter((b) => b.status === "ERROR");
-  const meshColor = !isRunning ? "var(--mute)" : errorBots.length > 0 ? "var(--amber)" : "var(--signal)";
+  const errorCount = fleetSummary.error;
+  const meshColor = !isRunning ? "var(--mute)" : errorCount > 0 ? "var(--amber)" : "var(--signal)";
   const meshStatus = !isRunning
     ? "Standby · 0 Hz"
-    : errorBots.length > 0
-    ? `Degraded · ${errorBots.length} fault`
+    : errorCount > 0
+    ? `Degraded · ${errorCount} fault`
     : "100% sync · 10 Hz";
 
   const systems = [
