@@ -48,6 +48,7 @@ export function Viewport() {
   const setActiveTool = useTwinStore((s) => s.setActiveTool);
   const storeHeatmapMode = useTwinStore((s) => s.heatmapMode);
   const toggleHeatmapMode = useTwinStore((s) => s.toggleHeatmapMode);
+  const customObstacles = useTwinStore((s) => s.customObstacles);
 
   const [showCamMenu, setShowCamMenu] = useState(false);
 
@@ -282,11 +283,15 @@ export function Viewport() {
           </svg>
           Surge
         </button>
-        <button onClick={() => handleChaosMode("obstacle")} title="Drop Physical Obstacle in Storage Aisle">
+        <button
+          className={customObstacles.length > 0 ? "on" : ""}
+          onClick={() => handleChaosMode("obstacle")}
+          title="Drop Physical Obstacle in Storage Aisle"
+        >
           <svg>
             <use href="#i-cone" />
           </svg>
-          Obstacle
+          {customObstacles.length > 0 ? `Obstacle (${customObstacles.length})` : "Obstacle"}
         </button>
         <button onClick={() => handleChaosMode("fault")} title="Simulate Motor / E-Stop AMR Breakdown">
           <svg>

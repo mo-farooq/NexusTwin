@@ -2222,14 +2222,60 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       get().breakdownBot(botId);
     },
 
-    injectAisleBlockage: (zoneId, durationSeconds = 45) => {
+    injectAisleBlockage: (zoneId = "ZONE_STORAGE", durationSeconds = 45) => {
       const { zones, customObstacles, navGrid, botUnits, activeCongestionMap } = get();
-      if (!zones[zoneId]) return;
-      const obsCol = zoneId === "ZONE_B" ? 42 : 14;
-      const obsRow = 10;
+      const targetZone = zones[zoneId] || zones["ZONE_STORAGE"] || zones["ZONE_A"] || Object.values(zones)[0];
+      const targetZoneId = targetZone ? targetZone.id : (zoneId || "ZONE_STORAGE");
+
+      // Find an intelligent, dramatic obstacle location:
+      // 1. First priority: Look for an active moving AMR so the user immediately sees the pause & detour!
+      let obsCol = -1;
+      let obsRow = -1;
+
+      const activeBotsWithPaths = Object.values(botUnits).filter(
+        (b) => b.status === "ACTIVE" && b.path && b.path.length > b.pathIndex + 2
+      );
+
+      for (const bot of activeBotsWithPaths) {
+        const step = bot.path[Math.min(bot.path.length - 1, bot.pathIndex + 3)];
+        if (!customObstacles.some((o) => o.col === step[0] && o.row === step[1])) {
+          obsCol = step[0];
+          obsRow = step[1];
+          break;
+        }
+      }
+
+      // 2. Fallback: Find an open traversable aisle cell in the storage zone
+      if (obsCol === -1 || obsRow === -1) {
+        const bounds = targetZone?.bounds || [8, 5, navGrid.cols - 8, navGrid.rows - 5];
+        const minC = Math.max(2, Math.floor(bounds[0]));
+        const maxC = Math.min(navGrid.cols - 3, Math.floor(bounds[2]));
+        const minR = Math.max(2, Math.floor(bounds[1]));
+        const maxR = Math.min(navGrid.rows - 3, Math.floor(bounds[3]));
+        const midR = Math.floor((minR + maxR) / 2);
+
+        for (let r = midR - 2; r <= midR + 6; r++) {
+          for (let c = minC + 2; c < maxC - 2; c++) {
+            const cellIdx = r * navGrid.cols + c;
+            if (navGrid.cells[cellIdx] === 0 && !customObstacles.some((o) => o.col === c && o.row === r)) {
+              obsCol = c;
+              obsRow = r;
+              break;
+            }
+          }
+          if (obsCol !== -1) break;
+        }
+      }
+
+      if (obsCol === -1 || obsRow === -1) {
+        obsCol = Math.floor(navGrid.cols * 0.45);
+        obsRow = Math.floor(navGrid.rows * 0.5);
+      }
+
+      const obsId = `obs-${obsCol}-${obsRow}`;
       const newObs = [
         ...customObstacles.filter((o) => o.col !== obsCol || o.row !== obsRow),
-        { id: `obs-${obsCol}-${obsRow}`, col: obsCol, row: obsRow, label: `Spilled Pallet (${zoneId})` },
+        { id: obsId, col: obsCol, row: obsRow, label: `Spilled Pallet (${targetZone?.name || targetZoneId})` },
       ];
 
       const newGridCells = new Uint8Array(navGrid.cells);
@@ -2260,22 +2306,29 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
                 ...bot,
                 path: newPath,
                 pathIndex: 0,
-                waitTicks: 2, // Visibly pause for a moment before continuing on new detour
+                waitTicks: 4, // Visibly pause for a moment before continuing on new detour
+                perception: {
+                  ...bot.perception,
+                  state: "HOLDING",
+                  frontObstacleId: `Barricade-${obsCol}-${obsRow}`,
+                },
               };
             }
           }
         }
       });
 
-      set({
-        zones: {
-          ...zones,
-          [zoneId]: {
-            ...zones[zoneId],
-            isBlocked: true,
-            blockedReason: `Aisle Obstruction: Spilled pallet load (${durationSeconds}s)`,
-          },
+      const updatedZones = targetZone ? {
+        ...zones,
+        [targetZone.id]: {
+          ...targetZone,
+          isBlocked: true,
+          blockedReason: `Aisle Obstruction: Spilled pallet load (${durationSeconds}s)`,
         },
+      } : zones;
+
+      set({
+        zones: updatedZones,
         customObstacles: newObs,
         navGrid: { ...navGrid, cells: newGridCells },
         botUnits: nextBots,
@@ -3483,6 +3536,26 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
               frontDistM = pdist;
               frontObstacleId = person.name;
               humanInPerimeter = true;
+            }
+          }
+
+          // Scan static physical obstacles & spilled pallets (LiDAR Safety Perimeter)
+          for (const obs of state.customObstacles) {
+            const ox = obs.col * navGrid.cellSize + navGrid.cellSize / 2;
+            const oz = obs.row * navGrid.cellSize + navGrid.cellSize / 2;
+            const odx = ox - currentPos[0];
+            const odz = oz - currentPos[2];
+            const odist = Math.hypot(odx, odz);
+            if (odist > 3.5 || odist < 1e-6) continue;
+
+            const oDistAhead = odx * cosH + odz * sinH;
+            const oDistLateral = Math.abs(-odx * sinH + odz * cosH);
+            if (oDistAhead < -0.2) continue; // Moving away from obstacle
+
+            const isOnPath = upcomingPathCells.has(cellKey(obs.col, obs.row));
+            if ((isOnPath || (oDistAhead > 0.05 && oDistAhead < 2.2 && oDistLateral < 0.65) || (odist < 1.35 && oDistAhead > 0.02)) && odist < frontDistM) {
+              frontDistM = odist;
+              frontObstacleId = obs.label || `Barricade-${obs.col}-${obs.row}`;
             }
           }
 

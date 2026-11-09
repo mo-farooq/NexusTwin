@@ -252,6 +252,7 @@ export function StoryMode() {
   const injectBotFailure = useTwinStore((s) => s.injectBotFailure);
   const injectVipOrder = useTwinStore((s) => s.injectVipOrder);
   const clearInjections = useTwinStore((s) => s.clearInjections);
+  const customObstacles = useTwinStore((s) => s.customObstacles);
   const isRunning = useTwinStore((s) => s.isRunning);
   const startSimulation = useTwinStore((s) => s.startSimulation);
   const setSimulationSpeed = useTwinStore((s) => s.setSimulationSpeed);
@@ -1628,9 +1629,9 @@ export function StoryMode() {
                     <svg><use href="#i-bolt" /></svg>
                     Diwali surge ×3
                   </button>
-                  <button onClick={handleObstacle}>
+                  <button className={customObstacles.length > 0 ? "on" : ""} onClick={handleObstacle}>
                     <svg><use href="#i-cone" /></svg>
-                    Drop obstacle
+                    {customObstacles.length > 0 ? `Obstacle (${customObstacles.length})` : "Drop obstacle"}
                   </button>
                   <button onClick={handleStall}>
                     <svg><use href="#i-wrench" /></svg>
