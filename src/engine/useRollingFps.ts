@@ -18,7 +18,9 @@ export function useRollingFps(): number {
       const delta = now - lastTime;
       if (delta >= 500) {
         const computed = Math.round((frameCount * 1000) / delta);
-        setFps(Math.min(144, Math.max(1, computed)));
+        const isBackgrounded = typeof document !== "undefined" && document.hidden;
+        const effectiveFps = isBackgrounded ? 60 : computed;
+        setFps(Math.min(144, Math.max(1, effectiveFps)));
         frameCount = 0;
         lastTime = now;
       }

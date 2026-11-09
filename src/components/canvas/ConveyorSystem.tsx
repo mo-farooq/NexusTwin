@@ -10,10 +10,33 @@
 
 import React, { useRef, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
-import { RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three-stdlib";
 import { useTwinStore } from "../../store/useTwinStore";
 import type { ConveyorSegment } from "../../engine/autoZoner";
+
+// ─────────────────────────────────────────────────────────────
+// Shared Singleton Geometries & Materials (Institutional Performance)
+// ─────────────────────────────────────────────────────────────
+
+const SHARED_CONVEYOR_GEOMETRIES = {
+  legCylinder: new THREE.CylinderGeometry(0.03, 0.04, 0.44, 8),
+  legBase: new THREE.BoxGeometry(0.1, 0.04, 1.0),
+  rollerCylinder: new THREE.CylinderGeometry(0.035, 0.035, 0.88, 10),
+  packageBox: new RoundedBoxGeometry(0.42, 0.22, 0.38, 2, 0.02),
+  packageTape: new THREE.BoxGeometry(0.43, 0.002, 0.08),
+  beaconSphere: new THREE.SphereGeometry(0.09, 10, 10),
+};
+
+const SHARED_CONVEYOR_MATERIALS = {
+  leg: new THREE.MeshStandardMaterial({ color: "#334155", metalness: 0.7, roughness: 0.3 }),
+  legBase: new THREE.MeshStandardMaterial({ color: "#1E293B" }),
+  rail: new THREE.MeshStandardMaterial({ color: "#1E293B", metalness: 0.8, roughness: 0.3 }),
+  roller: new THREE.MeshStandardMaterial({ color: "#64748B", metalness: 0.85, roughness: 0.25 }),
+  package: new THREE.MeshStandardMaterial({ color: "#D97706", roughness: 0.7 }),
+  tape: new THREE.MeshBasicMaterial({ color: "#FEF08A" }),
+  beacon: new THREE.MeshBasicMaterial({ color: "#EF4444" }),
+};
 
 interface SingleConveyorProps {
   conveyor: ConveyorSegment;
@@ -30,6 +53,9 @@ function SingleConveyor({ conveyor, simulationSpeed }: SingleConveyorProps) {
   const angle = Math.atan2(dz, dx);
   const midX = (startCoords[0] + endCoords[0]) / 2;
   const midZ = (startCoords[1] + endCoords[1]) / 2;
+
+  // Memoize rail geometry for this segment length
+  const railGeo = useMemo(() => new THREE.BoxGeometry(lengthM, 0.08, 0.04), [lengthM]);
 
   // Number of rollers along the conveyor length
   const rollerCount = Math.max(4, Math.floor(lengthM / 0.5));
@@ -66,40 +92,48 @@ function SingleConveyor({ conveyor, simulationSpeed }: SingleConveyorProps) {
       {/* 1. Structural Steel Support Legs */}
       {[-lengthM / 2 + 0.4, 0, lengthM / 2 - 0.4].map((lx, idx) => (
         <group key={idx} position={[lx, 0, 0]}>
-          <mesh position={[0, 0.22, -0.45]}>
-            <cylinderGeometry args={[0.03, 0.04, 0.44, 8]} />
-            <meshStandardMaterial color="#334155" metalness={0.7} roughness={0.3} />
-          </mesh>
-          <mesh position={[0, 0.22, 0.45]}>
-            <cylinderGeometry args={[0.03, 0.04, 0.44, 8]} />
-            <meshStandardMaterial color="#334155" metalness={0.7} roughness={0.3} />
-          </mesh>
-          <mesh position={[0, 0.02, 0]}>
-            <boxGeometry args={[0.1, 0.04, 1.0]} />
-            <meshStandardMaterial color="#1E293B" />
-          </mesh>
+          <mesh
+            position={[0, 0.22, -0.45]}
+            geometry={SHARED_CONVEYOR_GEOMETRIES.legCylinder}
+            material={SHARED_CONVEYOR_MATERIALS.leg}
+          />
+          <mesh
+            position={[0, 0.22, 0.45]}
+            geometry={SHARED_CONVEYOR_GEOMETRIES.legCylinder}
+            material={SHARED_CONVEYOR_MATERIALS.leg}
+          />
+          <mesh
+            position={[0, 0.02, 0]}
+            geometry={SHARED_CONVEYOR_GEOMETRIES.legBase}
+            material={SHARED_CONVEYOR_MATERIALS.legBase}
+          />
         </group>
       ))}
 
       {/* 2. Side Guide Rails (Dark Charcoal #1E293B) */}
-      <mesh position={[0, 0.46, -0.48]}>
-        <boxGeometry args={[lengthM, 0.08, 0.04]} />
-        <meshStandardMaterial color="#1E293B" metalness={0.8} roughness={0.3} />
-      </mesh>
-      <mesh position={[0, 0.46, 0.48]}>
-        <boxGeometry args={[lengthM, 0.08, 0.04]} />
-        <meshStandardMaterial color="#1E293B" metalness={0.8} roughness={0.3} />
-      </mesh>
+      <mesh
+        position={[0, 0.46, -0.48]}
+        geometry={railGeo}
+        material={SHARED_CONVEYOR_MATERIALS.rail}
+      />
+      <mesh
+        position={[0, 0.46, 0.48]}
+        geometry={railGeo}
+        material={SHARED_CONVEYOR_MATERIALS.rail}
+      />
 
       {/* 3. Motorized Rollers */}
       <group ref={rollersRef} position={[0, 0.44, 0]}>
         {Array.from({ length: rollerCount }).map((_, rIdx) => {
           const rx = -lengthM / 2 + (rIdx + 0.5) * (lengthM / rollerCount);
           return (
-            <mesh key={rIdx} position={[rx, 0, 0]} rotation-x={Math.PI / 2}>
-              <cylinderGeometry args={[0.035, 0.035, 0.88, 12]} />
-              <meshStandardMaterial color="#64748B" metalness={0.85} roughness={0.25} />
-            </mesh>
+            <mesh
+              key={rIdx}
+              position={[rx, 0, 0]}
+              rotation-x={Math.PI / 2}
+              geometry={SHARED_CONVEYOR_GEOMETRIES.rollerCylinder}
+              material={SHARED_CONVEYOR_MATERIALS.roller}
+            />
           );
         })}
       </group>
@@ -108,14 +142,17 @@ function SingleConveyor({ conveyor, simulationSpeed }: SingleConveyorProps) {
       <group ref={packagesRef} position={[0, 0.56, 0]}>
         {Array.from({ length: pkgCount }).map((_, pIdx) => (
           <group key={pIdx} position={[pkgOffsets.current[pIdx] - lengthM / 2, 0, 0]}>
-            <RoundedBox args={[0.42, 0.22, 0.38]} radius={0.02} smoothness={4} castShadow>
-              <meshStandardMaterial color="#D97706" roughness={0.7} />
-            </RoundedBox>
+            <mesh
+              geometry={SHARED_CONVEYOR_GEOMETRIES.packageBox}
+              material={SHARED_CONVEYOR_MATERIALS.package}
+              castShadow
+            />
             {/* Box tape strip */}
-            <mesh position={[0, 0.112, 0]}>
-              <boxGeometry args={[0.43, 0.002, 0.08]} />
-              <meshBasicMaterial color="#FEF08A" />
-            </mesh>
+            <mesh
+              position={[0, 0.112, 0]}
+              geometry={SHARED_CONVEYOR_GEOMETRIES.packageTape}
+              material={SHARED_CONVEYOR_MATERIALS.tape}
+            />
           </group>
         ))}
       </group>
@@ -123,10 +160,10 @@ function SingleConveyor({ conveyor, simulationSpeed }: SingleConveyorProps) {
       {/* 5. Jam / Warning Beacon if jammed */}
       {isJammed && (
         <group position={[0, 0.8, 0]}>
-          <mesh>
-            <sphereGeometry args={[0.09, 12, 12]} />
-            <meshBasicMaterial color="#EF4444" />
-          </mesh>
+          <mesh
+            geometry={SHARED_CONVEYOR_GEOMETRIES.beaconSphere}
+            material={SHARED_CONVEYOR_MATERIALS.beacon}
+          />
         </group>
       )}
     </group>

@@ -17,10 +17,10 @@ function TopBarClock() {
   const fps = useRollingFps();
   const tick = useTwinStore((s) => s.tick);
 
-  const totalSec = Math.floor(tick * 0.1);
-  const hrs = String(14 + Math.floor(totalSec / 3600)).padStart(2, "0");
-  const mins = String(22 + Math.floor((totalSec % 3600) / 60)).padStart(2, "0");
-  const secs = String(totalSec % 60).padStart(2, "0");
+  const totalBaseSeconds = (14 * 3600) + (22 * 60) + Math.floor(tick * 0.1);
+  const hrs = String(Math.floor((totalBaseSeconds / 3600) % 24)).padStart(2, "0");
+  const mins = String(Math.floor((totalBaseSeconds % 3600) / 60)).padStart(2, "0");
+  const secs = String(totalBaseSeconds % 60).padStart(2, "0");
   const clockStr = `${hrs}:${mins}:${secs}`;
 
   return (

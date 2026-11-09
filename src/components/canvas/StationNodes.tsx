@@ -8,7 +8,9 @@
  */
 
 import React, { useState } from "react";
-import { RoundedBox, Html } from "@react-three/drei";
+import { Html } from "@react-three/drei";
+import * as THREE from "three";
+import { RoundedBoxGeometry } from "three-stdlib";
 import { useTwinStore, type WarehouseLocation } from "../../store/useTwinStore";
 
 // ─────────────────────────────────────────────────────────────
@@ -24,6 +26,47 @@ const COLORS = {
   STATION_SURFACE: "#1E293B",
   OVERHEAD_MONITOR: "#0F172A",
   CONVEYOR_BELT: "#0284C7",
+};
+
+// ─────────────────────────────────────────────────────────────
+// Shared Singleton Geometries & Materials (Institutional Performance)
+// ─────────────────────────────────────────────────────────────
+
+const SHARED_STATION_GEOMETRIES = {
+  bench: new RoundedBoxGeometry(2.8, 0.9, 1.4, 3, 0.04),
+  desktop: new RoundedBoxGeometry(2.7, 0.04, 1.3, 3, 0.01),
+  mast: new THREE.BoxGeometry(0.08, 1.8, 0.08),
+  monitor: new RoundedBoxGeometry(0.9, 0.5, 0.06, 3, 0.02),
+  screenFace: new THREE.PlaneGeometry(0.82, 0.42),
+  conveyorBelt: new RoundedBoxGeometry(2.2, 0.25, 0.8, 3, 0.02),
+};
+
+const SHARED_STATION_MATERIALS = {
+  bench: new THREE.MeshStandardMaterial({
+    color: COLORS.STATION_BENCH,
+    roughness: 0.4,
+    metalness: 0.5,
+  }),
+  desktop: new THREE.MeshStandardMaterial({
+    color: "#CBD5E1",
+    roughness: 0.2,
+    metalness: 0.8,
+  }),
+  mast: new THREE.MeshStandardMaterial({
+    color: COLORS.STATION_SURFACE,
+  }),
+  monitor: new THREE.MeshStandardMaterial({
+    color: COLORS.OVERHEAD_MONITOR,
+    roughness: 0.3,
+  }),
+  screenFace: new THREE.MeshBasicMaterial({
+    color: "#38BDF8",
+  }),
+  conveyorBelt: new THREE.MeshStandardMaterial({
+    color: COLORS.CONVEYOR_BELT,
+    roughness: 0.3,
+    metalness: 0.6,
+  }),
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -120,63 +163,53 @@ function WorkstationNode({ station, isSelected, onSelect }: WorkstationNodeProps
 
       {/* Main Heavy-Duty Work Table */}
       <group position={[0, 0.45, 0]}>
-        <RoundedBox
-          args={[2.8, 0.9, 1.4]}
-          radius={0.04}
-          smoothness={4}
+        <mesh
+          geometry={SHARED_STATION_GEOMETRIES.bench}
+          material={SHARED_STATION_MATERIALS.bench}
           castShadow
           receiveShadow
-        >
-          <meshStandardMaterial
-            color={COLORS.STATION_BENCH}
-            roughness={0.4}
-            metalness={0.5}
-          />
-        </RoundedBox>
+        />
 
         {/* Stainless Steel Desktop Layer */}
         <group position={[0, 0.46, 0]}>
-          <RoundedBox
-            args={[2.7, 0.04, 1.3]}
-            radius={0.01}
-            smoothness={4}
+          <mesh
+            geometry={SHARED_STATION_GEOMETRIES.desktop}
+            material={SHARED_STATION_MATERIALS.desktop}
             receiveShadow
-          >
-            <meshStandardMaterial
-              color="#CBD5E1"
-              roughness={0.2}
-              metalness={0.8}
-            />
-          </RoundedBox>
+          />
         </group>
       </group>
 
       {/* Overhead Monitor & Barcode Gantry */}
       <group position={[0, 1.8, -0.6]}>
         {/* Support Mast */}
-        <RoundedBox args={[0.08, 1.8, 0.08]} radius={0.01} smoothness={4}>
-          <meshStandardMaterial color={COLORS.STATION_SURFACE} />
-        </RoundedBox>
+        <mesh
+          geometry={SHARED_STATION_GEOMETRIES.mast}
+          material={SHARED_STATION_MATERIALS.mast}
+        />
 
         {/* Dispatch Screen Monitor */}
         <group position={[0, 0.4, 0.4]}>
-          <RoundedBox args={[0.9, 0.5, 0.06]} radius={0.02} smoothness={4}>
-            <meshStandardMaterial color={COLORS.OVERHEAD_MONITOR} roughness={0.3} />
-          </RoundedBox>
+          <mesh
+            geometry={SHARED_STATION_GEOMETRIES.monitor}
+            material={SHARED_STATION_MATERIALS.monitor}
+          />
           {/* Active Screen Face */}
-          <group position={[0, 0, 0.035]}>
-            <RoundedBox args={[0.82, 0.42, 0.01]} radius={0.01} smoothness={4}>
-              <meshBasicMaterial color="#38BDF8" />
-            </RoundedBox>
-          </group>
+          <mesh
+            position={[0, 0, 0.035]}
+            geometry={SHARED_STATION_GEOMETRIES.screenFace}
+            material={SHARED_STATION_MATERIALS.screenFace}
+          />
         </group>
       </group>
 
       {/* Outfeed Roller Conveyor Segment */}
       <group position={[0, 0.4, 1.1]}>
-        <RoundedBox args={[2.2, 0.25, 0.8]} radius={0.02} smoothness={4} castShadow>
-          <meshStandardMaterial color={COLORS.CONVEYOR_BELT} roughness={0.3} metalness={0.6} />
-        </RoundedBox>
+        <mesh
+          geometry={SHARED_STATION_GEOMETRIES.conveyorBelt}
+          material={SHARED_STATION_MATERIALS.conveyorBelt}
+          castShadow
+        />
       </group>
     </group>
   );

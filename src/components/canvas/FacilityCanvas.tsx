@@ -9,7 +9,7 @@
 
 import React, { useMemo, useRef, useEffect, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, ContactShadows, RoundedBox, Html } from "@react-three/drei";
+import { OrbitControls, ContactShadows, RoundedBox, Html, AdaptiveDpr, AdaptiveEvents } from "@react-three/drei";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { useTwinStore, type ChargingDock } from "../../store/useTwinStore";
@@ -534,6 +534,31 @@ function FloorAndTransitLanes({ widthM, depthM }: { widthM: number; depthM: numb
 // 4. Charging Pads (#0C831F Green) with Dedicated Docks
 // ─────────────────────────────────────────────────────────────
 
+const SHARED_CHARGING_GEOMETRIES = {
+  pad: new THREE.PlaneGeometry(2.0, 2.0),
+  ring: new THREE.RingGeometry(0.9, 0.98, 4),
+  base: new THREE.BoxGeometry(0.7, 1.5, 0.4),
+  screen: new THREE.BoxGeometry(0.4, 0.25, 0.04),
+  chevron: new THREE.PlaneGeometry(0.5, 0.5),
+};
+
+const SHARED_CHARGING_MATERIALS = {
+  pad: new THREE.MeshStandardMaterial({
+    color: COLORS.CHARGING_PAD,
+    roughness: 0.4,
+    metalness: 0.1,
+  }),
+  ring: new THREE.MeshBasicMaterial({ color: "#FFFFFF" }),
+  base: new THREE.MeshStandardMaterial({
+    color: "#0F172A",
+    roughness: 0.3,
+    metalness: 0.7,
+  }),
+  screenOccupied: new THREE.MeshBasicMaterial({ color: "#F59E0B" }),
+  screenFree: new THREE.MeshBasicMaterial({ color: "#22C55E" }),
+  chevron: new THREE.MeshBasicMaterial({ color: "#FACC15" }),
+};
+
 function ChargingPadsCollection() {
   const chargingDocks = useTwinStore((s) => s.chargingDocks);
 
@@ -542,44 +567,43 @@ function ChargingPadsCollection() {
       {Object.values(chargingDocks).map((dock) => (
         <group key={dock.id} position={[dock.coords[0], 0, dock.coords[1]]}>
           {/* Green Charging Pad Mat */}
-          <mesh rotation-x={-Math.PI / 2} position={[0, 0.018, 0]}>
-            <planeGeometry args={[2.0, 2.0]} />
-            <meshStandardMaterial
-              color={COLORS.CHARGING_PAD}
-              roughness={0.4}
-              metalness={0.1}
-            />
-          </mesh>
+          <mesh
+            rotation-x={-Math.PI / 2}
+            position={[0, 0.018, 0]}
+            geometry={SHARED_CHARGING_GEOMETRIES.pad}
+            material={SHARED_CHARGING_MATERIALS.pad}
+          />
 
           {/* High-visibility white parking border line */}
-          <mesh rotation-x={-Math.PI / 2} position={[0, 0.02, 0]}>
-            <ringGeometry args={[0.9, 0.98, 4]} />
-            <meshBasicMaterial color="#FFFFFF" />
-          </mesh>
+          <mesh
+            rotation-x={-Math.PI / 2}
+            position={[0, 0.02, 0]}
+            geometry={SHARED_CHARGING_GEOMETRIES.ring}
+            material={SHARED_CHARGING_MATERIALS.ring}
+          />
 
           {/* Charger Base Hardware Unit */}
-          <mesh position={[0, 0.75, 0.7]} castShadow>
-            <boxGeometry args={[0.7, 1.5, 0.4]} />
-            <meshStandardMaterial
-              color="#0F172A"
-              roughness={0.3}
-              metalness={0.7}
-            />
-          </mesh>
+          <mesh
+            position={[0, 0.75, 0.7]}
+            geometry={SHARED_CHARGING_GEOMETRIES.base}
+            material={SHARED_CHARGING_MATERIALS.base}
+            castShadow
+          />
 
           {/* Charger Status Screen / LED Beacon */}
-          <mesh position={[0, 1.1, 0.49]}>
-            <boxGeometry args={[0.4, 0.25, 0.04]} />
-            <meshBasicMaterial
-              color={dock.isOccupied ? "#F59E0B" : "#22C55E"}
-            />
-          </mesh>
+          <mesh
+            position={[0, 1.1, 0.49]}
+            geometry={SHARED_CHARGING_GEOMETRIES.screen}
+            material={dock.isOccupied ? SHARED_CHARGING_MATERIALS.screenOccupied : SHARED_CHARGING_MATERIALS.screenFree}
+          />
 
           {/* Floor Fast-Charging Symbol / Chevron */}
-          <mesh rotation-x={-Math.PI / 2} position={[0, 0.022, -0.1]}>
-            <planeGeometry args={[0.5, 0.5]} />
-            <meshBasicMaterial color="#FACC15" />
-          </mesh>
+          <mesh
+            rotation-x={-Math.PI / 2}
+            position={[0, 0.022, -0.1]}
+            geometry={SHARED_CHARGING_GEOMETRIES.chevron}
+            material={SHARED_CHARGING_MATERIALS.chevron}
+          />
         </group>
       ))}
     </group>
@@ -919,7 +943,7 @@ export function FacilityCanvas({
     >
       <Canvas
         shadows={!disableShadows}
-        dpr={Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, 1.75)}
+        dpr={[1, 1.5]}
         camera={{
           position: cameraPosition,
           fov: 38,
@@ -929,10 +953,14 @@ export function FacilityCanvas({
         gl={{
           powerPreference: "high-performance",
           antialias: true,
+          stencil: false,
+          depth: true,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.05,
         }}
       >
+        <AdaptiveDpr pixelated={false} />
+        <AdaptiveEvents />
         <OrbitControls
           ref={controlsRef}
           makeDefault

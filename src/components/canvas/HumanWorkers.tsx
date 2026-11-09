@@ -7,9 +7,36 @@
 
 import React, { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Html, RoundedBox } from "@react-three/drei";
+import { Html } from "@react-three/drei";
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three-stdlib";
 import { useTwinStore, type HumanWorker } from "../../store/useTwinStore";
+
+// ─────────────────────────────────────────────────────────────
+// Shared Singleton Geometries & Materials (Institutional Performance)
+// ─────────────────────────────────────────────────────────────
+
+const SHARED_HUMAN_GEOMETRIES = {
+  safetyRing: new THREE.RingGeometry(1.2, 1.35, 24),
+  leg: new RoundedBoxGeometry(0.13, 0.55, 0.16, 2, 0.02),
+  boot: new THREE.BoxGeometry(0.14, 0.1, 0.22),
+  torso: new RoundedBoxGeometry(0.42, 0.55, 0.26, 2, 0.04),
+  reflectiveStrip: new THREE.PlaneGeometry(0.4, 0.08),
+  head: new THREE.SphereGeometry(0.14, 12, 12),
+  helmetDome: new THREE.SphereGeometry(0.17, 12, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
+  helmetBrim: new THREE.CylinderGeometry(0.2, 0.2, 0.02, 12),
+};
+
+const SHARED_HUMAN_MATERIALS = {
+  safetyRing: new THREE.MeshBasicMaterial({ color: "#F97316", transparent: true, opacity: 0.35, side: THREE.DoubleSide }),
+  pants: new THREE.MeshStandardMaterial({ color: "#1E293B", roughness: 0.7 }),
+  boot: new THREE.MeshStandardMaterial({ color: "#0F172A", roughness: 0.9 }),
+  vest: new THREE.MeshStandardMaterial({ color: "#EA580C", roughness: 0.5 }),
+  reflective: new THREE.MeshStandardMaterial({ color: "#E2E8F0", roughness: 0.1, metalness: 0.9 }),
+  skin: new THREE.MeshStandardMaterial({ color: "#FBBF24", roughness: 0.6 }),
+  helmetDome: new THREE.MeshStandardMaterial({ color: "#FACC15", roughness: 0.3, metalness: 0.2 }),
+  helmetBrim: new THREE.MeshStandardMaterial({ color: "#EAB308", roughness: 0.3 }),
+};
 
 function SingleHumanWorker({
   worker,
@@ -72,10 +99,12 @@ function SingleHumanWorker({
   return (
     <group ref={groupRef} position={initRef.current.pos} rotation-y={initRef.current.heading}>
       {/* Dynamic 2.0m Human LiDAR Safety Perimeter Ring */}
-      <mesh position={[0, 0.02, 0]} rotation-x={-Math.PI / 2}>
-        <ringGeometry args={[1.2, 1.35, 32]} />
-        <meshBasicMaterial color="#F97316" transparent opacity={0.35} side={THREE.DoubleSide} />
-      </mesh>
+      <mesh
+        position={[0, 0.02, 0]}
+        rotation-x={-Math.PI / 2}
+        geometry={SHARED_HUMAN_GEOMETRIES.safetyRing}
+        material={SHARED_HUMAN_MATERIALS.safetyRing}
+      />
 
       {/* Floating Name Badge */}
       {showLabels && (
@@ -116,63 +145,74 @@ function SingleHumanWorker({
       <group position={[0, 0, 0]}>
         {/* Left Leg */}
         <group ref={leftLegRef} position={[-0.14, 0.55, 0]}>
-          <RoundedBox args={[0.13, 0.55, 0.16]} radius={0.02} smoothness={4} position={[0, -0.27, 0]}>
-            <meshStandardMaterial color="#1E293B" roughness={0.7} />
-          </RoundedBox>
+          <mesh
+            position={[0, -0.27, 0]}
+            geometry={SHARED_HUMAN_GEOMETRIES.leg}
+            material={SHARED_HUMAN_MATERIALS.pants}
+          />
           {/* Boot */}
-          <mesh position={[0, -0.52, 0.04]}>
-            <boxGeometry args={[0.14, 0.1, 0.22]} />
-            <meshStandardMaterial color="#0F172A" roughness={0.9} />
-          </mesh>
+          <mesh
+            position={[0, -0.52, 0.04]}
+            geometry={SHARED_HUMAN_GEOMETRIES.boot}
+            material={SHARED_HUMAN_MATERIALS.boot}
+          />
         </group>
 
         {/* Right Leg */}
         <group ref={rightLegRef} position={[0.14, 0.55, 0]}>
-          <RoundedBox args={[0.13, 0.55, 0.16]} radius={0.02} smoothness={4} position={[0, -0.27, 0]}>
-            <meshStandardMaterial color="#1E293B" roughness={0.7} />
-          </RoundedBox>
+          <mesh
+            position={[0, -0.27, 0]}
+            geometry={SHARED_HUMAN_GEOMETRIES.leg}
+            material={SHARED_HUMAN_MATERIALS.pants}
+          />
           {/* Boot */}
-          <mesh position={[0, -0.52, 0.04]}>
-            <boxGeometry args={[0.14, 0.1, 0.22]} />
-            <meshStandardMaterial color="#0F172A" roughness={0.9} />
-          </mesh>
+          <mesh
+            position={[0, -0.52, 0.04]}
+            geometry={SHARED_HUMAN_GEOMETRIES.boot}
+            material={SHARED_HUMAN_MATERIALS.boot}
+          />
         </group>
 
         {/* Torso & High-Vis Orange Safety Vest */}
         <group position={[0, 0.95, 0]}>
-          <RoundedBox args={[0.42, 0.55, 0.26]} radius={0.04} smoothness={4}>
-            <meshStandardMaterial color="#EA580C" roughness={0.5} />
-          </RoundedBox>
+          <mesh
+            geometry={SHARED_HUMAN_GEOMETRIES.torso}
+            material={SHARED_HUMAN_MATERIALS.vest}
+          />
 
           {/* Silver Reflective Vest Strip */}
-          <mesh position={[0, 0.02, 0.135]}>
-            <planeGeometry args={[0.4, 0.08]} />
-            <meshStandardMaterial color="#E2E8F0" roughness={0.1} metalness={0.9} />
-          </mesh>
-          <mesh position={[0, -0.15, 0.135]}>
-            <planeGeometry args={[0.4, 0.08]} />
-            <meshStandardMaterial color="#E2E8F0" roughness={0.1} metalness={0.9} />
-          </mesh>
+          <mesh
+            position={[0, 0.02, 0.135]}
+            geometry={SHARED_HUMAN_GEOMETRIES.reflectiveStrip}
+            material={SHARED_HUMAN_MATERIALS.reflective}
+          />
+          <mesh
+            position={[0, -0.15, 0.135]}
+            geometry={SHARED_HUMAN_GEOMETRIES.reflectiveStrip}
+            material={SHARED_HUMAN_MATERIALS.reflective}
+          />
         </group>
 
         {/* Head & Face */}
         <group position={[0, 1.4, 0]}>
-          <mesh>
-            <sphereGeometry args={[0.14, 16, 16]} />
-            <meshStandardMaterial color="#FBBF24" roughness={0.6} />
-          </mesh>
+          <mesh
+            geometry={SHARED_HUMAN_GEOMETRIES.head}
+            material={SHARED_HUMAN_MATERIALS.skin}
+          />
 
           {/* Yellow Safety Hard Hat */}
           <group position={[0, 0.08, 0]}>
-            <mesh>
-              <sphereGeometry args={[0.17, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.55]} />
-              <meshStandardMaterial color="#FACC15" roughness={0.3} metalness={0.2} />
-            </mesh>
+            <mesh
+              geometry={SHARED_HUMAN_GEOMETRIES.helmetDome}
+              material={SHARED_HUMAN_MATERIALS.helmetDome}
+            />
             {/* Hard Hat Brim */}
-            <mesh position={[0, -0.02, 0.04]} rotation-x={0.15}>
-              <cylinderGeometry args={[0.2, 0.2, 0.02, 16]} />
-              <meshStandardMaterial color="#EAB308" roughness={0.3} />
-            </mesh>
+            <mesh
+              position={[0, -0.02, 0.04]}
+              rotation-x={0.15}
+              geometry={SHARED_HUMAN_GEOMETRIES.helmetBrim}
+              material={SHARED_HUMAN_MATERIALS.helmetBrim}
+            />
           </group>
         </group>
       </group>
