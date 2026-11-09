@@ -974,19 +974,26 @@ table.dt tr.sel td {
 
 /* ── Drawers & Overlays ─────────────────────────────────────── */
 .drawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
   width: 440px;
   max-width: 95vw;
   background: var(--panel, #FFFFFF);
   border-left: 1px solid var(--border-strong, #CBD5E1);
-  z-index: 95;
-  display: flex;
+  z-index: 95 !important;
+  display: flex !important;
   flex-direction: column;
   box-shadow: -10px 0 35px rgba(15, 23, 42, 0.22);
-  animation: drawerSlide 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: none !important;
+  animation: drawerSlide 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.drawer.on,
+.drawer.wide,
+.drawer.wide.on {
+  transform: none !important;
 }
 
 .drawer.wide {

@@ -1263,7 +1263,10 @@ export function StoryMode() {
           {/* Action button: What-If Simulator */}
           <button
             className={`hbtn primary ${activeDrawer === "whatif" ? "on" : ""}`}
-            onClick={() => setDrawer(activeDrawer === "whatif" ? null : "whatif")}
+            onClick={(e) => {
+              e.stopPropagation();
+              setDrawer(activeDrawer === "whatif" ? null : "whatif");
+            }}
             style={{
               marginRight: "6px",
               fontSize: "11px",
@@ -1288,7 +1291,10 @@ export function StoryMode() {
           {/* AI Copilot Drawer */}
           <button
             className={`hbtn ink ${activeDrawer === "copilot" ? "on" : ""}`}
-            onClick={() => setDrawer(activeDrawer === "copilot" ? null : "copilot")}
+            onClick={(e) => {
+              e.stopPropagation();
+              setDrawer(activeDrawer === "copilot" ? null : "copilot");
+            }}
             style={{
               marginRight: "6px",
               fontSize: "11px",

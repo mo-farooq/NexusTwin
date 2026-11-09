@@ -287,7 +287,14 @@ export function CopilotDrawer() {
   };
 
   return (
-    <aside className="drawer wide">
+    <aside
+      className="drawer wide on"
+      style={{
+        transform: "none",
+        zIndex: 99,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
       <header className="drawer-h">
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span>🤖</span>

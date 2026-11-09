@@ -179,7 +179,10 @@ export function TopBar() {
         {/* What-If Simulation Drawer */}
         <button
           className={`hbtn primary ${activeDrawer === "whatif" ? "on" : ""}`}
-          onClick={() => setDrawer(activeDrawer === "whatif" ? null : "whatif")}
+          onClick={(e) => {
+            e.stopPropagation();
+            setDrawer(activeDrawer === "whatif" ? null : "whatif");
+          }}
           title="Clone Twin & Fast-Forward Under Failure Scenarios"
         >
           <svg>
@@ -192,7 +195,10 @@ export function TopBar() {
         {/* AI Copilot Drawer */}
         <button
           className={`hbtn ink ${activeDrawer === "copilot" ? "on" : ""}`}
-          onClick={() => setDrawer(activeDrawer === "copilot" ? null : "copilot")}
+          onClick={(e) => {
+            e.stopPropagation();
+            setDrawer(activeDrawer === "copilot" ? null : "copilot");
+          }}
           title="Ask Grounded AI Operations Copilot"
         >
           <span>🤖</span>

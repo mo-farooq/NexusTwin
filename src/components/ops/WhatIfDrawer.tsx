@@ -72,7 +72,7 @@ export function WhatIfDrawer() {
 
   return (
     <aside
-      className="drawer wide"
+      className="drawer wide on"
       style={{
         background: "#FFFFFF",
         color: "#0F172A",
@@ -82,7 +82,10 @@ export function WhatIfDrawer() {
         flexDirection: "column",
         width: "560px",
         maxWidth: "92vw",
+        transform: "none",
+        zIndex: 99,
       }}
+      onClick={(e) => e.stopPropagation()}
     >
       {/* Header */}
       <header
