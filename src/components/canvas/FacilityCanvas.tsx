@@ -265,7 +265,15 @@ function CameraRig({
 // 2. Warm Architectural Lighting & Atmosphere
 // ─────────────────────────────────────────────────────────────
 
-function ArchitecturalLighting({ widthM, depthM }: { widthM: number; depthM: number }) {
+function ArchitecturalLighting({
+  widthM,
+  depthM,
+  disableShadows = false,
+}: {
+  widthM: number;
+  depthM: number;
+  disableShadows?: boolean;
+}) {
   const { scene, gl } = useThree();
   const isFestiveSurgeActive = useTwinStore((s) => s.isFestiveSurgeActive);
 
@@ -292,14 +300,14 @@ function ArchitecturalLighting({ widthM, depthM }: { widthM: number; depthM: num
         ]}
       />
 
-      {/* Primary Warm Sun Light (Isometric Cast) */}
+      {/* Primary Warm Sun Light (Isometric Cast - 1024x1024 map with -0.0005 bias) */}
       <directionalLight
         position={[widthM * 0.45, 50, depthM * 0.25]}
         intensity={isFestiveSurgeActive ? 1.6 : 1.35}
         color={isFestiveSurgeActive ? "#FFEDD5" : "#FFFBEB"}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-bias={-0.0003}
+        castShadow={!disableShadows}
+        shadow-mapSize={[1024, 1024]}
+        shadow-bias={-0.0005}
         shadow-camera-left={-widthM * 0.8}
         shadow-camera-right={widthM * 0.8}
         shadow-camera-top={depthM * 0.8}
@@ -795,12 +803,14 @@ function FacilityScene({
   fixedCameraPosition,
   fixedCameraTarget,
   fleetCountOverride,
+  disableShadows = false,
 }: {
   controlsRef: React.RefObject<OrbitControlsImpl>;
   interactive?: boolean;
   fixedCameraPosition?: [number, number, number];
   fixedCameraTarget?: [number, number, number];
   fleetCountOverride?: number;
+  disableShadows?: boolean;
 }) {
   const gridDimensions = useTwinStore((s) => s.gridDimensions);
   const selectBot = useTwinStore((s) => s.selectBot);
@@ -817,7 +827,7 @@ function FacilityScene({
         fixedCameraPosition={fixedCameraPosition}
         fixedCameraTarget={fixedCameraTarget}
       />
-      <ArchitecturalLighting widthM={widthM} depthM={depthM} />
+      <ArchitecturalLighting widthM={widthM} depthM={depthM} disableShadows={disableShadows} />
 
       {/* Ground Click Deselects Active Bot */}
       <group
@@ -862,6 +872,7 @@ export interface FacilityCanvasProps {
   cameraPosition?: [number, number, number];
   cameraTarget?: [number, number, number];
   fleetCountOverride?: number;
+  disableShadows?: boolean;
 }
 
 export function FacilityCanvas({
@@ -871,6 +882,7 @@ export function FacilityCanvas({
   cameraPosition: customCameraPosition,
   cameraTarget,
   fleetCountOverride,
+  disableShadows = false,
 }: FacilityCanvasProps) {
   const controlsRef = useRef<OrbitControlsImpl>(null!);
   const gridDimensions = useTwinStore((s) => s.gridDimensions);
@@ -906,7 +918,7 @@ export function FacilityCanvas({
       }}
     >
       <Canvas
-        shadows
+        shadows={!disableShadows}
         dpr={Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, 1.75)}
         camera={{
           position: cameraPosition,
@@ -946,6 +958,7 @@ export function FacilityCanvas({
           fixedCameraPosition={customCameraPosition}
           fixedCameraTarget={cameraTarget}
           fleetCountOverride={fleetCountOverride}
+          disableShadows={disableShadows}
         />
       </Canvas>
     </div>

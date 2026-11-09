@@ -13,8 +13,9 @@
 
 import React, { useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
-import { RoundedBox, Line, Html } from "@react-three/drei";
+import { Line, Html } from "@react-three/drei";
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three-stdlib";
 import { useTwinStore, type BotUnit } from "../../store/useTwinStore";
 import { cellToWorld, findPathAStar } from "../../engine/pathfinder";
 
@@ -37,6 +38,39 @@ const BOT_THEME = {
   BADGE_BG: "#1C1C1C",
   BADGE_TEXT: "#F8CB46",
   BADGE_BORDER: "rgba(248, 203, 70, 0.45)",
+};
+
+// ─────────────────────────────────────────────────────────────
+// Shared Singleton Geometries (Institutional Memory & Draw Call Optimization)
+// ─────────────────────────────────────────────────────────────
+
+const SHARED_GEOMETRIES = {
+  // Chassis: 0.96, 0.18, 0.62, radius: 0.03, smoothness: 4
+  chassis: new RoundedBoxGeometry(0.96, 0.18, 0.62, 4, 0.03),
+  // Front / Rear Bumpers: 0.04, 0.12, 0.60, radius: 0.015, smoothness: 4
+  bumper: new RoundedBoxGeometry(0.04, 0.12, 0.60, 4, 0.015),
+  // Contrast Top Deck Plate: 0.82, 0.02, 0.56, radius: 0.01, smoothness: 4
+  deckPlate: new RoundedBoxGeometry(0.82, 0.02, 0.56, 4, 0.01),
+  // Front Cyan Navigational Light Strip: 0.02, 0.04, 0.44, radius: 0.01, smoothness: 4
+  frontLight: new RoundedBoxGeometry(0.02, 0.04, 0.44, 4, 0.01),
+  // Wheel Rubber Tires: cylinder 0.08, 0.08, 0.052, 16
+  wheelTire: new THREE.CylinderGeometry(0.08, 0.08, 0.052, 16),
+  // Wheel Hub Caps: cylinder 0.032, 0.032, 0.058, 12
+  wheelHub: new THREE.CylinderGeometry(0.032, 0.032, 0.058, 12),
+  // Wheel Spoke Cross H: box 0.12, 0.022, 0.004
+  spokeH: new THREE.BoxGeometry(0.12, 0.022, 0.004),
+  // Wheel Spoke Cross V: box 0.022, 0.12, 0.004
+  spokeV: new THREE.BoxGeometry(0.022, 0.12, 0.004),
+  // Corrugated Cargo Box: 0.64, 0.36, 0.48, radius: 0.02, smoothness: 4
+  packageBox: new RoundedBoxGeometry(0.64, 0.36, 0.48, 4, 0.02),
+  // Cargo Sealing Tape Strip: 0.73, 0.015, 0.1, radius: 0.005, smoothness: 4
+  packageTape: new RoundedBoxGeometry(0.73, 0.015, 0.1, 4, 0.005),
+  // Cargo Shipping Label: 0.18, 0.12, 0.01, radius: 0.005, smoothness: 4
+  packageLabel: new RoundedBoxGeometry(0.18, 0.12, 0.01, 4, 0.005),
+  // Ground Breathing LED Ring: ring 0.56, 0.72, 36
+  ledRing: new THREE.RingGeometry(0.56, 0.72, 36),
+  // Destination Target Ring: ring 0.35, 0.52, 24
+  destRing: new THREE.RingGeometry(0.35, 0.52, 24),
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -250,9 +284,10 @@ interface SingleBotProps {
   showLabels: boolean;
   showPaths: boolean;
   simulationSpeed: number;
+  isTopPickingBot?: boolean;
 }
 
-function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulationSpeed }: SingleBotProps) {
+function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulationSpeed, isTopPickingBot = false }: SingleBotProps) {
   const activeCamera = useTwinStore((s) => s.activeCamera);
   const isFestiveSurgeActive = useTwinStore((s) => s.isFestiveSurgeActive);
   const customObstacles = useTwinStore((s) => s.customObstacles);
@@ -368,8 +403,8 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
   });
 
   // Calculate remaining continuous A* route in world coordinates
-  const isMoving = bot.status === "ACTIVE" && bot.path.length > 0;
-  const showRoute = isSelected || (showPaths && isMoving) || (hasObstacles && isMoving);
+  // Institutional optimization: Only render continuous Line paths for selectedBotId or when hovered
+  const showRoute = (isSelected || hovered) && bot.path && bot.path.length > 0;
 
   const routePoints = useMemo(() => {
     if (!showRoute || !bot.path || bot.path.length === 0) return null;
@@ -394,9 +429,12 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
     return routePoints[routePoints.length - 1];
   }, [routePoints]);
 
+  const shouldRenderDetailedBadge = isSelected || hovered || isTopPickingBot;
+  const isYieldingConflict = bot.perception?.state === "YIELDING" || bot.perception?.state === "HOLDING" || bot.isReversing;
+
   return (
     <>
-      {/* 1. Floor Navigation Route Line (Highlighted in bright yellow #FFE600 when rerouted around barricades) */}
+      {/* 1. Floor Navigation Route Line (Rendered only when selected or hovered to eliminate 48 redundant line buffers) */}
       {routePoints && routePoints.length > 1 && (
         <group>
           <Line
@@ -412,10 +450,10 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
           {/* Destination Target Marker */}
           {destinationPoint && (
             <mesh
+              geometry={SHARED_GEOMETRIES.destRing}
               position={[destinationPoint[0], 0.035, destinationPoint[2]]}
               rotation-x={-Math.PI / 2}
             >
-              <ringGeometry args={[0.35, 0.52, 24]} />
               <meshBasicMaterial
                 color={hasObstacles ? "#FFE600" : BOT_THEME.ACCENT_YELLOW}
                 transparent
@@ -443,7 +481,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
           setHovered(false);
         }}
       >
-        {/* Clickable Hovering HTML Status Badge (Shown when selected, hovered, or labels toggled ON) */}
+        {/* Clickable Hovering HTML Status Badge - Guarded to selected, hovered, or lightweight indicator dots */}
         {(showLabels || isSelected || hovered) && activeCamera !== "robot" && (
           <Html
             position={[0, 1.25, 0]}
@@ -451,7 +489,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
             distanceFactor={32}
             zIndexRange={[isSelected ? 90 : 15, 0]}
           >
-            {isSelected ? (
+            {isSelected || hovered ? (
               <BotStatusBadge
                 botId={bot.id}
                 status={bot.status}
@@ -468,7 +506,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
                 pickDwellTotalTicks={totalTicks}
                 onClick={onSelect}
               />
-            ) : (
+            ) : isTopPickingBot ? (
               <div
                 className={`lbl ${bot.status === "ERROR" ? "err" : bot.status === "CHARGING" ? "chg" : ""}`}
                 onClick={(e) => {
@@ -479,12 +517,27 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
                 {bot.status === "ERROR" ? "⚠ " : ""}
                 {bot.id}
               </div>
+            ) : (
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect();
+                }}
+                style={{
+                  width: "7px",
+                  height: "7px",
+                  borderRadius: "50%",
+                  backgroundColor: statusColor,
+                  boxShadow: `0 0 6px ${statusColor}`,
+                  cursor: "pointer",
+                }}
+              />
             )}
           </Html>
         )}
 
-        {/* High-visibility Vertical Rack Lift Latency Dwell Progress Bar */}
-        {isPicking && activeCamera !== "robot" && (
+        {/* High-visibility Vertical Rack Lift Latency Dwell Progress Bar - Guarded to selected or top 2 picking bots */}
+        {isPicking && shouldRenderDetailedBadge && activeCamera !== "robot" && (
           <Html
             position={[0, 1.85, 0]}
             center
@@ -533,7 +586,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
         )}
 
         {/* 2.4 Unmistakable 3D High-Contrast Status Pill for Right-of-Way Yielding */}
-        {(bot.perception?.state === "YIELDING" || bot.perception?.state === "HOLDING" || bot.isReversing) && activeCamera !== "robot" && (
+        {isYieldingConflict && activeCamera !== "robot" && (
           <Html
             position={[0, 1.95, 0]}
             center
@@ -552,10 +605,10 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
         {/* 3. Breathing Status LED Ring on Floor */}
         <mesh
           ref={ledRingRef}
+          geometry={SHARED_GEOMETRIES.ledRing}
           position={[0, 0.005, 0]}
           rotation-x={-Math.PI / 2}
         >
-          <ringGeometry args={[0.56, 0.72, 36]} />
           <meshBasicMaterial
             color={
               (bot.perception?.state === "YIELDING" || bot.perception?.state === "HOLDING" || bot.isReversing)
@@ -659,66 +712,56 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
           onPointerOver={() => (document.body.style.cursor = "pointer")}
           onPointerOut={() => (document.body.style.cursor = "default")}
         >
-          {/* Main White Chassis */}
+          {/* Main White Chassis - Shared Singleton Geometry */}
           <group position={[0, 0.15, 0]}>
-            <RoundedBox
-              args={[0.96, 0.18, 0.62]}
-              radius={0.03}
-              smoothness={4}
-              castShadow
-            >
+            <mesh geometry={SHARED_GEOMETRIES.chassis} castShadow>
               <meshStandardMaterial
                 color={BOT_THEME.CHASSIS_WHITE}
                 roughness={0.25}
                 metalness={0.2}
               />
-            </RoundedBox>
+            </mesh>
           </group>
 
-          {/* Yellow Front & Rear Bumper Trim (#F8CB46) */}
+          {/* Yellow Front & Rear Bumper Trim (#F8CB46) - Shared Singleton Geometry */}
           <group position={[0.47, 0.14, 0]}>
-            <RoundedBox args={[0.04, 0.12, 0.60]} radius={0.015} smoothness={4}>
+            <mesh geometry={SHARED_GEOMETRIES.bumper}>
               <meshStandardMaterial
                 color={BOT_THEME.ACCENT_YELLOW}
                 roughness={0.3}
                 metalness={0.1}
               />
-            </RoundedBox>
+            </mesh>
           </group>
           <group position={[-0.47, 0.14, 0]}>
-            <RoundedBox args={[0.04, 0.12, 0.60]} radius={0.015} smoothness={4}>
+            <mesh geometry={SHARED_GEOMETRIES.bumper}>
               <meshStandardMaterial
                 color={BOT_THEME.ACCENT_YELLOW}
                 roughness={0.3}
                 metalness={0.1}
               />
-            </RoundedBox>
+            </mesh>
           </group>
 
-          {/* Contrast Top Deck Plate */}
+          {/* Contrast Top Deck Plate - Shared Singleton Geometry */}
           <group position={[0, 0.245, 0]}>
-            <RoundedBox
-              args={[0.82, 0.02, 0.56]}
-              radius={0.01}
-              smoothness={4}
-              castShadow
-            >
+            <mesh geometry={SHARED_GEOMETRIES.deckPlate} castShadow>
               <meshStandardMaterial
                 color={BOT_THEME.DECK_CHARCOAL}
                 roughness={0.5}
                 metalness={0.6}
               />
-            </RoundedBox>
+            </mesh>
           </group>
 
-          {/* Front Cyan Navigational Light Strip */}
+          {/* Front Cyan Navigational Light Strip - Shared Singleton Geometry */}
           <group position={[0.485, 0.16, 0]}>
-            <RoundedBox args={[0.02, 0.04, 0.44]} radius={0.01} smoothness={4}>
+            <mesh geometry={SHARED_GEOMETRIES.frontLight}>
               <meshBasicMaterial color={BOT_THEME.FRONT_LIGHT} />
-            </RoundedBox>
+            </mesh>
           </group>
 
-          {/* 4 Realistic Industrial AMR Wheels with Individual Axle Rotation */}
+          {/* 4 Realistic Industrial AMR Wheels with Shared Singleton Geometries */}
           <group>
             {[
               [0.28, 0.32],
@@ -729,8 +772,7 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
               <group key={`wheel-pos-${idx}`} position={[wx, 0.08, wz]}>
                 <group ref={(el) => (wheelRefs.current[idx] = el)}>
                   {/* Outer Rubber Tire with Treads */}
-                  <mesh rotation-x={Math.PI / 2} castShadow>
-                    <cylinderGeometry args={[0.08, 0.08, 0.052, 16]} />
+                  <mesh geometry={SHARED_GEOMETRIES.wheelTire} rotation-x={Math.PI / 2} castShadow>
                     <meshStandardMaterial
                       color="#18181B"
                       roughness={0.85}
@@ -738,21 +780,18 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
                     />
                   </mesh>
                   {/* Signature Yellow Axle Hub Cap */}
-                  <mesh rotation-x={Math.PI / 2}>
-                    <cylinderGeometry args={[0.032, 0.032, 0.058, 12]} />
+                  <mesh geometry={SHARED_GEOMETRIES.wheelHub} rotation-x={Math.PI / 2}>
                     <meshStandardMaterial
                       color={BOT_THEME.ACCENT_YELLOW}
                       roughness={0.35}
                       metalness={0.5}
                     />
                   </mesh>
-                  {/* High-Contrast Dual-Axle Spoke Cross for unmistakable rotation visibility */}
-                  <mesh position={[0, 0, wz > 0 ? 0.029 : -0.029]}>
-                    <boxGeometry args={[0.12, 0.022, 0.004]} />
+                  {/* High-Contrast Dual-Axle Spoke Cross for rotation visibility */}
+                  <mesh geometry={SHARED_GEOMETRIES.spokeH} position={[0, 0, wz > 0 ? 0.029 : -0.029]}>
                     <meshStandardMaterial color="#334155" roughness={0.3} metalness={0.7} />
                   </mesh>
-                  <mesh position={[0, 0, wz > 0 ? 0.029 : -0.029]}>
-                    <boxGeometry args={[0.022, 0.12, 0.004]} />
+                  <mesh geometry={SHARED_GEOMETRIES.spokeV} position={[0, 0, wz > 0 ? 0.029 : -0.029]}>
                     <meshStandardMaterial color="#334155" roughness={0.3} metalness={0.7} />
                   </mesh>
                 </group>
@@ -760,38 +799,33 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
             ))}
           </group>
 
-          {/* Toggleable Packaging Box on Top (when carrying load) */}
+          {/* Toggleable Packaging Box on Top (when carrying load) - Shared Singleton Geometries */}
           {bot.currentPayloadKg > 0 && (
             <group position={[0, 0.44, 0]}>
               {/* Kraft Corrugated Box */}
-              <RoundedBox
-                args={[0.64, 0.36, 0.48]}
-                radius={0.02}
-                smoothness={4}
-                castShadow
-              >
+              <mesh geometry={SHARED_GEOMETRIES.packageBox} castShadow>
                 <meshStandardMaterial
                   color={BOT_THEME.PACKAGE_KRAFT}
                   roughness={0.75}
                   metalness={0.05}
                 />
-              </RoundedBox>
+              </mesh>
 
               {/* Sealing Tape Strip across the Box */}
               <group position={[0, 0.245, 0]}>
-                <RoundedBox args={[0.73, 0.015, 0.1]} radius={0.005} smoothness={4}>
+                <mesh geometry={SHARED_GEOMETRIES.packageTape}>
                   <meshStandardMaterial
                     color={BOT_THEME.PACKAGE_TAPE}
                     roughness={0.4}
                   />
-                </RoundedBox>
+                </mesh>
               </group>
 
               {/* Shipping Label Tag */}
               <group position={[0.2, 0.1, 0.275]}>
-                <RoundedBox args={[0.18, 0.12, 0.01]} radius={0.005} smoothness={4}>
+                <mesh geometry={SHARED_GEOMETRIES.packageLabel}>
                   <meshBasicMaterial color="#FFFFFF" />
-                </RoundedBox>
+                </mesh>
               </group>
             </group>
           )}
@@ -995,6 +1029,15 @@ export function BotFleet({ fleetCountOverride }: BotFleetProps = {}) {
     return [...baseBots, ...virtualBotUnits];
   }, [botUnits, fleetCountOverride, walkableCells, tick, navGrid]);
 
+  // Top 2 active picking bots closest to camera center for high-detail progress rendering
+  const topPickingBotIds = useMemo(() => {
+    const picking = renderedBots.filter((b) => b.fsmState === "PICKING");
+    if (picking.length <= 2) {
+      return new Set(picking.map((b) => b.id));
+    }
+    return new Set(picking.slice(0, 2).map((b) => b.id));
+  }, [renderedBots]);
+
   return (
     <group name="BotFleet">
       {renderedBots.map((bot) => (
@@ -1006,6 +1049,7 @@ export function BotFleet({ fleetCountOverride }: BotFleetProps = {}) {
           showLabels={showLabels}
           showPaths={showPaths}
           simulationSpeed={simulationSpeed}
+          isTopPickingBot={topPickingBotIds.has(bot.id)}
         />
       ))}
     </group>

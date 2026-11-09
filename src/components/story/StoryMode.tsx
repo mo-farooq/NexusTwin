@@ -1811,6 +1811,7 @@ export function StoryMode() {
                     cameraPosition={compareCameraConfig.pos}
                     cameraTarget={compareCameraConfig.target}
                     fleetCountOverride={proposedFleet}
+                    disableShadows={true}
                     style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
                   />
                   <div className="tag-name">
