@@ -975,21 +975,28 @@ table.dt tr.sel td {
 /* ── Drawers & Overlays ─────────────────────────────────────── */
 .drawer {
   position: fixed;
-  top: 50px;
+  top: 0;
   right: 0;
   bottom: 0;
-  width: 380px;
-  background: var(--panel);
-  border-left: 1px solid var(--border-strong);
-  z-index: 45;
+  width: 440px;
+  max-width: 95vw;
+  background: var(--panel, #FFFFFF);
+  border-left: 1px solid var(--border-strong, #CBD5E1);
+  z-index: 95;
   display: flex;
   flex-direction: column;
-  box-shadow: -8px 0 30px rgba(0, 0, 0, 0.15);
-  animation: drawerSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: -10px 0 35px rgba(15, 23, 42, 0.22);
+  animation: drawerSlide 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .drawer.wide {
-  width: 460px;
+  width: 560px;
+  max-width: 95vw;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 @keyframes drawerSlide {

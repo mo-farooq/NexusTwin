@@ -418,8 +418,8 @@ export function WhatIfDrawer() {
                 </div>
                 <div style={{ fontSize: "16px", fontWeight: 900, color: whatIfResult.paybackHorizonMonthsDelta < 0 ? "#16A34A" : "#D97706", marginTop: "2px" }}>
                   {whatIfResult.paybackHorizonMonthsDelta < 0
-                    ? `${whatIfResult.paybackHorizonMonthsDelta} Months (Faster ROI)`
-                    : `+${whatIfResult.paybackHorizonMonthsDelta} Months Delay`}
+                    ? `${Math.abs(Number(whatIfResult.paybackHorizonMonthsDelta.toFixed(1)))} Months (Faster ROI)`
+                    : `+${Number(whatIfResult.paybackHorizonMonthsDelta.toFixed(1))} Months Delay`}
                 </div>
               </div>
             </div>

@@ -126,25 +126,28 @@ export function App() {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
-  // Keyboard shortcut listener: Space to toggle play/pause, 'w' for What-If, 'f' for Focus/Full, Escape to close focus popups
+  // Keyboard shortcut listener: Space to toggle play/pause, 'w' for What-If, 'c' for Copilot, 'f' for Focus/Full, Escape to close drawers/popups
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const state = useTwinStore.getState();
       if (e.code === "Space") {
         e.preventDefault();
-        const state = useTwinStore.getState();
         if (state.isRunning) {
           state.pauseSimulation();
         } else {
           state.startSimulation();
         }
       } else if (e.key === "w" || e.key === "W") {
-        useTwinStore.getState().setDrawer("whatif");
+        state.setDrawer(state.drawer === "whatif" ? null : "whatif");
+      } else if (e.key === "c" || e.key === "C") {
+        state.setDrawer(state.drawer === "copilot" ? null : "copilot");
       } else if (e.key === "f" || e.key === "F") {
-        const state = useTwinStore.getState();
         state.setViewMode(state.viewMode === "focus" ? "full" : "focus");
       } else if (e.key === "Escape") {
-        const state = useTwinStore.getState();
+        if (state.drawer) {
+          state.setDrawer(null);
+        }
         state.closeAllFocusPopups();
         state.selectBot(null);
         state.selectRack(null);
@@ -160,6 +163,12 @@ export function App() {
     const handleHash = () => {
       const hash = window.location.hash.toLowerCase();
       const state = useTwinStore.getState();
+
+      if (hash.includes("whatif")) {
+        state.setDrawer("whatif");
+      } else if (hash.includes("copilot")) {
+        state.setDrawer("copilot");
+      }
 
       if (hash.startsWith("#story") || hash === "" || hash === "#") {
         if (state.appMode !== "STORY") state.setAppMode("STORY");
@@ -242,9 +251,22 @@ export function App() {
 
   if (appMode === "STORY") {
     return (
-      <Suspense fallback={<div className="story-loading" style={{ background: "#06182C", width: "100vw", height: "100vh" }} />}>
-        <StoryMode />
-      </Suspense>
+      <div className="story-root-wrap" style={{ position: "relative", width: "100vw", height: "100vh", overflow: "hidden" }}>
+        <Suspense fallback={<div className="story-loading" style={{ background: "#06182C", width: "100vw", height: "100vh" }} />}>
+          <StoryMode />
+        </Suspense>
+
+        {/* Global Drawers & Intelligence accessible from Story Mode */}
+        <CopilotDrawer />
+        <WhatIfDrawer />
+
+        {/* Enterprise Modals */}
+        <Suspense fallback={null}>
+          <AuditLedgerModal />
+          <DecisionSandboxModal />
+          <WarehouseBuilderModal />
+        </Suspense>
+      </div>
     );
   }
 

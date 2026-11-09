@@ -1654,6 +1654,9 @@ export const useTwinStore = create<NexusTwinState>((set, get) => {
       if (res.injectedChanges.recommendedBotsCount) {
         get().setFleetSize(res.injectedChanges.recommendedBotsCount);
       }
+      if (res.injectedChanges.blockedZones && res.injectedChanges.blockedZones.length > 0) {
+        get().injectAisleBlockage(res.injectedChanges.blockedZones[0] || "ZONE_A");
+      }
       get().logEvent({
         tick: get().tick,
         type: "WHATIF_APPLIED_TO_LIVE",

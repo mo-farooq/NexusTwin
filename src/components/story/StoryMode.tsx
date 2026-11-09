@@ -241,6 +241,8 @@ export function calculateStoryFinancials(
 
 export function StoryMode() {
   const setAppMode = useTwinStore((s) => s.setAppMode);
+  const activeDrawer = useTwinStore((s) => s.drawer);
+  const setDrawer = useTwinStore((s) => s.setDrawer);
   const botUnits = useTwinStore((s) => s.botUnits);
   const gridDimensions = useTwinStore((s) => s.gridDimensions);
   const kpi = useTwinStore((s) => s.kpi);
@@ -1256,8 +1258,58 @@ export function StoryMode() {
           ))}
         </nav>
 
-        {/* Speed buttons & Operator View Switcher */}
+        {/* Speed buttons, Drawers & Operator View Switcher */}
         <div className="s-right">
+          {/* Action button: What-If Simulator */}
+          <button
+            className={`hbtn primary ${activeDrawer === "whatif" ? "on" : ""}`}
+            onClick={() => setDrawer(activeDrawer === "whatif" ? null : "whatif")}
+            style={{
+              marginRight: "6px",
+              fontSize: "11px",
+              padding: "5px 10px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              fontWeight: 700,
+              background: activeDrawer === "whatif" ? "#0284C7" : "#0284C7",
+              color: "#FFFFFF",
+              border: "1px solid #0369A1",
+              borderRadius: "6px",
+              cursor: "pointer",
+            }}
+            title="Fast-forward clone simulation with multi-seed ensemble (Shortcut: W)"
+          >
+            <span>🧪</span>
+            <span>What-If</span>
+            <kbd style={{ fontSize: "9px", padding: "1px 4px", background: "rgba(255,255,255,0.25)", borderRadius: "3px" }}>W</kbd>
+          </button>
+
+          {/* AI Copilot Drawer */}
+          <button
+            className={`hbtn ink ${activeDrawer === "copilot" ? "on" : ""}`}
+            onClick={() => setDrawer(activeDrawer === "copilot" ? null : "copilot")}
+            style={{
+              marginRight: "6px",
+              fontSize: "11px",
+              padding: "5px 10px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              fontWeight: 700,
+              background: activeDrawer === "copilot" ? "#4F46E5" : "#1E293B",
+              color: "#FFFFFF",
+              border: "1px solid #334155",
+              borderRadius: "6px",
+              cursor: "pointer",
+            }}
+            title="Ask Grounded AI Operations Copilot (Shortcut: C)"
+          >
+            <span>🤖</span>
+            <span>Copilot</span>
+            <kbd style={{ fontSize: "9px", padding: "1px 4px", background: "rgba(255,255,255,0.25)", borderRadius: "3px" }}>C</kbd>
+          </button>
+
           <button
             className="hbtn ghost"
             onClick={() => {
