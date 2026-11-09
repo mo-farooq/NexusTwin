@@ -278,11 +278,11 @@ tr:hover td{background:#FFF8F4}
 .rm .v{font-family:var(--display);font-size:16px;font-weight:700;margin-top:3px}
 
 /* ── Drawers & modals ───────────────────── */
-.scrim{position:fixed;inset:0;background:rgba(18,24,38,.32);backdrop-filter:blur(3px);z-index:50;opacity:0;pointer-events:none;transition:.25s}
+.scrim{position:fixed;inset:0;background:rgba(18,24,38,.32);backdrop-filter:blur(3px);z-index:1000 !important;opacity:0;pointer-events:none;transition:.25s}
 .scrim.on{opacity:1;pointer-events:auto}
-.drawer{position:fixed;top:0;right:0;bottom:0;width:min(720px,94vw);background:var(--paper);z-index:60;transform:none !important;transition:transform .45s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;box-shadow:-30px 0 60px -20px rgba(18,24,38,.35);border-left:1px solid var(--hair-2)}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(720px,94vw);background:var(--paper);z-index:95;transform:none !important;transition:transform .45s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;box-shadow:-30px 0 60px -20px rgba(18,24,38,.35);border-left:1px solid var(--hair-2)}
 .drawer.on{transform:none !important}
-.modal{position:fixed;left:50%;top:50%;width:min(1080px,94vw);height:min(720px,88vh);background:var(--paper);z-index:60;border-radius:20px;transform:translate(-50%,-46%) scale(.97);opacity:0;pointer-events:none;transition:.35s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;box-shadow:0 40px 90px -30px rgba(18,24,38,.5);border:1px solid var(--hair-2);overflow:hidden}
+.modal{position:fixed;left:50%;top:50%;width:min(1080px,94vw);height:min(720px,88vh);background:var(--paper);z-index:1010 !important;border-radius:20px;transform:translate(-50%,-46%) scale(.97);opacity:0;pointer-events:none;transition:.35s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;box-shadow:0 40px 90px -30px rgba(18,24,38,.5);border:1px solid var(--hair-2);overflow:hidden}
 .modal.on{transform:translate(-50%,-50%);opacity:1;pointer-events:auto}
 .mh{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--hair);background:var(--card)}
 .mh .ic{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:#fff}

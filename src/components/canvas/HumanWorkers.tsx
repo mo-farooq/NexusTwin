@@ -223,6 +223,7 @@ function SingleHumanWorker({
 export function HumanWorkers() {
   const people = useTwinStore((s) => s.people);
   const showLabels = useTwinStore((s) => s.showLabels);
+  const isAnyModalOpen = useTwinStore((s) => s.isSandboxModalOpen || s.isBuilderModalOpen || s.modal !== null);
   const simulationSpeed = useTwinStore((s) => s.simulationSpeed);
 
   if (!people) return null;
@@ -233,7 +234,7 @@ export function HumanWorkers() {
         <SingleHumanWorker
           key={worker.id}
           worker={worker}
-          showLabels={showLabels}
+          showLabels={showLabels && !isAnyModalOpen}
           simulationSpeed={simulationSpeed}
         />
       ))}

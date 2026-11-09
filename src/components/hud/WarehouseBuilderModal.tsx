@@ -434,7 +434,7 @@ export function WarehouseBuilderModal() {
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 50,
+        zIndex: 1000,
         background: "rgba(15, 23, 42, 0.8)",
         backdropFilter: "blur(16px)",
         display: "flex",
@@ -448,6 +448,8 @@ export function WarehouseBuilderModal() {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
+          position: "relative",
+          zIndex: 1010,
           width: "100%",
           maxWidth: "1380px",
           height: "92vh",

@@ -1212,7 +1212,7 @@ table.dt tr.sel td {
   inset: 0;
   background: rgba(15, 23, 42, 0.45);
   backdrop-filter: blur(4px);
-  z-index: 55;
+  z-index: 1000 !important;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1236,6 +1236,7 @@ table.dt tr.sel td {
   position: relative !important;
   top: auto !important;
   left: auto !important;
+  z-index: 1010 !important;
 }
 
 .modal-h {

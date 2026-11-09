@@ -289,6 +289,7 @@ interface SingleBotProps {
 
 function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulationSpeed, isTopPickingBot = false }: SingleBotProps) {
   const activeCamera = useTwinStore((s) => s.activeCamera);
+  const isAnyModalOpen = useTwinStore((s) => s.isSandboxModalOpen || s.isBuilderModalOpen || s.modal !== null);
   const isFestiveSurgeActive = useTwinStore((s) => s.isFestiveSurgeActive);
   const customObstacles = useTwinStore((s) => s.customObstacles);
   const hasObstacles = customObstacles.length > 0;
@@ -482,12 +483,12 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
         }}
       >
         {/* Clickable Hovering HTML Status Badge - Guarded to selected, hovered, or lightweight indicator dots */}
-        {(showLabels || isSelected || hovered) && activeCamera !== "robot" && (
+        {(showLabels || isSelected || hovered) && activeCamera !== "robot" && !isAnyModalOpen && (
           <Html
             position={[0, 1.25, 0]}
             center
             distanceFactor={32}
-            zIndexRange={[isSelected ? 90 : 15, 0]}
+            zIndexRange={[isSelected ? 25 : 10, 0]}
           >
             {isSelected || hovered ? (
               <BotStatusBadge
@@ -537,12 +538,12 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
         )}
 
         {/* High-visibility Vertical Rack Lift Latency Dwell Progress Bar - Guarded to selected or top 2 picking bots */}
-        {isPicking && shouldRenderDetailedBadge && activeCamera !== "robot" && (
+        {isPicking && shouldRenderDetailedBadge && activeCamera !== "robot" && !isAnyModalOpen && (
           <Html
             position={[0, 1.85, 0]}
             center
             distanceFactor={28}
-            zIndexRange={[30, 0]}
+            zIndexRange={[20, 0]}
           >
             <div
               style={{
@@ -586,12 +587,12 @@ function SingleBot({ bot, isSelected, onSelect, showLabels, showPaths, simulatio
         )}
 
         {/* 2.4 Unmistakable 3D High-Contrast Status Pill for Right-of-Way Yielding */}
-        {isYieldingConflict && activeCamera !== "robot" && (
+        {isYieldingConflict && activeCamera !== "robot" && !isAnyModalOpen && (
           <Html
             position={[0, 1.95, 0]}
             center
             distanceFactor={28}
-            zIndexRange={[99, 0]}
+            zIndexRange={[25, 0]}
           >
             <div className="badge-yielding">
               🛡️ YIELDING (EMPTY ➔ LOADED PRIORITY)

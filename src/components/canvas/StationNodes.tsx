@@ -144,14 +144,15 @@ interface WorkstationNodeProps {
 
 function WorkstationNode({ station, isSelected, onSelect }: WorkstationNodeProps) {
   const showLabels = useTwinStore((s) => s.showLabels);
+  const isAnyModalOpen = useTwinStore((s) => s.isSandboxModalOpen || s.isBuilderModalOpen || s.modal !== null);
   const [x, z] = station.coords;
   const isPacking = station.type === "PACK_STATION";
 
   return (
     <group position={[x, 0, z]}>
       {/* Clickable <Html distanceFactor={40}> Floating Status Pill */}
-      {(showLabels || isSelected) && (
-        <Html position={[0, 2.7, 0]} center distanceFactor={40} zIndexRange={[isSelected ? 85 : 12, 0]}>
+      {(showLabels || isSelected) && !isAnyModalOpen && (
+        <Html position={[0, 2.7, 0]} center distanceFactor={40} zIndexRange={[isSelected ? 25 : 10, 0]}>
           <StatusPill
             label={station.name}
             subtext={isPacking ? "READY (58 picks/hr)" : "RECEIVING"}

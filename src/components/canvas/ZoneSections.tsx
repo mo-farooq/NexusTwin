@@ -73,7 +73,8 @@ function SectionSignage({
   position: [number, number, number];
 }) {
   const showLabels = useTwinStore((s) => s.showLabels);
-  if (!showLabels) return null;
+  const isAnyModalOpen = useTwinStore((s) => s.isSandboxModalOpen || s.isBuilderModalOpen || s.modal !== null);
+  if (!showLabels || isAnyModalOpen) return null;
 
   return (
     <Html position={position} center distanceFactor={48} zIndexRange={[12, 0]}>
@@ -181,6 +182,7 @@ function InboundPortalNode({ position }: { position: [number, number, number] })
 export function ZoneSections() {
   const zones = useTwinStore((s) => s.zones);
   const isFestiveSurgeActive = useTwinStore((s) => s.isFestiveSurgeActive);
+  const isAnyModalOpen = useTwinStore((s) => s.isSandboxModalOpen || s.isBuilderModalOpen || s.modal !== null);
   const gridDimensions = useTwinStore((s) => s.gridDimensions);
   const { widthM, depthM } = gridDimensions;
 
@@ -266,12 +268,13 @@ export function ZoneSections() {
 
             {/* 5. 3D Floating Neon Banner for Festive Surge above Inbound Zone */}
             {isFestiveSurgeActive &&
+              !isAnyModalOpen &&
               (z.id === "ZONE_INBOUND" || z.sectionType === "INBOUND" || z.id.includes("INBOUND")) && (
                 <Html
                   position={[midX, 5.2, (z0 + z1) / 2]}
                   center
                   distanceFactor={38}
-                  zIndexRange={[99, 0]}
+                  zIndexRange={[20, 0]}
                 >
                   <div
                     style={{

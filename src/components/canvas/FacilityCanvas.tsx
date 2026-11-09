@@ -644,6 +644,7 @@ function FloorObstaclesCollection() {
   const toggleFloorObstacle = useTwinStore((s) => s.toggleFloorObstacle);
   const cellSize = useTwinStore((s) => s.navGrid.cellSize);
   const showLabels = useTwinStore((s) => s.showLabels);
+  const isAnyModalOpen = useTwinStore((s) => s.isSandboxModalOpen || s.isBuilderModalOpen || s.modal !== null);
 
   // Procedural OSHA Yellow & Black Diagonal Striped Hazard Decal
   const hazardTexture = useMemo(() => {
@@ -754,8 +755,8 @@ function FloorObstaclesCollection() {
             )}
 
             {/* Click to remove Pill */}
-            {showLabels && (
-              <Html position={[0, 0.75, 0]} center distanceFactor={35}>
+            {showLabels && !isAnyModalOpen && (
+              <Html position={[0, 0.75, 0]} center distanceFactor={35} zIndexRange={[15, 0]}>
                 <div
                   style={{
                     background: "rgba(15, 23, 42, 0.92)",

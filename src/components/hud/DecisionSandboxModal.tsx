@@ -85,7 +85,7 @@ export function DecisionSandboxModal() {
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 50,
+        zIndex: 1000,
         backgroundColor: "rgba(15, 23, 42, 0.45)",
         backdropFilter: "blur(8px)",
         display: "flex",
@@ -99,6 +99,8 @@ export function DecisionSandboxModal() {
     >
       <div
         style={{
+          position: "relative",
+          zIndex: 1010,
           width: "100%",
           maxWidth: "880px",
           maxHeight: "88vh",
