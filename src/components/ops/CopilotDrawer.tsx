@@ -20,6 +20,7 @@ interface ActionItem {
 interface ChatMessage {
   role: "user" | "ai";
   text: string;
+  sourceBadge?: string;
   citations?: Array<{ label: string; botId?: string; zoneId?: string }>;
   actions?: ActionItem[];
 }
@@ -32,6 +33,88 @@ const SUGGESTIONS = [
   "Why 14 AMRs instead of vendor-quoted 20?",
   "How does 270° LiDAR obstacle avoidance work?",
 ];
+
+function parseGeminiResponse(
+  rawText: string,
+  callbacks: {
+    setDrawer: (d: any) => void;
+    openSandboxModal: () => void;
+    injectFestiveSurge: (count: number, mult: number) => void;
+  }
+): { text: string; citations: Array<{ label: string; botId?: string; zoneId?: string }>; actions: ActionItem[] } {
+  let cleanedText = rawText;
+  const actions: ActionItem[] = [];
+
+  // Parse Action Tags
+  if (cleanedText.includes("[ACTION:WHAT_IF]")) {
+    actions.push({
+      label: "🧪 Launch What-If Engine",
+      onClick: () => callbacks.setDrawer("whatif"),
+      variant: "primary",
+    });
+    cleanedText = cleanedText.replace(/\[ACTION:WHAT_IF\]/g, "");
+  }
+  if (cleanedText.includes("[ACTION:ROI]")) {
+    actions.push({
+      label: "📊 View Boardroom ROI Matrix",
+      onClick: () => callbacks.openSandboxModal(),
+      variant: "secondary",
+    });
+    cleanedText = cleanedText.replace(/\[ACTION:ROI\]/g, "");
+  }
+  if (cleanedText.includes("[ACTION:BENCHMARKS]")) {
+    actions.push({
+      label: "📚 Sourced Benchmarks",
+      onClick: () => {
+        if (typeof window !== "undefined") {
+          window.location.hash = "#audit";
+        }
+      },
+      variant: "secondary",
+    });
+    cleanedText = cleanedText.replace(/\[ACTION:BENCHMARKS\]/g, "");
+  }
+  if (cleanedText.includes("[ACTION:SURGE]")) {
+    actions.push({
+      label: "🚨 Inject 3x Festive Surge",
+      onClick: () => callbacks.injectFestiveSurge(30, 3),
+      variant: "warning",
+    });
+    cleanedText = cleanedText.replace(/\[ACTION:SURGE\]/g, "");
+  }
+
+  // Parse Citations [BOT-XX] and [ZONE_X]
+  const citations: Array<{ label: string; botId?: string; zoneId?: string }> = [];
+  const seen = new Set<string>();
+
+  const botMatches = cleanedText.match(/\[BOT-\d+\]/gi);
+  if (botMatches) {
+    for (const b of botMatches) {
+      const id = b.replace(/[\[\]]/g, "").toUpperCase();
+      if (!seen.has(id)) {
+        seen.add(id);
+        citations.push({ label: `[${id}]`, botId: id });
+      }
+    }
+  }
+
+  const zoneMatches = cleanedText.match(/\[ZONE_[A-Z0-9_]+\]/gi);
+  if (zoneMatches) {
+    for (const z of zoneMatches) {
+      const id = z.replace(/[\[\]]/g, "").toUpperCase();
+      if (!seen.has(id)) {
+        seen.add(id);
+        citations.push({ label: `[${id}]`, zoneId: id });
+      }
+    }
+  }
+
+  return {
+    text: cleanedText.trim(),
+    citations,
+    actions,
+  };
+}
 
 export function CopilotDrawer() {
   const isOpen = useTwinStore((s) => s.drawer === "copilot");
@@ -47,9 +130,20 @@ export function CopilotDrawer() {
   const injectAisleBlockage = useTwinStore((s) => s.injectAisleBlockage);
 
   const [inputVal, setInputVal] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [customApiKey, setCustomApiKey] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("nexustwin_gemini_key") || "";
+    }
+    return "";
+  });
+  const [tempKeyInput, setTempKeyInput] = useState(customApiKey);
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "ai",
+      sourceBadge: "✨ Gemini 2.0 / SCADA Hybrid",
       text: "Hello! I am NexusTwin AI Operations Copilot. I analyze real-time fleet telemetry, A* travel paths, slotting latencies, and financial payback horizons. Ask me anything, run What-If simulations, or click citation badges to inspect assets in the digital twin.",
       actions: [
         {
@@ -278,12 +372,101 @@ export function CopilotDrawer() {
     };
   };
 
-  const handleSend = (text: string) => {
-    if (!text.trim()) return;
-    const userMsg: ChatMessage = { role: "user", text };
-    const aiReply = generateAnswer(text);
-    setMessages((prev) => [...prev, userMsg, aiReply]);
+  const handleSaveCustomKey = () => {
+    const trimmed = tempKeyInput.trim();
+    setCustomApiKey(trimmed);
+    if (typeof window !== "undefined") {
+      if (trimmed) {
+        localStorage.setItem("nexustwin_gemini_key", trimmed);
+      } else {
+        localStorage.removeItem("nexustwin_gemini_key");
+      }
+    }
+    setShowSettings(false);
+  };
+
+  const handleSend = async (text: string) => {
+    if (!text.trim() || isLoading) return;
+    const userQuery = text.trim();
+    const userMsg: ChatMessage = { role: "user", text: userQuery };
+    setMessages((prev) => [...prev, userMsg]);
     setInputVal("");
+    setIsLoading(true);
+
+    const bots = Object.values(botUnits);
+    const lowestBatBot = bots.length > 0 ? [...bots].sort((a, b) => a.batteryPct - b.batteryPct)[0] : null;
+    const allZones = Object.values(zones);
+    const congestedZone = allZones.length > 0 ? [...allZones].sort((a, b) => b.congestionScore - a.congestionScore)[0] : null;
+
+    const telemetry = {
+      activeBotsCount: bots.length,
+      throughputPerHour: kpi.throughputPerHour,
+      slaCompliancePct: kpi.slaCompliancePct,
+      fleetUtilizationPct: kpi.fleetUtilizationPct,
+      totalSafeYieldsResolved: kpi.totalSafeYieldsResolved,
+      paybackMonths: decisionMetrics.paybackPeriodMonths,
+      netMonthlySavingsINR: decisionMetrics.netMonthlySavingsINR,
+      lowestBatBotId: lowestBatBot?.id,
+      lowestBatPct: lowestBatBot?.batteryPct,
+      congestedZoneId: congestedZone?.id,
+      congestedZoneScore: congestedZone?.congestionScore,
+    };
+
+    let replyMsg: ChatMessage | null = null;
+
+    try {
+      // 1. Attempt to call Vercel /api/copilot with 8s timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      const resp = await fetch("/api/copilot", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(customApiKey ? { "x-gemini-key": customApiKey } : {}),
+        },
+        body: JSON.stringify({
+          query: userQuery,
+          telemetry,
+          customApiKey: customApiKey || undefined,
+        }),
+        signal: controller.signal,
+      }).catch(() => null);
+
+      clearTimeout(timeoutId);
+
+      if (resp && resp.ok) {
+        const data = await resp.json().catch(() => null);
+        if (data && data.ok && data.text) {
+          const parsed = parseGeminiResponse(data.text, {
+            setDrawer,
+            openSandboxModal,
+            injectFestiveSurge,
+          });
+          replyMsg = {
+            role: "ai",
+            sourceBadge: "✨ Gemini 2.0 Flash",
+            text: parsed.text,
+            citations: parsed.citations,
+            actions: parsed.actions,
+          };
+        }
+      }
+    } catch {
+      // Network or API failure -> silently fall back
+    }
+
+    // 2. If Gemini unavailable or not configured, fall back to grounded SCADA engine
+    if (!replyMsg) {
+      const fallback = generateAnswer(userQuery);
+      replyMsg = {
+        ...fallback,
+        sourceBadge: "⚡ Grounded SCADA Engine",
+      };
+    }
+
+    setMessages((prev) => [...prev, replyMsg!]);
+    setIsLoading(false);
   };
 
   return (
@@ -295,26 +478,145 @@ export function CopilotDrawer() {
       }}
       onClick={(e) => e.stopPropagation()}
     >
-      <header className="drawer-h">
+      <header className="drawer-h" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span>🤖</span>
-          <span>AI Operations Copilot</span>
+          <span style={{ fontWeight: 800 }}>AI Operations Copilot</span>
+          <span
+            style={{
+              fontSize: "10px",
+              padding: "2px 6px",
+              borderRadius: "4px",
+              fontWeight: 700,
+              background: customApiKey ? "#ECFDF5" : "#EFF6FF",
+              color: customApiKey ? "#059669" : "#2563EB",
+              border: `1px solid ${customApiKey ? "#A7F3D0" : "#BFDBFE"}`,
+            }}
+          >
+            {customApiKey ? "BYOK Gemini" : "Gemini 2.0 / SCADA"}
+          </span>
         </div>
-        <button
-          className="icon-btn"
-          onClick={() => setDrawer(null)}
-          title="Close Copilot (Esc)"
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <button
+            className="icon-btn"
+            onClick={() => setShowSettings(!showSettings)}
+            title="Configure AI Model & Key Settings"
+            style={{
+              background: showSettings ? "#E0F2FE" : "transparent",
+              border: showSettings ? "1px solid #0284C7" : "1px solid transparent",
+              color: showSettings ? "#0284C7" : "#64748B",
+              borderRadius: "6px",
+              width: "28px",
+              height: "28px",
+              cursor: "pointer",
+              fontSize: "14px",
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            ⚙️
+          </button>
+          <button
+            className="icon-btn"
+            onClick={() => setDrawer(null)}
+            title="Close Copilot (Esc)"
+            style={{
+              background: "transparent",
+              border: "none",
+              fontSize: "16px",
+              cursor: "pointer",
+              color: "#64748B",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      </header>
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div
           style={{
-            background: "transparent",
-            border: "none",
-            fontSize: "16px",
-            cursor: "pointer",
-            color: "#64748B",
+            background: "#F8FAFC",
+            borderBottom: "1px solid #E2E8F0",
+            padding: "12px 16px",
+            fontSize: "12px",
+            color: "#334155",
           }}
         >
-          ✕
-        </button>
-      </header>
+          <div style={{ fontWeight: 700, marginBottom: "4px", color: "#0F172A" }}>
+            🤖 AI Model & API Key Configuration
+          </div>
+          <p style={{ margin: "0 0 8px 0", fontSize: "11px", color: "#64748B", lineHeight: "1.4" }}>
+            NexusTwin uses <strong>Google Gemini 2.0 Flash</strong> for real-time spatial reasoning. If no key is provided, it automatically falls back to the instant zero-latency SCADA engine.
+          </p>
+          <div style={{ display: "flex", gap: "6px", marginBottom: "8px" }}>
+            <input
+              type="password"
+              placeholder="Paste Gemini API Key (Optional BYOK)…"
+              value={tempKeyInput}
+              onChange={(e) => setTempKeyInput(e.target.value)}
+              style={{
+                flex: 1,
+                fontSize: "11px",
+                padding: "6px 8px",
+                borderRadius: "5px",
+                border: "1px solid #CBD5E1",
+                fontFamily: "monospace",
+              }}
+            />
+            <button
+              onClick={handleSaveCustomKey}
+              style={{
+                background: "#0284C7",
+                color: "#FFFFFF",
+                border: "none",
+                borderRadius: "5px",
+                padding: "6px 12px",
+                fontWeight: 700,
+                fontSize: "11px",
+                cursor: "pointer",
+              }}
+            >
+              Save
+            </button>
+            {customApiKey && (
+              <button
+                onClick={() => {
+                  setCustomApiKey("");
+                  setTempKeyInput("");
+                  if (typeof window !== "undefined") {
+                    localStorage.removeItem("nexustwin_gemini_key");
+                  }
+                }}
+                style={{
+                  background: "#F1F5F9",
+                  color: "#64748B",
+                  border: "1px solid #CBD5E1",
+                  borderRadius: "5px",
+                  padding: "6px 8px",
+                  fontSize: "11px",
+                  cursor: "pointer",
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div style={{ fontSize: "10.5px", color: "#64748B" }}>
+            Tip: You can get a free key (1,500 requests/day free) at{" "}
+            <a
+              href="https://aistudio.google.com/app/apikey"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#0284C7", textDecoration: "underline" }}
+            >
+              Google AI Studio ↗
+            </a>
+            {" "}or configure <code style={{ background: "#E2E8F0", padding: "1px 4px", borderRadius: "3px" }}>GEMINI_API_KEY</code> on Vercel.
+          </div>
+        </div>
+      )}
 
       <div className="drawer-b">
         <p className="hint">
@@ -324,7 +626,7 @@ export function CopilotDrawer() {
         {/* Suggestion Chips */}
         <div className="chips" style={{ marginBottom: "12px", display: "flex", flexWrap: "wrap", gap: "5px" }}>
           {SUGGESTIONS.map((s) => (
-            <button key={s} className="chip" onClick={() => handleSend(s)}>
+            <button key={s} className="chip" onClick={() => handleSend(s)} disabled={isLoading}>
               {s}
             </button>
           ))}
@@ -335,6 +637,23 @@ export function CopilotDrawer() {
           {messages.map((m, i) => (
             <div key={i} className={`msg ${m.role}`}>
               <div className="bubble">
+                {m.sourceBadge && (
+                  <div style={{ marginBottom: "4px" }}>
+                    <span
+                      style={{
+                        fontSize: "9.5px",
+                        padding: "1px 6px",
+                        borderRadius: "3px",
+                        background: m.sourceBadge.includes("Gemini") ? "#EFF6FF" : "#F1F5F9",
+                        color: m.sourceBadge.includes("Gemini") ? "#1D4ED8" : "#475569",
+                        border: `1px solid ${m.sourceBadge.includes("Gemini") ? "#BFDBFE" : "#E2E8F0"}`,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {m.sourceBadge}
+                    </span>
+                  </div>
+                )}
                 <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>
 
                 {/* Citations */}
@@ -381,6 +700,27 @@ export function CopilotDrawer() {
               </div>
             </div>
           ))}
+
+          {/* Thinking / Loading Indicator */}
+          {isLoading && (
+            <div className="msg ai">
+              <div
+                className="bubble"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  color: "#475569",
+                  fontSize: "12px",
+                  background: "#F8FAFC",
+                }}
+              >
+                <span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⚙️</span>
+                <span>NexusTwin Copilot is analyzing live fleet telemetry & kinematics…</span>
+              </div>
+            </div>
+          )}
+
           <div ref={chatEndRef} />
         </div>
 
@@ -397,9 +737,10 @@ export function CopilotDrawer() {
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
             placeholder="Ask Copilot about bottlenecks, fleet, SLA, What-If…"
+            disabled={isLoading}
           />
-          <button className="btn primary" type="submit" disabled={!inputVal.trim()}>
-            Send
+          <button className="btn primary" type="submit" disabled={!inputVal.trim() || isLoading}>
+            {isLoading ? "…" : "Send"}
           </button>
         </form>
       </div>
