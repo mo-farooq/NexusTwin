@@ -2,6 +2,11 @@ export const config = {
   runtime: "edge",
 };
 
+// In-Memory IP Sliding Window Rate Limiter (Edge Runtime)
+const rateLimitMap = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const MAX_REQUESTS_PER_WINDOW = 20; // 20 requests/min per IP
+
 interface TelemetryPayload {
   activeBotsCount?: number;
   totalCompletedTasks?: number;
@@ -36,6 +41,32 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
+  // 1. IP Rate Limiting Guard
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown-client";
+  const now = Date.now();
+  const pastTimestamps = (rateLimitMap.get(clientIp) || []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+
+  if (pastTimestamps.length >= MAX_REQUESTS_PER_WINDOW) {
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        fallback: true,
+        reason: "RATE_LIMITED",
+        message: "Rate limit exceeded (max 20 requests/min). Use local grounded SCADA engine.",
+      }),
+      {
+        status: 429,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+          "Retry-After": "60",
+        },
+      }
+    );
+  }
+  pastTimestamps.push(now);
+  rateLimitMap.set(clientIp, pastTimestamps);
+
   try {
     const body = await req.json().catch(() => ({}));
     const { query, telemetry = {}, customApiKey } = body as {
@@ -44,17 +75,44 @@ export default async function handler(req: Request): Promise<Response> {
       customApiKey?: string;
     };
 
-    if (!query || typeof query !== "string") {
+    // 2. Strict Input Validation & Length Limiting (OWASP DoS & Injection Prevention)
+    const trimmedQuery = typeof query === "string" ? query.trim() : "";
+    if (!trimmedQuery) {
       return new Response(
-        JSON.stringify({ ok: false, error: "Missing 'query' in request body" }),
+        JSON.stringify({ ok: false, error: "Missing or empty 'query' parameter" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Resolve API key from client BYOK, header, or Vercel server environment
+    if (trimmedQuery.length > 800) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "Query exceeds maximum limit of 800 characters" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // 3. Resolve API key from client BYOK, header, or Vercel server environment
     const clientHeaderKey = req.headers.get("x-gemini-key");
     const serverEnvKey =
       (typeof process !== "undefined" && process.env ? process.env.GEMINI_API_KEY : "") || "";
+
+    // 4. Origin & Anti-Leeching Protection
+    const origin = req.headers.get("origin") || req.headers.get("referer") || "";
+    const isLocalhost = origin.includes("localhost") || origin.includes("127.0.0.1");
+    const isNexusTwinDomain = origin.includes("vercel.app") || origin.includes("nexus-twin");
+    const isTrustedOrigin = !origin || isLocalhost || isNexusTwinDomain;
+
+    // If an external third-party domain attempts to call our endpoint without BYOK:
+    if (!isTrustedOrigin && !customApiKey && !clientHeaderKey) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "Unauthorized cross-origin access using server API key. Provide your own key via BYOK.",
+        }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const apiKey = customApiKey || clientHeaderKey || serverEnvKey;
 
     if (!apiKey) {
@@ -100,7 +158,7 @@ GUIDELINES:
       contents: [
         {
           role: "user",
-          parts: [{ text: query }],
+          parts: [{ text: trimmedQuery }],
         },
       ],
       systemInstruction: {
@@ -120,7 +178,6 @@ GUIDELINES:
       "gemini-2.5-flash-lite",
       "gemini-1.5-flash",
     ];
-    let lastError = null;
 
     for (const model of models) {
       try {
@@ -150,32 +207,29 @@ GUIDELINES:
               { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
           }
-        } else {
-          const errBody = await resp.text();
-          lastError = `Gemini API error (${resp.status}): ${errBody.slice(0, 200)}`;
         }
-      } catch (err: any) {
-        lastError = err?.message || String(err);
+      } catch {
+        // Fallback cleanly to next model without leaking exception details
       }
     }
 
-    // If Gemini calls failed, signal fallback cleanly
+    // If Gemini calls failed, signal fallback cleanly without leaking internal errors
     return new Response(
       JSON.stringify({
         ok: false,
         fallback: true,
         reason: "GEMINI_API_FAILURE",
-        error: lastError,
+        message: "Gemini provider temporarily unavailable. Falling back to local SCADA engine.",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (error: any) {
+  } catch {
     return new Response(
       JSON.stringify({
         ok: false,
         fallback: true,
         reason: "INTERNAL_ERROR",
-        error: error?.message || "Internal server error",
+        message: "Request processing error. Falling back to local SCADA engine.",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
